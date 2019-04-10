@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8">
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/paper-css/0.4.1/paper.css">
+
+  <link rel="stylesheet" href="./css/boothcsv.css">
+
+  <title>BOOTH宛名印刷用CSV帳票化</title>
+</head>
+
+<body class="A4">
+<div class="no_print">
+  <h1>BOOTHの宛名印刷用CSVを使って出荷用のラベルシールやピッキング用の帳票を作成するためのもの</h1>
+  <p><a href="https://github.com/8796n/boothcsv" target="_blank">公開場所</a></p>
+  <form method="POST" enctype="multipart/form-data" id="form">
+    <p><label for="csvfile">宛名印刷用CSVファイル：</label><input type="file" id="file" name="csvfile" accept=".csv"></p>
+    <p><label for="labelprint">ラベルシールも印刷する：</label><input type="checkbox" id="labelyn" name="labelprint" checked>
+    <p><label for="labelskip">ラベルをスキップする枚数：</label><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0">
+    <p><input type="button" value="実行" onClick="clickstart();"><input type="button" value="印刷" onClick="window.print();"></p>
+  </form>
+</div>
+<template id="L44">
+  <section class="sheet">
+      <table class="label44">
+      </table>
+    </section>
+</template>
+<template id="注文明細">
+  <section class="sheet">
+    <div class="page" style="position:relative">
+      <div class="header">
+        <p class="title">注文明細</p>
+        <div class="topright">
+          <p class="注文番号"></p>
+        </div>
+        <table class="orderdetail">
+          <tr>
+            <td>郵便番号</td>
+            <td class="郵便番号">【あんしんBOOTHパック】</td>
+            <td>注文状況</td>
+            <td class="注文状況"></td>
+          </tr>
+          <tr>
+            <td>都道府県</td>
+            <td class="都道府県">【あんしんBOOTHパック】</td>
+            <td>注文日時</td>
+            <td class="注文日時"></td>
+          </tr>
+          <tr>
+            <td>住所１</td>
+            <td class="市区町村・丁目・番地">【あんしんBOOTHパック】</td>
+            <td>支払い日時</td>
+            <td class="支払い日時"></td>
+          </tr>
+          <tr>
+            <td>住所２</td>
+            <td class="マンション・建物名・部屋番号"></td>
+            <td>お支払方法</td>
+            <td class="お支払方法"></td>
+          </tr>
+          <tr>
+            <td>氏名</td>
+            <td class="氏名">【あんしんBOOTHパック】</td>
+            <td>ユーザー識別コード</td>
+            <td class="ユーザー識別コード"></td>
+          </tr>
+          <tr>
+            <td>電話番号</td>
+            <td class="電話番号">【あんしんBOOTHパック】</td>
+          </tr>
+        </table>
+      </div>
+      <table class="items">
+        <tr>
+          <th>商品ID</th><th>商品名</th><th>数量</th><th>確認</th>
+        </tr>
+        <template id="商品">
+          <tr>
+            <td class="商品ID"></td><td class="商品名"></td><td class="数量"></td><td class="確認"></td>
+          </tr>
+        </template>
+        <tr>
+          <td class="spacerow" colspan="4">以下余白</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+</template>
+<script src="./js/jsQR.js"></script>
+<script src="./js/papaparse.min.js"></script>
+<script src="./js/boothcsv.js"></script>
+</body>
+
+</html>

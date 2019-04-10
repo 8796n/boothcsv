@@ -1,0 +1,181 @@
+@page {
+    size: A4;
+    margin: 0;
+}
+
+@media print {
+    .no_print {
+    display: none;
+    }
+    .dropzone {
+    display: none !important;
+    }
+    table.label44 td {
+    border: none !important;
+    }
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    font-family: sans-serif
+}
+
+template {
+    display: none;
+}
+
+.sheet {
+    padding: 8.8mm 8.4mm;
+}
+
+table.items {
+    width: 100%;
+    border-color: rgb(0, 0, 0);
+    border-collapse: collapse;
+}
+
+table.items tr {
+    height: 10.0mm;
+}
+
+table.items td,
+table th {
+    border: solid 1px;
+    border-collapse: collapse;
+    padding: 2.0mm;
+    position: relative;
+    overflow: hidden;
+}
+
+table.items td.商品ID {
+    width: 25.0mm;
+    text-align: center;
+}
+
+table.items td.数量 {
+    text-align: right;
+}
+
+table.items td.spacerow {
+    border: none;
+    text-align: center;
+    letter-spacing: 2mm;
+}
+
+.topright {
+    position: absolute;
+    top: 0mm;
+    right: 0mm;
+}
+
+.orderdetail {
+    position: absolute;
+    top: 5em;
+    left: 0mm;
+}
+
+table.orderdetail {
+    width: 100%;
+    border-color: rgb(0, 0, 0);
+    border-collapse: collapse;
+}
+
+table.orderdetail td {
+    padding: 0 2mm;
+}
+
+.title {
+    font-size: 18pt;
+    position: absolute;
+    text-align: center;
+    top: 1em;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: 100%;
+    letter-spacing: 2mm;
+}
+
+.header {
+    position: relative;
+    height: 7cm;
+    width: 100%;
+}
+
+table.label44 {
+    width: 193.2mm;
+    height: 279.4mm;
+    border-color: rgb(0, 0, 0);
+    border-collapse: collapse;
+}
+
+table.label44 tr {
+    height: 25.4mm;
+}
+
+table.label44 td {
+    width: 48.3mm;
+    height: 25.3mm;
+    border-collapse: collapse;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    vertical-align: middle;
+    border: solid 1px;
+}
+.ordernum {
+    position: absolute;
+    font-size: 10pt;
+    left: 25.0mm;
+    top: 2.0mm;
+    width: 22.0mm;
+    text-align: center;
+    vertical-align: middle;
+}
+.yamato {
+    position: absolute;
+    font-size: 10pt;
+    left: 25.0mm;
+    top: 12.0mm;
+    width: 22.0mm;
+    text-align: center;
+    vertical-align: middle;
+}
+.qr {
+    position: absolute;
+    width: 25.3mm;
+    height: 25.3mm;
+    top: 0mm;
+    left: 0mm;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.qr img {
+    position: absolute;
+    width: 25.3mm;
+    height: 25.3mm;
+}
+.dropzone {
+    background-color: rgba(0, 255, 136, 0.5);
+    position: absolute;
+    width: 25.3mm;
+    height: 25.3mm;
+    top: 0mm;
+    left: 0mm;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: rgb(255, 255, 255);
+    text-shadow: 1px 1px 0 rgb(0, 0, 0);
+}
+.dropzone.dropover {
+    background-color: rgb(208, 255, 255);
+    color: #9cc;
+}
+.displaynone {
+    display: none !important;
+}
