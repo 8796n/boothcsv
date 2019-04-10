@@ -37,7 +37,7 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 
 ## ラベルシールも印刷したい
 これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。PUDOステーションに放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。
-* A4 44面 四辺余白付のラベルシールを用意します。例えば[これ](https://amzn.to/2KkRXhE){:target="_blank"}とか[これ](https://amzn.to/2KpdW7k){:target="_blank"}
+* A4 44面 四辺余白付のラベルシールを用意します。例えば<a src="https://amzn.to/2KkRXhE" target="_blank">これ</a>とか<a src="https://amzn.to/2KpdW7k" target="_blank">これ</a>
 * ラベルシールも印刷するというチェックを入れます。
 * 途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。
 * さっきと一緒でCSVファイルを選んで実行ボタンを押すと、ラベル用紙の枚数も表示されます。
@@ -52,3 +52,7 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 
 ## 文字打つの飽きたので続きはまた今度
 
+## 使ってる仕組み
+* 印刷に便利なCSS [Paper CSS](https://github.com/cognitom/paper-css)
+* QRコード読んでくれるJavaScript [jsQR](https://github.com/cozmo/jsQR)
+* CSVをいい感じに読んでくれるJavaScript [PapaParse](https://github.com/mholt/PapaParse)
