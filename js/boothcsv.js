@@ -19,7 +19,7 @@ function clickstart() {
   localStorage.setItem("labelyn", labelyn);
   const labelskip = document.getElementById("labelskipnum").value;
   localStorage.setItem("labelskip", labelskip);
-  let labelarr = [];
+  const labelarr = [];
   if(labelskip > 0){
     for(let i = 0; i < labelskip; i++){
       labelarr.push("");
@@ -33,7 +33,7 @@ function clickstart() {
       for(let row of results.data){
         const cOrder = document.importNode(tOrder.content, true);
         for(let c of Object.keys(row).filter(key => key != "商品ID / 数量 / 商品名")){
-          let divc = cOrder.querySelector("." + c);
+          const divc = cOrder.querySelector("." + c);
           if(divc){
             if(c=="注文番号"){
               divc.textContent = "注文番号 : " + row[c]
@@ -51,12 +51,12 @@ function clickstart() {
           for(let itemcol of itemrow.split(' / ')){
             const col = itemcol.split(' : ');
             if(col.length == 2){
-              let td = cItem.querySelector("." + col[0]);
+              const td = cItem.querySelector("." + col[0]);
               if(td){
                 td.textContent = col[1];
               }
             }else{
-              let td = cItem.querySelector(".商品名");
+              const td = cItem.querySelector(".商品名");
               if(td){
                 td.textContent = col.join('');
               }
@@ -73,8 +73,8 @@ function clickstart() {
           }
         }
         const tL44 = document.querySelector('#L44');
-        let cL44 = document.importNode(tL44.content, true);
-        let tableL44 = cL44.querySelector("table");
+        const cL44 = document.importNode(tL44.content, true);
+        const tableL44 = cL44.querySelector("table");
         let tr = document.createElement("tr");
         let i = 0;
         for(let label of labelarr){
@@ -112,7 +112,7 @@ function addP(div, text){
   div.appendChild(p);
 }
 function createDiv(classname="", text=""){
-  div = document.createElement('div');
+  const div = document.createElement('div');
   if(classname){
     div.classList.add(classname);
   }
@@ -122,7 +122,7 @@ function createDiv(classname="", text=""){
   return div;
 }
 function createDropzone(div){
-  divDrop = createDiv('dropzone', 'Paste QR image here!');
+  const divDrop = createDiv('dropzone', 'Paste QR image here!');
   divDrop.setAttribute("contenteditable", "true");
   divDrop.setAttribute("effectAllowed", "move");
   divDrop.addEventListener('dragover', function(event) {
@@ -144,7 +144,7 @@ function createDropzone(div){
       this.parentNode.appendChild(elImage);
       readQR(elImage);
     }else{
-      let file = event.dataTransfer.files[0];
+      const file = event.dataTransfer.files[0];
       if(file.type.indexOf('image/') === 0){
         this.parentNode.appendChild(elImage);
         attachImage(file, elImage);
@@ -155,7 +155,7 @@ function createDropzone(div){
     elImage.style.zIndex = 9;
     addEventQrReset(elImage);
   });
-  divDrop.addEventListener("paste", function(evente){
+  divDrop.addEventListener("paste", function(event){
     event.preventDefault();
     if (!event.clipboardData 
             || !event.clipboardData.types
@@ -191,9 +191,9 @@ function createDropzone(div){
 }
 
 function createLabel(ordernum=""){
-  divQr = createDiv('qr');
-  divOrdernum = createDiv('ordernum', ordernum);
-  divYamato = createDiv('yamato');
+  const divQr = createDiv('qr');
+  const divOrdernum = createDiv('ordernum', ordernum);
+  const divYamato = createDiv('yamato');
 
   if(ordernum){
     createDropzone(divQr);
@@ -208,7 +208,7 @@ function createLabel(ordernum=""){
     }
   }
 
-  tdLabel = document.createElement('td');
+  const tdLabel = document.createElement('td');
   tdLabel.classList.add('qrlabel');
   tdLabel.appendChild(divQr);
   tdLabel.appendChild(divOrdernum);
@@ -257,7 +257,7 @@ function readQR(elImage){
         const d = elImage.closest("td").querySelector(".yamato");
         d.innerHTML = "";
         for(let i=1; i < 3; i++){
-          let p = document.createElement("p");
+          const p = document.createElement("p");
           p.innerText = b[i];
           d.appendChild(p);
         }
@@ -271,14 +271,14 @@ function readQR(elImage){
 }
 
 function attachImage(file, elImage) {
-    var reader = new FileReader();
-    reader.onload = function(event) {
-        var src = event.target.result;
-        elImage.src = src;
-        elImage.setAttribute('title', file.name);
-        elImage.onload = function() {
-          readQR(elImage);
-        }
-    };
-    reader.readAsDataURL(file);
+  const reader = new FileReader();
+  reader.onload = function(event) {
+      const src = event.target.result;
+      elImage.src = src;
+      elImage.setAttribute('title', file.name);
+      elImage.onload = function() {
+        readQR(elImage);
+      }
+  };
+  reader.readAsDataURL(file);
 }
