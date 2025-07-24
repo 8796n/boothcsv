@@ -50,9 +50,9 @@ function clickstart() {
           const cItem = document.importNode(tItems.content, true);
           // 最初の2つの ' / ' でのみ分割する
           const firstSplit = itemrow.split(' / ');
-          // 商品IDと数量から余計な文字列を取り除く
-          const itemId = firstSplit[0].replace('商品ID : ', '');
-          const quantity = firstSplit[1].replace('数量 : ', '');
+          // 商品IDと数量をコロンで分割して2番目の要素を取得し、trimで空白を除去
+          const itemId = firstSplit[0].split(':')[1].trim();
+          const quantity = firstSplit[1].split(':')[1].trim();
           const productName = firstSplit.slice(2).join(' / '); // 残りの部分を商品名として結合
 
           if (itemId && quantity) {
