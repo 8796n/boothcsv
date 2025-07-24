@@ -48,18 +48,25 @@ function clickstart() {
         const trItem = cOrder.querySelector('.items');
         for(let itemrow of row["商品ID / 数量 / 商品名"].split('\n')){
           const cItem = document.importNode(tItems.content, true);
-          for(let itemcol of itemrow.split(' / ')){
-            const col = itemcol.split(' : ');
-            if(col.length == 2){
-              const td = cItem.querySelector("." + col[0]);
-              if(td){
-                td.textContent = col[1];
-              }
-            }else{
-              const td = cItem.querySelector(".商品名");
-              if(td){
-                td.textContent = col.join('');
-              }
+          // 最初の2つの ' / ' でのみ分割する
+          const firstSplit = itemrow.split(' / ');
+          // 商品IDと数量から余計な文字列を取り除く
+          const itemId = firstSplit[0].replace('商品ID : ', '');
+          const quantity = firstSplit[1].replace('数量 : ', '');
+          const productName = firstSplit.slice(2).join(' / '); // 残りの部分を商品名として結合
+
+          if (itemId && quantity) {
+            const tdId = cItem.querySelector(".商品ID");
+            if (tdId) {
+              tdId.textContent = itemId;
+            }
+            const tdQuantity = cItem.querySelector(".数量");
+            if (tdQuantity) {
+              tdQuantity.textContent = quantity;
+            }
+            const tdName = cItem.querySelector(".商品名");
+            if (tdName) {
+              tdName.textContent = productName;
             }
           }
           trSpace.parentNode.parentNode.insertBefore(cItem, trSpace.parentNode);
