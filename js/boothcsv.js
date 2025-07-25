@@ -29,6 +29,13 @@ function clickstart() {
     header: true,
     skipEmptyLines: true,
     complete: function(results) {
+      // 支払い日時でソート
+      results.data.sort((a, b) => {
+        const timeA = a["支払い日時"] || ""; 
+        const timeB = b["支払い日時"] || "";
+        return timeA.localeCompare(timeB);
+      });
+
       const tOrder = document.querySelector('#注文明細');
       for(let row of results.data){
         const cOrder = document.importNode(tOrder.content, true);
