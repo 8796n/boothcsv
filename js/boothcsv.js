@@ -8,11 +8,42 @@ window.addEventListener("load", function(){
     document.getElementById("labelyn").checked = false;
   }
   document.getElementById("labelskipnum").value = labelskip != null ? labelskip : 0;
+
+   // 画像ドロップゾーンの初期化
+  const imageDropZoneElement = document.getElementById('imageDropZone');
+  const imageDropZone = createOrderImageDropZone();
+  imageDropZoneElement.appendChild(imageDropZone.element);
+  window.orderImageDropZone = imageDropZone;
+
+  // 全ての画像をクリアするボタンのイベントリスナーを追加
+  const clearAllButton = document.getElementById('clearAllButton');
+  clearAllButton.onclick = () => {
+    if (confirm('本当に全てのQR画像をクリアしますか？')) {
+      // localStorageからQR画像を削除
+      Object.keys(localStorage).forEach(key => {
+        if (localStorage.getItem(key)?.includes('qrimage')) {
+          localStorage.removeItem(key);
+        }
+      });
+      alert('全てのQR画像をクリアしました');
+      location.reload(); // ページをリロードして反映
+    }
+  };
+
+   // ページロード時にチェックボックスの状態を反映
+   const sortByPaymentDate = localStorage.getItem("sortByPaymentDate") === "true";
+   document.getElementById("sortByPaymentDate").checked = sortByPaymentDate;
+
+   // チェックボックスの状態が変更されたときにlocalStorageに保存
+   document.getElementById("sortByPaymentDate").addEventListener("change", function() {
+     localStorage.setItem("sortByPaymentDate", this.checked);
+   });
+
 }, false);
 
 function clickstart() {
-  for(let sheet of document.querySelectorAll('section')){
-        sheet.parentNode.removeChild(sheet);
+  for (let sheet of document.querySelectorAll('section')) {
+    sheet.parentNode.removeChild(sheet);
   }
   const file = document.getElementById("file").files[0];
   const labelyn = document.getElementById("labelyn").checked;
@@ -20,8 +51,9 @@ function clickstart() {
   const labelskip = document.getElementById("labelskipnum").value;
   localStorage.setItem("labelskip", labelskip);
   const labelarr = [];
-  if(labelskip > 0){
-    for(let i = 0; i < labelskip; i++){
+  const labelskipNum = parseInt(labelskip, 10) || 0;
+  if (labelskipNum > 0) {
+    for (let i = 0; i < labelskipNum; i++) {
       labelarr.push("");
     }
   }
@@ -29,54 +61,75 @@ function clickstart() {
     header: true,
     skipEmptyLines: true,
     complete: function(results) {
-      // 支払い日時でソート
-      results.data.sort((a, b) => {
-        const timeA = a["支払い日時"] || ""; 
-        const timeB = b["支払い日時"] || "";
-        return timeA.localeCompare(timeB);
-      });
+      // チェックボックスの状態に応じて並び替え
+      const sortByPaymentDate = document.getElementById("sortByPaymentDate").checked;
+      if (sortByPaymentDate) {
+        results.data.sort((a, b) => {
+          const timeA = a["支払い日時"] || "";
+          const timeB = b["支払い日時"] || "";
+          return timeA.localeCompare(timeB);
+        });
+      }
 
       const tOrder = document.querySelector('#注文明細');
-      for(let row of results.data){
+      for (let row of results.data) {
         const cOrder = document.importNode(tOrder.content, true);
-        for(let c of Object.keys(row).filter(key => key != "商品ID / 数量 / 商品名")){
+        for (let c of Object.keys(row).filter(key => key != "商品ID / 数量 / 商品名")) {
           const divc = cOrder.querySelector("." + c);
-          if(divc){
-            if(c=="注文番号"){
-              divc.textContent = "注文番号 : " + row[c]
+          if (divc) {
+            if (c == "注文番号") {
+              divc.textContent = "注文番号 : " + row[c];
               labelarr.push(row[c]);
-            }else if(row[c]){
+            } else if (row[c]) {
               divc.textContent = row[c];
             }
           }
         }
         const tItems = cOrder.querySelector('#商品');
         const trSpace = cOrder.querySelector('.spacerow');
-        const trItem = cOrder.querySelector('.items');
-        for(let itemrow of row["商品ID / 数量 / 商品名"].split('\n')){
-          const cItem = document.importNode(tItems.content, true);
-          // 最初の2つの ' / ' でのみ分割する
-          const firstSplit = itemrow.split(' / ');
+        if (row["商品ID / 数量 / 商品名"]) {
+          for(let itemrow of row["商品ID / 数量 / 商品名"].split('\n')){
+            const cItem = document.importNode(tItems.content, true);
+            // 最初の2つの ' / ' でのみ分割する
+            const firstSplit = itemrow.split(' / ');
           // 商品IDと数量をコロンで分割して2番目の要素を取得し、trimで空白を除去
-          const itemId = firstSplit[0].split(':')[1].trim();
-          const quantity = firstSplit[1].split(':')[1].trim();
+          const itemIdSplit = firstSplit[0].split(':');
+          const itemId = itemIdSplit.length > 1 ? itemIdSplit[1].trim() : '';
+          const quantitySplit = firstSplit[1] ? firstSplit[1].split(':') : [];
+          const quantity = quantitySplit.length > 1 ? quantitySplit[1].trim() : '';
           const productName = firstSplit.slice(2).join(' / '); // 残りの部分を商品名として結合
 
-          if (itemId && quantity) {
-            const tdId = cItem.querySelector(".商品ID");
-            if (tdId) {
-              tdId.textContent = itemId;
+            if (itemId && quantity) {
+              const tdId = cItem.querySelector(".商品ID");
+              if (tdId) {
+                tdId.textContent = itemId;
+              }
+              const tdQuantity = cItem.querySelector(".数量");
+              if (tdQuantity) {
+                tdQuantity.textContent = quantity;
+              }
+              const tdName = cItem.querySelector(".商品名");
+              if (tdName) {
+                tdName.textContent = productName;
+              }
             }
-            const tdQuantity = cItem.querySelector(".数量");
-            if (tdQuantity) {
-              tdQuantity.textContent = quantity;
-            }
-            const tdName = cItem.querySelector(".商品名");
-            if (tdName) {
-              tdName.textContent = productName;
-            }
+            trSpace.parentNode.parentNode.insertBefore(cItem, trSpace.parentNode);
           }
-          trSpace.parentNode.parentNode.insertBefore(cItem, trSpace.parentNode);
+        }
+
+        const droppedImage = window.orderImageDropZone?.getImage();
+        if (droppedImage) {
+          const imageDiv = document.createElement('div');
+          imageDiv.classList.add('order-image');
+
+          const img = document.createElement('img');
+          img.src = droppedImage;
+
+          imageDiv.appendChild(img);
+          const container = cOrder.querySelector('.order-image-container');
+          if (container) {
+            container.appendChild(imageDiv);
+          }
         }
         document.body.appendChild(cOrder);
       }
@@ -87,8 +140,8 @@ function clickstart() {
           }
         }
         const tL44 = document.querySelector('#L44');
-        const cL44 = document.importNode(tL44.content, true);
-        const tableL44 = cL44.querySelector("table");
+        let cL44 = document.importNode(tL44.content, true);
+        let tableL44 = cL44.querySelector("table");
         let tr = document.createElement("tr");
         let i = 0;
         for(let label of labelarr){
@@ -103,7 +156,7 @@ function clickstart() {
             tableL44.appendChild(tr);
             tr = document.createElement("tr");
           }
-          tr.appendChild(createLabel(label));
+            tr.appendChild(createLabel(label));
           i++;
         }
         tableL44.appendChild(tr);
@@ -296,3 +349,120 @@ function attachImage(file, elImage) {
   };
   reader.readAsDataURL(file);
 }
+
+function createOrderImageDropZone() {
+  const dropZone = document.createElement('div');
+  dropZone.classList.add('order-image-drop');
+
+  let droppedImage = null;
+
+  // localStorageから保存された画像を読み込む
+  const savedImage = localStorage.getItem('orderImage');
+  if (savedImage) {
+    updatePreview(savedImage);
+  } else {
+    const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
+    dropZone.innerHTML = defaultContent;
+  }
+
+  function updatePreview(imageUrl) {
+    droppedImage = imageUrl;
+    dropZone.innerHTML = ''; // クリア
+    const preview = document.createElement('img');
+    preview.src = imageUrl;
+    preview.classList.add('preview-image');
+    preview.title = 'クリックでリセット'; // Tooltipを追加
+    dropZone.appendChild(preview);
+    // localStorageに保存
+    localStorage.setItem('orderImage', imageUrl);
+
+    // 画像クリックでリセット
+    preview.addEventListener('click', () => {
+      localStorage.removeItem('orderImage');
+      droppedImage = null;
+      const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
+      dropZone.innerHTML = defaultContent;
+    });
+  }
+
+  // ドラッグ&ドロップイベントの設定
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        updatePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // 未設定時のクリックでファイル選択
+  dropZone.addEventListener('click', () => {
+    if (!droppedImage) {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/jpeg, image/png, image/svg+xml';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+      fileInput.click();
+
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            updatePreview(e.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+        document.body.removeChild(fileInput);
+      });
+    }
+  });
+
+  return {
+    element: dropZone,
+    getImage: () => droppedImage
+  };
+}
+
+document.getElementById("file").addEventListener("change", function() {
+  const fileInput = document.getElementById("file");
+  const executeButton = document.getElementById("executeButton");
+  const printButton = document.getElementById("printButton");
+
+  if (fileInput.files.length > 0) {
+    executeButton.disabled = false;
+    printButton.disabled = false;
+  } else {
+    executeButton.disabled = true;
+    printButton.disabled = true;
+  }
+});
+
+// ページロード時に説明を表示し、ユーザーにファイル選択を促す
+window.addEventListener("load", function() {
+  const fileInput = document.getElementById("file");
+  const executeButton = document.getElementById("executeButton");
+  const printButton = document.getElementById("printButton");
+
+  // 初期状態でボタンを無効化
+  executeButton.disabled = true;
+  printButton.disabled = true;
+
+  // ファイル選択を促すメッセージを表示
+  alert("CSVファイルを選択してください。");
+});

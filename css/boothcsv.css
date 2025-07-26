@@ -19,6 +19,7 @@
     margin: 0;
     padding: 0;
     -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
     font-family: sans-serif
 }
 
@@ -30,10 +31,20 @@ template {
     padding: 8.8mm 8.4mm;
 }
 
+.page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* @pageのサイズを継承 */
+  overflow: hidden; /* はみ出し防止 */
+}
+
 table.items {
-    width: 100%;
-    border-color: rgb(0, 0, 0);
-    border-collapse: collapse;
+  flex-shrink: 0;  /* テーブルのサイズを固定 */
+  width: 100%;
+  border-color: rgb(0, 0, 0);
+  border-collapse: collapse;
+  margin-top: 1em;
 }
 
 table.items tr {
@@ -99,9 +110,10 @@ table.orderdetail td {
 }
 
 .header {
-    position: relative;
-    height: 7cm;
-    width: 100%;
+  flex-shrink: 0;  /* ヘッダーのサイズを固定 */
+  position: relative;
+  height: 7cm;
+  width: 100%;
 }
 
 table.label44 {
@@ -178,4 +190,112 @@ table.label44 td {
 }
 .displaynone {
     display: none !important;
+}
+.order-image-container {
+  position: relative;
+  flex: 1; /* 残りのスペースをすべて使用 */
+  display: flex;
+  flex-direction: column; /* 縦方向のレイアウト */
+  justify-content: flex-end; /* 下部に配置 */
+  align-items: center; /* 水平方向の中央揃え */
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* はみ出し防止 */
+}
+
+.items {
+  flex-shrink: 0; /* テーブルサイズを固定 */
+}
+
+.order-image-container img {
+  margin-top: auto; /* 自動的に下部に配置 */
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain; /* アスペクト比を保ちながら縮小 */
+  object-position: center; /* 画像を中央に配置 */
+}
+
+.order-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain; /* アスペクト比を保ちながら縮小 */
+}
+
+/* 印刷時用のスタイル */
+@media print {
+  .page {
+    height: 100%; /* @pageのサイズを継承 */
+    overflow: hidden;
+  }
+
+  .order-image-container {
+    flex: 1;
+  }
+
+  .order-image img {
+    page-break-inside: avoid; /* 画像がページ内で分割されないようにする */
+  }
+}
+
+.order-image-drop {
+  width: 400px;
+  height: 200px;
+  border: 2px dashed #ccc;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 10px;
+  cursor: pointer;
+}
+
+.order-image-drop.dragover {
+  background-color: #e1f5fe;
+  border-color: #29b6f6;
+}
+
+.order-image-drop p {
+  color: #666;
+  margin: 0;
+  padding: 10px;
+}
+
+.order-image-drop .preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.btn-action {
+  display: inline-block;
+  padding: 10px 40px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  background-color: #007bff; /* ブルー */
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.btn-action:hover {
+  background-color: #0056b3; /* ホバー時の濃いブルー */
+}
+
+.btn-action:active {
+  transform: scale(0.95); /* 押したときの軽い縮小 */
+}
+
+.btn-action:focus {
+  outline: none;
+  box-shadow: 0 0 5px #007bff; /* フォーカス時の青い枠 */
+}
+
+.btn-action:disabled {
+  background-color: #cccccc; /* 無効時のグレー */
+  cursor: not-allowed; /* 無効時のカーソル */
+  color: #666666; /* 無効時の文字色 */
 }

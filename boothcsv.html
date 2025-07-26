@@ -12,16 +12,40 @@
 </head>
 
 <body class="A4">
-<div class="no_print">
+<div class="no_print" style="text-align: center;">
   <h1>BOOTHの宛名印刷用CSVを使って出荷用のラベルシールやピッキング用の帳票を作成するためのもの</h1>
-  <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
-  <p><a href="https://manage.booth.pm/orders?state=paid" target="_blank">BOOTHの注文一覧</a>から「宛名印刷用CSV」をダウンロード</p>
+  <p><a href="https://manage.booth.pm/orders?state=paid" target="_blank">BOOTHの注文一覧(未発送)</a>から「宛名印刷用CSV」をダウンロード</p>
   <form method="POST" enctype="multipart/form-data" id="form">
-    <p><label for="csvfile">宛名印刷用CSVファイル：</label><input type="file" id="file" name="csvfile" accept=".csv"></p>
-    <p><label for="labelprint">ラベルシールも印刷する：</label><input type="checkbox" id="labelyn" name="labelprint" checked>
-    <p><label for="labelskip">ラベルをスキップする枚数：</label><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0">
-    <p><input type="button" value="実行" onClick="clickstart();"><input type="button" value="印刷" onClick="window.print();"></p>
+    <table class="form-table" style="margin: 0 auto;">
+      <tr>
+        <td><label for="csvfile">宛名印刷用CSVファイル：</label></td>
+        <td><input type="file" id="file" name="csvfile" accept=".csv"></td>
+      </tr>
+      <tr>
+        <td><label for="labelprint">ラベルシールも印刷する：</label></td>
+        <td><input type="checkbox" id="labelyn" name="labelprint" checked></td>
+      </tr>
+      <tr>
+        <td><label for="sortByPaymentDate">支払い日時で並び替え：</label></td>
+        <td><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"></td>
+      </tr>
+      <tr>
+        <td><label for="labelskip">ラベルをスキップする枚数：</label></td>
+        <td><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0"></td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <div id="imageDropZone" class="dropzone-container" style="text-align: center;"></div>
+        </td>
+      </tr>
+    </table>
+    <div class="form-actions" style="text-align: center;">
+      <button type="button" class="btn-action" onClick="clickstart();" id="executeButton" disabled>実行</button>
+      <button type="button" class="btn-action" onClick="window.print();" id="printButton" disabled>印刷</button>
+    </div>
   </form>
+  <p style="text-align: center;">ローカルストレージに保存されたQRコードの画像を全削除：<button id="clearAllButton" class="btn-clear">全てのQR画像をクリア</button></p>
+  <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
 </div>
 <template id="L44">
   <section class="sheet">
@@ -31,7 +55,7 @@
 </template>
 <template id="注文明細">
   <section class="sheet">
-    <div class="page" style="position:relative">
+    <div class="page">
       <div class="header">
         <p class="title">注文明細</p>
         <div class="topright">
@@ -87,9 +111,14 @@
           <td class="spacerow" colspan="4">以下余白</td>
         </tr>
       </table>
+      <!-- 画像表示用のコンテナを追加 -->
+      <div class="order-image-container"></div>
     </div>
   </section>
 </template>
+<div id="dropZoneDefaultContent" style="display: none;">
+  <p>注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
+</div>
 <script src="./js/jsQR.js"></script>
 <script src="./js/papaparse.min.js"></script>
 <script src="./js/boothcsv.js"></script>
