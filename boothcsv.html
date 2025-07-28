@@ -44,7 +44,10 @@
       <button type="button" class="btn-action" onClick="window.print();" id="printButton" disabled>印刷</button>
     </div>
   </form>
-  <p style="text-align: center;">ローカルストレージに保存されたQRコードの画像を全削除：<button id="clearAllButton" class="btn-clear">全てのQR画像をクリア</button></p>
+  <p style="text-align: center;">ローカルストレージに保存された画像を全削除：
+    <button id="clearAllButton" class="btn-clear">全てのQR画像をクリア</button>
+    <button id="clearAllOrderImagesButton" class="btn-clear">全ての注文画像をクリア</button>
+  </p>
   <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
 </div>
 <template id="L44">
@@ -111,6 +114,11 @@
           <td class="spacerow" colspan="4">以下余白</td>
         </tr>
       </table>
+      <!-- 個別注文画像ドロップゾーン -->
+      <div class="individual-order-image-zone" style="margin: 10px 0; text-align: center; border: 2px dashed #ccc; padding: 10px;">
+        <small>この注文専用の画像（グローバル画像より優先されます）</small>
+        <div class="individual-image-dropzone"></div>
+      </div>
       <!-- 画像表示用のコンテナを追加 -->
       <div class="order-image-container"></div>
     </div>

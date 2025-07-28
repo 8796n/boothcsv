@@ -30,6 +30,21 @@ window.addEventListener("load", function(){
     }
   };
 
+  // 全ての注文画像をクリアするボタンのイベントリスナーを追加
+  const clearAllOrderImagesButton = document.getElementById('clearAllOrderImagesButton');
+  clearAllOrderImagesButton.onclick = () => {
+    if (confirm('本当に全ての注文画像（グローバル画像と個別画像）をクリアしますか？')) {
+      // localStorageから注文画像を削除
+      Object.keys(localStorage).forEach(key => {
+        if (key === 'orderImage' || key.startsWith('orderImage_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      alert('全ての注文画像をクリアしました');
+      location.reload(); // ページをリロードして反映
+    }
+  };
+
    // ページロード時にチェックボックスの状態を反映
    const sortByPaymentDate = localStorage.getItem("sortByPaymentDate") === "true";
    document.getElementById("sortByPaymentDate").checked = sortByPaymentDate;
@@ -74,16 +89,25 @@ function clickstart() {
       const tOrder = document.querySelector('#注文明細');
       for (let row of results.data) {
         const cOrder = document.importNode(tOrder.content, true);
+        let orderNumber = '';
         for (let c of Object.keys(row).filter(key => key != "商品ID / 数量 / 商品名")) {
           const divc = cOrder.querySelector("." + c);
           if (divc) {
             if (c == "注文番号") {
+              orderNumber = row[c];
               divc.textContent = "注文番号 : " + row[c];
               labelarr.push(row[c]);
             } else if (row[c]) {
               divc.textContent = row[c];
             }
           }
+        }
+
+        // 個別注文画像ドロップゾーンを作成
+        const individualDropZoneContainer = cOrder.querySelector('.individual-image-dropzone');
+        if (individualDropZoneContainer && orderNumber) {
+          const individualImageDropZone = createIndividualOrderImageDropZone(orderNumber);
+          individualDropZoneContainer.appendChild(individualImageDropZone.element);
         }
         const tItems = cOrder.querySelector('#商品');
         const trSpace = cOrder.querySelector('.spacerow');
@@ -117,13 +141,28 @@ function clickstart() {
           }
         }
 
-        const droppedImage = window.orderImageDropZone?.getImage();
-        if (droppedImage) {
+        // 画像表示の優先度: 個別画像 > グローバル画像
+        let imageToShow = null;
+        if (orderNumber) {
+          // 個別画像があるかチェック
+          const individualImage = localStorage.getItem(`orderImage_${orderNumber}`);
+          if (individualImage) {
+            imageToShow = individualImage;
+          } else {
+            // 個別画像がない場合はグローバル画像を使用
+            const globalImage = window.orderImageDropZone?.getImage();
+            if (globalImage) {
+              imageToShow = globalImage;
+            }
+          }
+        }
+
+        if (imageToShow) {
           const imageDiv = document.createElement('div');
           imageDiv.classList.add('order-image');
 
           const img = document.createElement('img');
-          img.src = droppedImage;
+          img.src = imageToShow;
 
           imageDiv.appendChild(img);
           const container = cOrder.querySelector('.order-image-container');
@@ -377,7 +416,8 @@ function createOrderImageDropZone() {
     localStorage.setItem('orderImage', imageUrl);
 
     // 画像クリックでリセット
-    preview.addEventListener('click', () => {
+    preview.addEventListener('click', (e) => {
+      e.stopPropagation(); // イベントの伝播を停止
       localStorage.removeItem('orderImage');
       droppedImage = null;
       const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
@@ -409,7 +449,142 @@ function createOrderImageDropZone() {
     }
   });
 
-  // 未設定時のクリックでファイル選択
+  // クリックイベント：画像がない場合はファイル選択、ある場合は何もしない（画像のクリックでリセット）
+  dropZone.addEventListener('click', () => {
+    if (!droppedImage) {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/jpeg, image/png, image/svg+xml';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
+      fileInput.click();
+
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            updatePreview(e.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+        document.body.removeChild(fileInput);
+      });
+    }
+  });
+
+  return {
+    element: dropZone,
+    getImage: () => droppedImage
+  };
+}
+
+// 個別注文用の画像ドロップゾーンを作成する関数
+function createIndividualOrderImageDropZone(orderNumber) {
+  const dropZone = document.createElement('div');
+  dropZone.classList.add('individual-order-image-drop');
+  dropZone.style.cssText = 'min-height: 80px; border: 1px dashed #999; padding: 5px; background: #f9f9f9;';
+
+  let droppedImage = null;
+  const storageKey = `orderImage_${orderNumber}`;
+
+  // localStorageから保存された画像を読み込む
+  const savedImage = localStorage.getItem(storageKey);
+  if (savedImage) {
+    updatePreview(savedImage);
+  } else {
+    dropZone.innerHTML = '<p style="margin: 5px; font-size: 12px; color: #666;">画像をドロップ or クリックで選択</p>';
+  }
+
+  // 注文明細の画像表示を更新する関数
+  function updateOrderImageDisplay(imageUrl) {
+    // 現在の注文明細のコンテナを取得
+    const orderSection = dropZone.closest('section');
+    if (!orderSection) return;
+
+    const imageContainer = orderSection.querySelector('.order-image-container');
+    if (!imageContainer) return;
+
+    // 既存の画像をクリア
+    imageContainer.innerHTML = '';
+
+    if (imageUrl) {
+      // 新しい画像を表示
+      const imageDiv = document.createElement('div');
+      imageDiv.classList.add('order-image');
+
+      const img = document.createElement('img');
+      img.src = imageUrl;
+
+      imageDiv.appendChild(img);
+      imageContainer.appendChild(imageDiv);
+    } else {
+      // 画像がない場合はグローバル画像があれば表示
+      const globalImage = window.orderImageDropZone?.getImage();
+      if (globalImage) {
+        const imageDiv = document.createElement('div');
+        imageDiv.classList.add('order-image');
+
+        const img = document.createElement('img');
+        img.src = globalImage;
+
+        imageDiv.appendChild(img);
+        imageContainer.appendChild(imageDiv);
+      }
+    }
+  }
+
+  function updatePreview(imageUrl) {
+    droppedImage = imageUrl;
+    dropZone.innerHTML = ''; // クリア
+    const preview = document.createElement('img');
+    preview.src = imageUrl;
+    preview.style.cssText = 'max-width: 100%; max-height: 60px; cursor: pointer;';
+    preview.title = 'クリックでリセット';
+    dropZone.appendChild(preview);
+    // localStorageに保存
+    localStorage.setItem(storageKey, imageUrl);
+
+    // 注文明細の画像表示を即座に更新
+    updateOrderImageDisplay(imageUrl);
+
+    // 画像クリックでリセット
+    preview.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.removeItem(storageKey);
+      droppedImage = null;
+      dropZone.innerHTML = '<p style="margin: 5px; font-size: 12px; color: #666;">画像をドロップ or クリックで選択</p>';
+      
+      // 画像をリセットした時も表示を更新
+      updateOrderImageDisplay(null);
+    });
+  }
+
+  // ドラッグ&ドロップイベントの設定
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.backgroundColor = '#e6f3ff';
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.backgroundColor = '#f9f9f9';
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.backgroundColor = '#f9f9f9';
+
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        updatePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // クリックイベント
   dropZone.addEventListener('click', () => {
     if (!droppedImage) {
       const fileInput = document.createElement('input');

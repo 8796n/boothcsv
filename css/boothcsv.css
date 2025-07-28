@@ -267,6 +267,28 @@ table.label44 td {
   border-radius: 4px;
 }
 
+/* 個別注文画像ドロップゾーンのスタイル */
+.individual-order-image-zone {
+  font-size: 12px;
+  border-radius: 5px;
+  margin: 5px 0;
+}
+
+.individual-order-image-drop {
+  transition: background-color 0.3s ease;
+  border-radius: 3px;
+}
+
+.individual-order-image-drop:hover {
+  background-color: #f0f0f0 !important;
+}
+
+@media print {
+  .individual-order-image-zone {
+    display: none !important;
+  }
+}
+
 .btn-action {
   display: inline-block;
   padding: 10px 40px;
