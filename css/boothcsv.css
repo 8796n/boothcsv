@@ -542,9 +542,18 @@ table.label44 td {
 
 .custom-labels-summary {
   margin-top: 15px;
-  padding-top: 10px;
+  padding: 15px;
   border-top: 1px solid #ddd;
-  text-align: center;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #495057;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* カスタムラベル設定エリア（旧版は削除または更新） */

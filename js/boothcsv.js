@@ -154,6 +154,52 @@ class CustomLabelCalculator {
   }
 }
 
+// CSV解析ユーティリティ
+class CSVAnalyzer {
+  // CSVファイルの行数を取得（非同期）
+  static async getRowCount(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        resolve(0);
+        return;
+      }
+      
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          const rowCount = results.data.length;
+          debugLog(`CSV行数取得: ${rowCount}行`);
+          resolve(rowCount);
+        },
+        error: function(error) {
+          console.error('CSV解析エラー:', error);
+          reject(error);
+        }
+      });
+    });
+  }
+  
+  // CSVファイルの基本情報を取得（非同期）
+  static async getFileInfo(file) {
+    if (!file) {
+      return { rowCount: 0, fileName: '', fileSize: 0 };
+    }
+    
+    try {
+      const rowCount = await this.getRowCount(file);
+      return {
+        rowCount,
+        fileName: file.name,
+        fileSize: file.size
+      };
+    } catch (error) {
+      console.error('CSVファイル情報取得エラー:', error);
+      return { rowCount: 0, fileName: file.name, fileSize: file.size };
+    }
+  }
+}
+
 // localStorage操作を管理するクラス
 class StorageManager {
   static KEYS = {
@@ -406,8 +452,8 @@ function clickstart() {
   Papa.parse(config.file, {
     header: true,
     skipEmptyLines: true,
-    complete: function(results) {
-      processCSVResults(results, config);
+    complete: async function(results) {
+      await processCSVResults(results, config);
     }
   });
 }
@@ -480,26 +526,26 @@ function getConfigFromUI() {
   };
 }
 
-function processCSVResults(results, config) {
+async function processCSVResults(results, config) {
   // CSV行数を取得
   const csvRowCount = results.data.length;
   
   // 複数カスタムラベルの総枚数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   
-  // カスタムラベル枚数の上限を再計算・調整
+  // 複数シート対応：1シートの制限を撤廃
+  // CSVデータとカスタムラベルの合計で必要なシート数を計算
   const skipCount = parseInt(config.labelskip, 10) || 0;
-  const maxCustomLabels = Math.max(0, CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount);
+  const totalLabelsNeeded = skipCount + csvRowCount + totalCustomLabelCount;
+  const requiredSheets = Math.ceil(totalLabelsNeeded / CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET);
   
-  if (config.customLabelEnable && totalCustomLabelCount > maxCustomLabels) {
-    adjustCustomLabelsForCSV(config.customLabels, maxCustomLabels);
-    
-    if (maxCustomLabels === 0) {
-      alert(`CSVデータが${csvRowCount}行、スキップが${skipCount}枚で44枚シートが満杯のため、カスタムラベルは印刷できません。`);
-    } else {
-      alert(`CSVデータとスキップ分を考慮して、カスタムラベル総枚数を${maxCustomLabels}枚に調整しました。`);
-    }
-  }
+  debugLog(`CSV処理 - 複数シート対応:`, {
+    csvRowCount,
+    totalCustomLabelCount,
+    skipCount,
+    totalLabelsNeeded,
+    requiredSheets
+  });
 
   // データの並び替え
   if (config.sortByPaymentDate) {
@@ -513,7 +559,7 @@ function processCSVResults(results, config) {
   // 注文明細の生成
   generateOrderDetails(results.data, config.labelarr);
   
-  // ラベル生成（注文分＋カスタムラベル）
+  // ラベル生成（注文分＋カスタムラベル）- 複数シート対応
   if (config.labelyn) {
     let totalLabelArray = [...config.labelarr];
     
@@ -535,11 +581,11 @@ function processCSVResults(results, config) {
     }
   }
   
-  // 印刷枚数の表示
-  showPrintSummary();
+  // 印刷枚数の表示（複数シート対応）
+  showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
   
-  // CSV処理完了後のカスタムラベルサマリー更新
-  updateCustomLabelsSummaryAfterCSV(csvRowCount);
+  // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
+  await updateCustomLabelsSummary();
   
   // ボタンの状態を更新
   updateButtonStates();
@@ -880,6 +926,27 @@ function showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, skipCount,
     }
     
     alert(summaryMessage);
+  }
+}
+
+function showCSVWithCustomLabelPrintSummary(csvRowCount, customLabelCount, skipCount, requiredSheets) {
+  const labelTable = document.querySelectorAll(".label44");
+  const pageDiv = document.querySelectorAll(".page");
+  
+  if (labelTable.length > 0) {
+    let summaryMessage = `CSV + カスタムラベル印刷枚数（複数シート対応）\n`;
+    summaryMessage += `A4 44面ラベルシール: ${labelTable.length}枚\n`;
+    summaryMessage += `CSV注文データ: ${csvRowCount}行\n`;
+    summaryMessage += `カスタムラベル: ${customLabelCount}枚\n`;
+    if (skipCount > 0) {
+      summaryMessage += `スキップ: ${skipCount}枚（1シート目のみ）\n`;
+    }
+    summaryMessage += `合計ラベル数: ${skipCount + csvRowCount + customLabelCount}枚\n`;
+    summaryMessage += `必要シート数: ${requiredSheets}シート`;
+    
+    alert(summaryMessage);
+  } else if (pageDiv.length > 0) {
+    alert("印刷枚数\nA4普通紙:" + pageDiv.length + "枚");
   }
 }
 function addP(div, text){
@@ -1490,9 +1557,9 @@ function createIndividualOrderImageDropZone(orderNumber) {
   });
 }
 
-document.getElementById("file").addEventListener("change", function() {
+document.getElementById("file").addEventListener("change", async function() {
   updateButtonStates();
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
 });
 
 // ページロード時に説明を表示し、ユーザーにファイル選択を促す
@@ -1643,7 +1710,8 @@ function initializeCustomLabels(customLabels) {
     addCustomLabelItem('', 1, 0, true);
   }
   
-  updateCustomLabelsSummary();
+  // 非同期でサマリーを更新
+  updateCustomLabelsSummary().catch(console.error);
 }
 
 // カスタムラベル項目を追加
@@ -1671,7 +1739,7 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
         <input type="checkbox" class="custom-label-enabled" 
                id="customLabel_${itemIndex}_enabled" 
                data-index="${itemIndex}" 
-               checked onchange="saveCustomLabels(); updateCustomLabelsSummary();">
+               checked>
         <label for="customLabel_${itemIndex}_enabled" class="custom-label-item-title">印刷する</label>
       </div>
       <button type="button" class="btn-base btn-danger btn-small" onclick="removeCustomLabelItem(${itemIndex})">削除</button>
@@ -1685,8 +1753,7 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
         <div class="custom-label-count-group">
           <label>印刷枚数：</label>
           <input type="number" min="1" value="${count}" 
-                 data-index="${itemIndex}" 
-                 onchange="updateCustomLabelsSummary()">
+                 data-index="${itemIndex}">
         </div>
       </div>
     </div>
@@ -1707,33 +1774,39 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
     setupRichTextFormatting(editor);
     setupTextOnlyEditor(editor);
     
-    editor.addEventListener('input', function() {
+    editor.addEventListener('input', async function() {
       saveCustomLabels();
       updateButtonStates();
+      await updateCustomLabelsSummary();
     });
   } else {
     console.error('editor要素が見つかりません');
   }
   
-  // チェックボックスの状態を設定
+  // チェックボックスの状態を設定とイベントリスナー追加
   const enabledCheckbox = item.querySelector('.custom-label-enabled');
   if (enabledCheckbox) {
     enabledCheckbox.checked = enabled;
+    enabledCheckbox.addEventListener('change', async function() {
+      saveCustomLabels();
+      await updateCustomLabelsSummary();
+    });
   }
   
   // 枚数入力のイベントリスナーを設定
   const countInput = item.querySelector('input[type="number"]');
   debugLog('countInput要素:', countInput); // デバッグ用
   if (countInput) {
-    countInput.addEventListener('input', function() {
+    countInput.addEventListener('input', async function() {
       saveCustomLabels();
       updateButtonStates();
+      await updateCustomLabelsSummary();
     });
   } else {
     console.error('countInput要素が見つかりません');
   }
   
-  updateCustomLabelsSummary();
+  updateCustomLabelsSummary().catch(console.error);
 }
 
 // カスタムラベル項目を削除
@@ -1755,7 +1828,7 @@ function removeCustomLabelItem(index) {
   // インデックスを再設定
   reindexCustomLabelItems();
   saveCustomLabels();
-  updateCustomLabelsSummary();
+  updateCustomLabelsSummary().catch(console.error);
   updateButtonStates();
 }
 
@@ -1822,8 +1895,8 @@ function saveCustomLabels() {
   StorageManager.setCustomLabels(labels);
 }
 
-// カスタムラベルの総計を更新
-function updateCustomLabelsSummary() {
+// カスタムラベルの総計を更新（非同期対応）
+async function updateCustomLabelsSummary() {
   const labels = getCustomLabelsFromUI();
   const enabledLabels = labels.filter(label => label.enabled);
   const totalCount = enabledLabels.reduce((sum, label) => sum + label.count, 0);
@@ -1833,19 +1906,50 @@ function updateCustomLabelsSummary() {
   const summary = document.getElementById('customLabelsSummary');
   
   if (totalCount === 0) {
-    summary.textContent = `カスタムラベルが設定されていません。44枚シート中、スキップ${skipCount}枚使用済み。`;
+    // CSVファイルが選択されている場合はCSV行数も表示
+    if (fileInput.files.length > 0) {
+      try {
+        const csvInfo = await CSVAnalyzer.getFileInfo(fileInput.files[0]);
+        const remainingLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvInfo.rowCount;
+        summary.innerHTML = `カスタムラベルなし。<br>44枚シート中 スキップ${skipCount} + CSV${csvInfo.rowCount} = ${skipCount + csvInfo.rowCount}枚使用済み。<br>残り${Math.max(0, remainingLabels)}枚設定可能。`;
+      } catch (error) {
+        summary.innerHTML = `カスタムラベルなし。<br>CSVファイル選択済み（行数解析中...）。`;
+      }
+    } else {
+      summary.innerHTML = `カスタムラベルなし。<br>44枚シート中 スキップ${skipCount}枚使用済み。`;
+    }
     summary.style.color = '#666';
     summary.style.fontWeight = 'normal';
     return;
   }
   
-  // CSVファイルが選択されている場合
+  // CSVファイルが選択されている場合も複数シート対応
   if (fileInput.files.length > 0) {
-    // CSV処理がある場合は1シートのみの制限
-    // 実際のCSV行数は処理時に決定されるため、ここでは概算として表示
-    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。CSVファイル選択済み。CSV処理実行後に最終的な配置が決定されます。`;
-    summary.style.color = '#666';
-    summary.style.fontWeight = 'normal';
+    try {
+      // CSV行数を非同期で取得
+      const csvInfo = await CSVAnalyzer.getFileInfo(fileInput.files[0]);
+      const csvRowCount = csvInfo.rowCount;
+      
+      // CSV+カスタムラベルの複数シート分散計算
+      const totalLabels = csvRowCount + totalCount;
+      const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalLabels, skipCount);
+      const totalSheets = sheetsInfo.length;
+      const lastSheet = sheetsInfo[sheetsInfo.length - 1];
+      
+      if (totalSheets === 1) {
+        summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>1シート使用: スキップ${skipCount} + CSV${csvRowCount} + カスタム${totalCount} = ${skipCount + csvRowCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+      } else {
+        summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>${totalSheets}シート使用: CSV${csvRowCount} + カスタム${totalCount} = ${csvRowCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+      }
+      
+      summary.style.color = '#666';
+      summary.style.fontWeight = 'normal';
+    } catch (error) {
+      console.error('CSV解析エラー:', error);
+      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>CSVファイル選択済み（行数解析エラー）<br>CSV処理実行後に最終配置が決定されます。`;
+      summary.style.color = '#ffc107';
+      summary.style.fontWeight = 'normal';
+    }
   } else {
     // カスタムラベルのみの場合は複数シート対応
     const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalCount, skipCount);
@@ -1854,10 +1958,10 @@ function updateCustomLabelsSummary() {
     
     if (totalSheets === 1) {
       // 1シートのみの場合
-      summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。1シート使用。スキップ${skipCount}枚使用済み。最終シート残り${lastSheet.remainingCount}枚。`;
+      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>1シート使用: スキップ${skipCount} + カスタム${totalCount} = ${skipCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
     } else {
       // 複数シートの場合
-      summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。${totalSheets}シート使用。最終シート残り${lastSheet.remainingCount}枚。`;
+      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>${totalSheets}シート使用: カスタム${totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
     }
     
     summary.style.color = '#666';
@@ -1865,7 +1969,9 @@ function updateCustomLabelsSummary() {
   }
 }
 
-// CSV処理完了後のカスタムラベルサマリー更新（新規追加）
+// 以下の関数は複数シート対応により不要となったためコメントアウト
+/*
+// CSV処理完了後のカスタムラベルサマリー更新（旧版：1シート制限）
 function updateCustomLabelsSummaryAfterCSV(csvRowCount) {
   const labels = getCustomLabelsFromUI();
   const enabledLabels = labels.filter(label => label.enabled);
@@ -1897,8 +2003,8 @@ function updateCustomLabelsSummaryAfterCSV(csvRowCount) {
   }
 }
 
-// CSV用の調整関数
-function adjustCustomLabelsForCSV(customLabels, maxCustomLabels) {
+// CSV用の調整関数（旧版：1シート制限）
+async function adjustCustomLabelsForCSV(customLabels, maxCustomLabels) {
   let remaining = maxCustomLabels;
   
   for (let i = 0; i < customLabels.length; i++) {
@@ -1921,11 +2027,12 @@ function adjustCustomLabelsForCSV(customLabels, maxCustomLabels) {
   });
   
   saveCustomLabels();
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
 }
+*/
 
 // 総枚数用の調整関数
-function adjustCustomLabelsForTotal(customLabels, maxTotalLabels) {
+async function adjustCustomLabelsForTotal(customLabels, maxTotalLabels) {
   let remaining = maxTotalLabels;
   
   for (let i = 0; i < customLabels.length; i++) {
@@ -1948,7 +2055,7 @@ function adjustCustomLabelsForTotal(customLabels, maxTotalLabels) {
   });
   
   saveCustomLabels();
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
 }
 
 function setupCustomLabelEvents() {
@@ -1978,10 +2085,10 @@ function setupCustomLabelEvents() {
   // カスタムラベル全削除ボタン
   const clearButton = document.getElementById('clearCustomLabelsBtn');
   if (clearButton) {
-    clearButton.addEventListener('click', function() {
+    clearButton.addEventListener('click', async function() {
       debugLog('ラベル全削除ボタンがクリックされました'); // デバッグ用
       if (confirm('本当に全てのカスタムラベルを削除しますか？')) {
-        clearAllCustomLabels();
+        await clearAllCustomLabels();
       }
     });
   } else {
@@ -1990,7 +2097,7 @@ function setupCustomLabelEvents() {
 }
 
 // 全てのカスタムラベルを削除
-function clearAllCustomLabels() {
+async function clearAllCustomLabels() {
   const container = document.getElementById('customLabelsContainer');
   
   // 説明文以外の全ての項目を削除
@@ -2002,7 +2109,7 @@ function clearAllCustomLabels() {
   
   // 保存とUI更新
   saveCustomLabels();
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
   updateButtonStates();
   
   debugLog('全てのカスタムラベルが削除されました');
@@ -2030,7 +2137,7 @@ function updateCustomLabelCountDescription(skipCount, csvRowCount, maxCustomLabe
   }
 }
 
-function updateButtonStates() {
+async function updateButtonStates() {
   const fileInput = document.getElementById("file");
   const executeButton = document.getElementById("executeButton");
   const customLabelOnlyButton = document.getElementById("customLabelOnlyButton");
@@ -2051,7 +2158,7 @@ function updateButtonStates() {
   printButton.disabled = !hasContent;
 
   // カスタムラベル枚数の上限を更新
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
 }
 
 // カスタムラベルに内容があるかチェック
@@ -2551,7 +2658,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // スキップ枚数を更新する関数
-function updateSkipCount() {
+async function updateSkipCount() {
   // 現在のスキップ枚数を取得
   const currentSkip = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
   
@@ -2586,5 +2693,5 @@ function updateSkipCount() {
   alert(`次回のスキップ枚数を ${newSkipValue} 枚に更新しました。`);
   
   // カスタムラベルの上限も更新
-  updateCustomLabelsSummary();
+  await updateCustomLabelsSummary();
 }
