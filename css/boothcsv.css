@@ -599,6 +599,24 @@ table.label44 td {
   scrollbar-width: none; /* Firefox */
 }
 
+/* カスタムラベルエラー状態のスタイル */
+.custom-label-item.error {
+  border: 2px solid #dc3545;
+  border-radius: 5px;
+  padding: 10px;
+  background-color: #f8d7da;
+}
+
+.custom-label-item.error .rich-text-editor {
+  border-color: #dc3545;
+  background-color: #fff5f5;
+}
+
+.custom-label-item.error .custom-label-item-title {
+  color: #dc3545;
+  font-weight: bold;
+}
+
 /* エディタ内のすべての要素に行間を統一 */
 .rich-text-editor *,
 .rich-text-editor span,

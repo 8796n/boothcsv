@@ -446,6 +446,11 @@ window.addEventListener("load", function(){
 }, false);
 
 function clickstart() {
+  // カスタムラベルのバリデーション
+  if (!validateAndPromptCustomLabels()) {
+    return; // バリデーション失敗時は処理を中断
+  }
+  
   clearPreviousResults();
   const config = getConfigFromUI();
   
@@ -459,6 +464,11 @@ function clickstart() {
 }
 
 function executeCustomLabelsOnly() {
+  // カスタムラベルのバリデーション
+  if (!validateAndPromptCustomLabels()) {
+    return; // バリデーション失敗時は処理を中断
+  }
+  
   clearPreviousResults();
   const config = getConfigFromUI();
   
@@ -1775,6 +1785,12 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
     setupTextOnlyEditor(editor);
     
     editor.addEventListener('input', async function() {
+      // 文字列が入力されたら強調表示をクリア
+      const item = editor.closest('.custom-label-item');
+      if (item && editor.textContent.trim() !== '') {
+        item.classList.remove('error');
+      }
+      
       saveCustomLabels();
       updateButtonStates();
       await updateCustomLabelsSummary();
@@ -2165,6 +2181,140 @@ async function updateButtonStates() {
 function hasCustomLabelsWithContent() {
   const labels = getCustomLabelsFromUI();
   return labels.length > 0 && labels.some(label => label.text.trim() !== '');
+}
+
+// カスタムラベルが有効だが内容が未設定の項目があるかチェック
+function hasEmptyEnabledCustomLabels() {
+  const customLabelEnable = document.getElementById("customLabelEnable");
+  if (!customLabelEnable.checked) {
+    return false; // カスタムラベル機能が無効の場合はチェック不要
+  }
+  
+  const labels = getCustomLabelsFromUI();
+  const enabledLabels = labels.filter(label => label.enabled);
+  
+  // 有効なラベルで文字列が空のものがあるかチェック
+  return enabledLabels.some(label => label.text.trim() === '');
+}
+
+// カスタムラベルのバリデーションと入力促進
+function validateAndPromptCustomLabels() {
+  const customLabelEnable = document.getElementById("customLabelEnable");
+  if (!customLabelEnable.checked) {
+    return true; // カスタムラベル無効の場合は問題なし
+  }
+  
+  if (hasEmptyEnabledCustomLabels()) {
+    // 未設定項目を強調表示
+    highlightEmptyCustomLabels();
+    
+    const result = confirm(
+      'カスタムラベルが有効になっていますが、文字列が未設定の項目があります。\n\n' +
+      '選択肢：\n' +
+      'OK: 入力画面に戻って文字列を設定する\n' +
+      'キャンセル: 未設定のラベル項目を削除して続行する'
+    );
+    
+    if (result) {
+      // OKの場合は処理を中断して入力を促す
+      alert('赤く強調表示された項目の文字列を入力してから再度実行してください。');
+      return false;
+    } else {
+      // キャンセルの場合は未設定項目を削除して続行
+      removeEmptyCustomLabels();
+      clearCustomLabelHighlights(); // 強調表示をクリア
+      return true;
+    }
+  }
+  
+  return true; // 問題なし
+}
+
+// 未設定のカスタムラベル項目を削除
+function removeEmptyCustomLabels() {
+  const labels = getCustomLabelsFromUI();
+  const container = document.getElementById('customLabelsContainer');
+  const items = container.querySelectorAll('.custom-label-item');
+  
+  let removedCount = 0;
+  
+  // 後ろから削除して、インデックスのずれを防ぐ
+  for (let i = labels.length - 1; i >= 0; i--) {
+    const label = labels[i];
+    if (label.enabled && label.text.trim() === '') {
+      // 未設定の有効ラベルを削除
+      const item = items[i];
+      if (item) {
+        item.remove();
+        removedCount++;
+      }
+    }
+  }
+  
+  // インデックスを再設定
+  reindexCustomLabelItems();
+  
+  // 保存とUI更新
+  saveCustomLabels();
+  updateCustomLabelsSummary().catch(console.error);
+  
+  // 削除後にラベルが全くなくなった場合は、デフォルトで1つ追加
+  const remainingItems = container.querySelectorAll('.custom-label-item');
+  if (remainingItems.length === 0) {
+    addCustomLabelItem('', 1, 0, true);
+  }
+  
+  // ユーザーに削除結果を通知
+  if (removedCount > 0) {
+    alert(`未設定のカスタムラベル ${removedCount} 項目を削除しました。設定済みのラベルのみで処理を続行します。`);
+  }
+}
+
+// 未設定のカスタムラベル項目を強調表示
+function highlightEmptyCustomLabels() {
+  const labels = getCustomLabelsFromUI();
+  const container = document.getElementById('customLabelsContainer');
+  const items = container.querySelectorAll('.custom-label-item');
+  
+  items.forEach((item, index) => {
+    if (labels[index] && labels[index].enabled && labels[index].text.trim() === '') {
+      item.classList.add('error');
+    } else {
+      item.classList.remove('error');
+    }
+  });
+}
+
+// カスタムラベル項目の強調表示をクリア
+function clearCustomLabelHighlights() {
+  const container = document.getElementById('customLabelsContainer');
+  const items = container.querySelectorAll('.custom-label-item');
+  
+  items.forEach(item => {
+    item.classList.remove('error');
+  });
+}
+
+// カスタムラベル項目のインデックスを再設定
+function reindexCustomLabelItems() {
+  const container = document.getElementById('customLabelsContainer');
+  const items = container.querySelectorAll('.custom-label-item');
+  
+  items.forEach((item, index) => {
+    item.dataset.index = index;
+    
+    // タイトルのインデックスも更新
+    const title = item.querySelector('.custom-label-item-title');
+    if (title) {
+      title.textContent = `カスタムラベル ${index + 1}`;
+    }
+    
+    // 削除ボタンのonclick属性も更新
+    const deleteButton = item.querySelector('.btn-danger');
+    if (deleteButton) {
+      deleteButton.setAttribute('onclick', `removeCustomLabelItem(${index})`);
+    }
+  });
 }
 
 function setupRichTextFormatting(editor) {
