@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>BOOTH CSV 使い方ガイド</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+    .container {
+      background-color: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #0366d6;
+      border-bottom: 2px solid #0366d6;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #0366d6;
+      border-bottom: 1px solid #e1e4e8;
+      padding-bottom: 5px;
+      margin-top: 30px;
+    }
+    h3 {
+      color: #586069;
+      margin-top: 25px;
+    }
+    .intro-box {
+      background-color: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .notice-box {
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .toc {
+      background-color: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .toc ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .toc li {
+      margin: 5px 0;
+    }
+    .toc a {
+      color: #0366d6;
+      text-decoration: none;
+    }
+    .toc a:hover {
+      text-decoration: underline;
+    }
+    code {
+      background-color: #f6f8fa;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+    .step-list {
+      background-color: #f8f9fa;
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      padding: 20px;
+      margin: 15px 0;
+    }
+    .step-list ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .step-list li {
+      margin: 8px 0;
+    }
+    .feature-box {
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .feature-box h4 {
+      margin: 0 0 10px 0;
+      color: #0366d6;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    .back-link {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #0366d6;
+      color: white;
+      padding: 10px 15px;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .back-link:hover {
+      background-color: #0256d1;
+    }
+    ul li {
+      margin: 5px 0;
+    }
+    strong {
+      color: #24292e;
+    }
+  </style>
+</head>
+<body>
+  <a href="boothcsv.html" class="back-link">🔙 ツールに戻る</a>
+  
+  <div class="container">
+    <h1>🏷️ BOOTH CSV 使い方ガイド</h1>
+    
+    <div class="intro-box">
+      💡 <strong>初めて使う方へ</strong>: このページでは詳しい使い方を説明しています。すぐに使い始めたい方は<a href="#基本的な使い方">基本的な使い方</a>からご覧ください。
+    </div>
+
+    <div class="notice-box">
+      <strong>おしらせ</strong><br>
+      これは便利だーって思っていただいたおやさしい方はデバッグに協力すると思って<a href="https://nyantic.booth.pm/" target="_blank">NyanticLabs.</a>からなんか買ってください。これを使って帳票印刷して送ります。
+    </div>
+
+    <div class="toc">
+      <h3>📋 目次</h3>
+      <ul>
+        <li><a href="#基本情報">基本情報</a></li>
+        <li><a href="#基本的な使い方">基本的な使い方</a></li>
+        <li><a href="#ラベルシール印刷">ラベルシール印刷</a></li>
+        <li><a href="#画像機能について">画像機能について</a></li>
+        <li><a href="#カスタムラベル機能について">カスタムラベル機能について</a></li>
+        <li><a href="#デバッグ機能">デバッグ機能</a></li>
+        <li><a href="#サンプルで試す">サンプルで試す</a></li>
+      </ul>
+    </div>
+
+    <h2 id="基本情報">基本情報</h2>
+    
+    <h3>想定する使用対象者は誰？</h3>
+    <p><a href="https://booth.pm/" target="_blank">BOOTH</a>で自家通販をしている人で主に「<a href="https://booth.pm/anshin_booth_pack_guides" target="_blank">あんしんBOOTHパック</a>」の利用者</p>
+
+    <h3>なにができるの？</h3>
+    <p>出荷準備のときにあると便利な帳票と「あんしんBOOTHパック」で出荷のときに便利なQRコードをラベルシールに印刷できます。<br>
+    あと、注文明細に画像を追加して印刷することもできるようになりました。全注文共通の画像と注文ごとの個別画像が設定でき、表示のON/OFF切り替えも可能です。<br>
+    さらに、カスタムラベル機能により任意の文字列を複数枚印刷することも可能です。</p>
+
+    <h3>動作環境は？</h3>
+    <p>Windows版のChrome 138で動作確認をしています。<br>
+    最近のChromeなら動くと思いますが仕様が変わると動かない機能もあるかもしれません。<br>
+    スマートフォンのChromeだとラベルシール印刷がズレると思うのでたぶん駄目です。<br>
+    JavaScriptでどうにかしてるので<strong>別途サーバーなどは必要ありませんし外部に情報を送ることもありません。</strong></p>
+
+    <h2 id="基本的な使い方">基本的な使い方</h2>
+    
+    <div class="step-list">
+      <ol>
+        <li><a href="https://github.com/8796n/boothcsv/archive/master.zip" target="_blank">ここ</a>からzipファイルをダウンロードして展開します。</li>
+        <li><code>boothcsv.html</code> を Chrome から開きます。</li>
+        <li>注文明細に画像を印刷したい場合は、まず「注文明細に画像を表示」にチェックを入れます。</li>
+        <li>全ての注文に同じ画像を表示したい場合は、「注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択」のところに画像をドラッグ&ドロップするかクリックしてファイル選択します。</li>
+        <li>カスタムラベルを印刷したい場合は、「残りラベルに任意文字列を印刷」にチェックを入れて、印刷したい文字列と枚数を設定します。複数のカスタムラベルを設定したい場合は「ラベル追加」ボタンで項目を追加できます。</li>
+        <li>ファイルを選択ボタンを押して<a href="https://manage.booth.pm/orders?state=paid" target="_blank">BOOTHの注文一覧</a>からダウンロードした宛名印刷用CSVを選択します。</li>
+        <li>支払い日時で並び替えたい場合はチェックボックスにチェックを入れます。BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合に便利です。</li>
+        <li>実行ボタンを押すと印刷に必要な枚数が表示されます。</li>
+        <li>特定の注文だけ別の画像を表示したい場合は、その注文明細の「この注文専用の画像（グローバル画像より優先されます）」のところに画像をドロップします。個別画像はグローバル画像より優先されるので、設定すればその注文だけ別の画像が表示されます。</li>
+        <li>「注文明細に画像を表示」のチェックを外すと、設定した画像は保持されたまま表示だけを切り替えできます。リアルタイムで反映されるので印刷時の調整に便利です。</li>
+        <li>プリンターに用紙をセットして印刷します。</li>
+      </ol>
+    </div>
+
+    <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>
+    
+    <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
+
+    <div class="step-list">
+      <ol>
+        <li>A4 44面 四辺余白付のラベルシールを用意します。例えば<a href="https://amzn.to/2KkRXhE" target="_blank">これ</a>とか<a href="https://amzn.to/2KpdW7k" target="_blank">これ</a></li>
+        <li>ラベルシールも印刷するにチェックを入れます。</li>
+        <li>途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。</li>
+        <li>さっきと一緒でCSVファイルを選んで実行ボタンを押すと、ラベル用紙の枚数も表示されます。</li>
+        <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
+        <li>なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。</li>
+        <li>印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。</li>
+      </ol>
+    </div>
+
+    <h2 id="画像機能について">画像機能について</h2>
+
+    <p>注文明細に画像を追加できる機能があります。</p>
+
+    <h3>基本的な使い方</h3>
+    <div class="step-list">
+      <ol>
+        <li><strong>画像表示の有効化</strong>: まず「注文明細に画像を表示」にチェックを入れてください。</li>
+        <li><strong>画像設定</strong>: 以下の2つの方法で画像を設定できます：
+          <div class="feature-box">
+            <h4>グローバル画像</h4>
+            <p>全ての注文明細に同じ画像を表示したい場合。「注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択」の部分に画像をドロップするか選択します。</p>
+          </div>
+          <div class="feature-box">
+            <h4>個別画像</h4>
+            <p>特定の注文だけ別の画像を表示したい場合。実行後に表示される各注文明細の「この注文専用の画像」部分に画像をドロップします。</p>
+          </div>
+        </li>
+        <li><strong>表示切り替え</strong>: 「注文明細に画像を表示」のチェックを外すと、設定した画像は保持されたまま表示だけをリアルタイムで切り替えできます。印刷時の調整に便利です。</li>
+      </ol>
+    </div>
+
+    <p><strong>対応画像形式</strong>: JPEG、PNG、SVG（.jpg、.jpeg、.png、.svg）</p>
+
+    <p>個別画像はグローバル画像より優先されます。つまり個別画像を設定した注文はその画像が、設定しなかった注文はグローバル画像が表示されます。</p>
+
+    <p>画像は全部localStorageに保存されるので、ページを再読み込みしても残ってます。不要になったらクリアボタンで削除できます：</p>
+    <ul>
+      <li><strong>全てのQR画像をクリア</strong>: QRコード関連の画像だけ削除</li>
+      <li><strong>全ての注文画像をクリア</strong>: グローバル画像と全ての個別画像を削除</li>
+    </ul>
+
+    <p>画像をクリックすると削除されるので、間違えて設定した場合も簡単にリセットできます。印刷時は画像ドロップゾーンは表示されないので邪魔になりません。</p>
+
+    <h2 id="カスタムラベル機能について">カスタムラベル機能について</h2>
+    
+    <p>余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。</p>
+
+    <ul>
+      <li><strong>有効化</strong>: 「残りラベルに任意文字列を印刷」のチェックボックスをオンにします。</li>
+      <li><strong>文字列入力</strong>: ラベルに印刷したい文字列を入力します。商品名、品番、管理コードなど任意のテキストが可能です。太字や斜体、フォントサイズの変更もできます。</li>
+      <li><strong>枚数設定</strong>: 印刷したい枚数を指定します。</li>
+      <li><strong>複数ラベル</strong>: 「ラベル追加」ボタンで複数のカスタムラベルを設定できます。</li>
+      <li><strong>削除</strong>: 不要なラベルは「削除」ボタンで削除できます（最低1つは必要）。</li>
+    </ul>
+
+    <h3>文字列の編集方法</h3>
+    <ul>
+      <li>テキストエリア内で普通に文字を入力</li>
+      <li>改行: Enterキー</li>
+      <li>書式設定: 右クリックでコンテキストメニューを表示
+        <ul>
+          <li>太字、斜体の切り替え</li>
+          <li>フォントサイズの変更（8pt〜24pt）</li>
+        </ul>
+      </li>
+    </ul>
+
+    <p>設定した内容はブラウザに保存されるので、ページを再読み込みしても残ります。</p>
+
+    <h2 id="デバッグ機能">デバッグ機能</h2>
+    
+    <p>開発やトラブルシューティング用にデバッグログ機能があります。</p>
+    <ul>
+      <li><strong>有効化</strong>: URLに <code>?debug=1</code> を付けてアクセス（例: <code>boothcsv.html?debug=1</code>）</li>
+      <li><strong>無効化</strong>: 通常通りアクセス（デバッグログは出力されません）</li>
+    </ul>
+
+    <p>デバッグモードでは、カスタムラベルの追加やQRコード処理などの詳細な動作がコンソールに出力されます。</p>
+
+    <h2 id="サンプルで試す">BOOTHで売れてないけど試したい</h2>
+    
+    <ul>
+      <li>sampleにcsvファイルとQRコードのpngファイルがあるので試せます。</li>
+      <li>参考までに手元にあるpngファイルは直接該当箇所にドラッグアンドドロップすれば貼り付けられます。画像機能も同じようにドラッグ&ドロップで試せます。</li>
+      <li>当然ですが、サンプルのデータはダミーの数字が入っているので出荷では使えません。</li>
+    </ul>
+
+    <h2>使ってる仕組み</h2>
+    <ul>
+      <li>印刷に便利なCSS <a href="https://github.com/cognitom/paper-css" target="_blank">Paper CSS</a></li>
+      <li>QRコード読んでくれるJavaScript <a href="https://github.com/cozmo/jsQR" target="_blank">jsQR</a></li>
+      <li>CSVをいい感じに読んでくれるJavaScript <a href="https://github.com/mholt/PapaParse" target="_blank">PapaParse</a></li>
+    </ul>
+
+    <h2>裏側の見どころ</h2>
+    <ul>
+      <li>こだわりの素JavaScriptでHTML5のtemplateタグを使ってます。最近はquerySelectorのおかげでjQueryなしでも要素の選択が割と簡単にできるようになったみたいです。</li>
+      <li>Paper CSS強い。templateと合わせると通常の業務で使う帳票はだいたい表現できるぞ！サーバーでPDF作ってダウンロードさせて印刷とかしなくてもいいし、Chrome上での見た目がいきなり印刷プレビュー風で謎の安心感があります。</li>
+      <li>BOOTHからダウンロードするCSVのヘッダが日本語なので、classとかも全力で日本語です。可読性高い！</li>
+      <li>localStorageに画像とかQRコードの情報を保存してるので、ブラウザ閉じても設定が残って便利です。でもlocalStorageの容量制限があるので画像をバンバン保存しすぎると容量オーバーになるかもしれません。そうなったらクリアボタンで削除してください。</li>
+    </ul>
+
+    <div style="text-align: center; margin: 40px 0; padding: 20px; background-color: #f6f8fa; border-radius: 6px;">
+      <p><a href="https://github.com/8796n/boothcsv" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: bold;">🚀 このツールの公開場所（GitHub）</a></p>
+      <p><a href="boothcsv.html" style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">📋 ツールを使う</a></p>
+    </div>
+  </div>
+</body>
+</html>

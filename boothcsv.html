@@ -34,13 +34,38 @@
         <td><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0"></td>
       </tr>
       <tr>
+        <td><label for="customLabelEnable">残りラベルに任意文字列を印刷：</label></td>
+        <td><input type="checkbox" id="customLabelEnable" name="customLabelEnable"></td>
+      </tr>
+      <tr id="customLabelRow" style="display: none;">
+        <td colspan="2">
+          <div class="multiple-custom-labels-config">
+            <div class="custom-labels-header">
+              <h4>カスタムラベル設定</h4>
+              <button type="button" id="addCustomLabelBtn" class="btn-add">ラベル追加</button>
+            </div>
+            <div id="customLabelsContainer" class="custom-labels-container">
+              <!-- 複数のカスタムラベル項目がここに追加される -->
+            </div>
+            <div class="custom-labels-summary">
+              <small id="customLabelsSummary" class="label-count-description">※残りラベル数に応じて上限が自動調整されます</small>
+            </div>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td><label for="orderImageEnable">注文明細に画像を表示：</label></td>
+        <td><input type="checkbox" id="orderImageEnable" name="orderImageEnable"></td>
+      </tr>
+      <tr id="orderImageRow" style="display: none;">
         <td colspan="2">
           <div id="imageDropZone" class="dropzone-container" style="text-align: center;"></div>
         </td>
       </tr>
     </table>
     <div class="form-actions" style="text-align: center;">
-      <button type="button" class="btn-action" onClick="clickstart();" id="executeButton" disabled>実行</button>
+      <button type="button" class="btn-action" onClick="clickstart();" id="executeButton" disabled>CSV処理して実行</button>
+      <button type="button" class="btn-action" onClick="executeCustomLabelsOnly();" id="customLabelOnlyButton" disabled>カスタムラベルのみ実行</button>
       <button type="button" class="btn-action" onClick="window.print();" id="printButton" disabled>印刷</button>
     </div>
   </form>
@@ -48,6 +73,11 @@
     <button id="clearAllButton" class="btn-clear">全てのQR画像をクリア</button>
     <button id="clearAllOrderImagesButton" class="btn-clear">全ての注文画像をクリア</button>
   </p>
+  <div style="text-align: center; margin: 15px 0;">
+    <a href="help.html" target="_blank" style="background-color: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">📚 使い方ガイド</a>
+    <a href="help.html#画像機能について" target="_blank" style="background-color: #17a2b8; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">🖼️ 画像機能の説明</a>
+    <a href="help.html#カスタムラベル機能について" target="_blank" style="background-color: #fd7e14; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">🏷️ カスタムラベル機能</a>
+  </div>
   <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
 </div>
 <template id="L44">
