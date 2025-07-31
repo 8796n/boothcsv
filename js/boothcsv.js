@@ -477,14 +477,22 @@ function setOrderInfo(cOrder, row, labelarr) {
 }
 
 function createIndividualImageDropZone(cOrder, orderNumber) {
+  debugLog(`個別画像ドロップゾーン作成開始 - 注文番号: "${orderNumber}"`);
+  
   const individualDropZoneContainer = cOrder.querySelector('.individual-image-dropzone');
   const individualZone = cOrder.querySelector('.individual-order-image-zone');
   
+  debugLog(`ドロップゾーンコンテナ発見: ${!!individualDropZoneContainer}`);
+  debugLog(`個別ゾーン発見: ${!!individualZone}`);
+  
   // 注文画像表示機能が無効の場合は個別画像ゾーン全体を非表示
   const settings = StorageManager.getSettings();
+  debugLog(`注文画像表示設定: ${settings.orderImageEnable}`);
+  
   if (!settings.orderImageEnable) {
     if (individualZone) {
       individualZone.style.display = 'none';
+      debugLog('注文画像表示が無効のため個別ゾーンを非表示');
     }
     return;
   }
@@ -492,6 +500,7 @@ function createIndividualImageDropZone(cOrder, orderNumber) {
   // 有効な場合は表示
   if (individualZone) {
     individualZone.style.display = 'block';
+    debugLog('注文画像表示が有効のため個別ゾーンを表示');
   }
 
   if (individualDropZoneContainer && orderNumber) {
@@ -499,8 +508,20 @@ function createIndividualImageDropZone(cOrder, orderNumber) {
     const normalizedOrderNumber = orderNumber.replace(/^.*?:\s*/, '').trim();
     debugLog(`個別画像ドロップゾーン作成 - 元の注文番号: "${orderNumber}" → 正規化後: "${normalizedOrderNumber}"`);
     
-    const individualImageDropZone = createIndividualOrderImageDropZone(normalizedOrderNumber);
-    individualDropZoneContainer.appendChild(individualImageDropZone.element);
+    try {
+      const individualImageDropZone = createIndividualOrderImageDropZone(normalizedOrderNumber);
+      if (individualImageDropZone && individualImageDropZone.element) {
+        individualDropZoneContainer.appendChild(individualImageDropZone.element);
+        debugLog(`個別画像ドロップゾーン作成成功: ${normalizedOrderNumber}`);
+      } else {
+        debugLog(`個別画像ドロップゾーン作成失敗: ${normalizedOrderNumber}`);
+      }
+    } catch (error) {
+      debugLog(`個別画像ドロップゾーン作成エラー: ${error.message}`);
+      console.error('個別画像ドロップゾーン作成エラー:', error);
+    }
+  } else {
+    debugLog(`個別画像ドロップゾーン作成スキップ - コンテナ: ${!!individualDropZoneContainer}, 注文番号: "${orderNumber}"`);
   }
 }
 
@@ -926,11 +947,13 @@ function createBaseImageDropZone(options = {}) {
     defaultMessage = '画像をドロップ or クリックで選択'
   } = options;
 
+  debugLog(`ベース画像ドロップゾーン作成: ${storageKey}, 個別: ${isIndividual}, 注文番号: ${orderNumber}`);
+
   const dropZone = document.createElement('div');
   dropZone.classList.add(containerClass);
   
   if (isIndividual) {
-    dropZone.style.cssText = 'min-height: 80px; border: 1px dashed #999; padding: 5px; background: #f9f9f9;';
+    dropZone.style.cssText = 'min-height: 80px; border: 1px dashed #999; padding: 5px; background: #f9f9f9; cursor: pointer;';
   }
 
   let droppedImage = null;
@@ -938,6 +961,7 @@ function createBaseImageDropZone(options = {}) {
   // localStorageから保存された画像を読み込む
   const savedImage = localStorage.getItem(storageKey);
   if (savedImage) {
+    debugLog(`保存された画像を復元: ${storageKey}`);
     updatePreview(savedImage);
   } else {
     if (isIndividual) {
@@ -946,6 +970,7 @@ function createBaseImageDropZone(options = {}) {
       const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
       dropZone.innerHTML = defaultContent;
     }
+    debugLog(`初期メッセージを設定: ${isIndividual ? defaultMessage : 'デフォルトコンテンツ'}`);
   }
 
   // 全ての注文明細の画像を更新する関数
@@ -1102,7 +1127,7 @@ function createBaseImageDropZone(options = {}) {
 
   // 共通のイベントリスナー設定
   setupDragAndDropEvents(dropZone, updatePreview, isIndividual);
-  setupClickEvent(dropZone, updatePreview, droppedImage);
+  setupClickEvent(dropZone, updatePreview, () => droppedImage);
 
   return {
     element: dropZone,
@@ -1149,24 +1174,39 @@ function setupDragAndDropEvents(dropZone, updatePreview, isIndividual) {
 }
 
 // クリックイベントの共通設定
-function setupClickEvent(dropZone, updatePreview, droppedImage) {
-  dropZone.addEventListener('click', () => {
-    if (!droppedImage) {
+function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
+  dropZone.addEventListener('click', (e) => {
+    // 画像が表示されている場合はクリックイベントを無視（画像のクリックリセット用）
+    if (e.target.tagName === 'IMG') {
+      return;
+    }
+    
+    const currentImage = getDroppedImage();
+    debugLog(`ドロップゾーンクリック - 現在の画像: ${currentImage ? 'あり' : 'なし'}`);
+    
+    if (!currentImage) {
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
       fileInput.accept = 'image/jpeg, image/png, image/svg+xml';
       fileInput.style.display = 'none';
       document.body.appendChild(fileInput);
+      
+      debugLog('ファイル選択ダイアログを表示');
       fileInput.click();
 
       fileInput.addEventListener('change', () => {
         const file = fileInput.files[0];
+        debugLog(`ファイル選択: ${file ? file.name : 'なし'}`);
+        
         if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
           const reader = new FileReader();
           reader.onload = (e) => {
+            debugLog(`画像読み込み完了 - サイズ: ${e.target.result.length} bytes`);
             updatePreview(e.target.result);
           };
           reader.readAsDataURL(file);
+        } else if (file) {
+          alert('JPEG、PNG、SVGファイルのみサポートしています。');
         }
         document.body.removeChild(fileInput);
       });
