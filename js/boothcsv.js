@@ -31,6 +31,86 @@ function debugLog(...args) {
   }
 }
 
+// 注文番号処理を統一管理するクラス
+class OrderNumberManager {
+  // 注文番号の正規化（"注文番号 : 66463556" → "66463556"）
+  static normalize(orderNumber) {
+    if (!orderNumber || typeof orderNumber !== 'string') {
+      debugLog('OrderNumberManager.normalize: 無効な注文番号', orderNumber);
+      return '';
+    }
+    
+    const normalized = orderNumber.replace(/^.*?:\s*/, '').trim();
+    debugLog(`注文番号正規化: "${orderNumber}" → "${normalized}"`);
+    return normalized;
+  }
+  
+  // DOM要素から注文番号を取得（注文明細用）
+  static getFromOrderSection(orderSection) {
+    if (!orderSection) {
+      debugLog('OrderNumberManager.getFromOrderSection: orderSection が null');
+      return null;
+    }
+    
+    // 方法1: .注文番号クラスから取得
+    const orderNumberElement = orderSection.querySelector('.注文番号');
+    if (orderNumberElement) {
+      const rawOrderNumber = orderNumberElement.textContent.trim();
+      const normalized = this.normalize(rawOrderNumber);
+      debugLog(`注文明細から注文番号取得: "${rawOrderNumber}" → "${normalized}"`);
+      return normalized;
+    }
+    
+    // 方法2: .ordernum pから取得（ラベル用）
+    const ordernumElement = orderSection.querySelector('.ordernum p');
+    if (ordernumElement) {
+      const rawOrderNumber = ordernumElement.textContent.trim();
+      const normalized = this.normalize(rawOrderNumber);
+      debugLog(`ラベルから注文番号取得: "${rawOrderNumber}" → "${normalized}"`);
+      return normalized;
+    }
+    
+    debugLog('OrderNumberManager.getFromOrderSection: 注文番号要素が見つかりません');
+    return null;
+  }
+  
+  // CSV行データから注文番号を取得（表示用フォーマット付き）
+  static getFromCSVRow(row) {
+    if (!row || !row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN]) {
+      debugLog('OrderNumberManager.getFromCSVRow: 無効なCSV行データ');
+      return '';
+    }
+    
+    const orderNumber = row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN];
+    debugLog(`CSVから注文番号取得: "${orderNumber}"`);
+    return orderNumber;
+  }
+  
+  // 表示用フォーマットを生成（"注文番号 : 66463556"）
+  static createDisplayFormat(orderNumber) {
+    if (!orderNumber) {
+      return '';
+    }
+    
+    // 既に表示用フォーマットの場合はそのまま返す
+    if (orderNumber.includes('注文番号')) {
+      return orderNumber;
+    }
+    
+    const formatted = `注文番号 : ${orderNumber}`;
+    debugLog(`表示用フォーマット生成: "${orderNumber}" → "${formatted}"`);
+    return formatted;
+  }
+  
+  // 注文番号の妥当性チェック
+  static isValid(orderNumber) {
+    const normalized = this.normalize(orderNumber);
+    const isValid = normalized && normalized.length > 0;
+    debugLog(`注文番号妥当性チェック: "${orderNumber}" → ${isValid}`);
+    return isValid;
+  }
+}
+
 // localStorage操作を管理するクラス
 class StorageManager {
   static KEYS = {
@@ -502,9 +582,10 @@ function setOrderInfo(cOrder, row, labelarr) {
     const divc = cOrder.querySelector("." + c);
     if (divc) {
       if (c == CONSTANTS.CSV.ORDER_NUMBER_COLUMN) {
-        orderNumber = row[c];
-        divc.textContent = "注文番号 : " + row[c];
-        labelarr.push(row[c]);
+        orderNumber = OrderNumberManager.getFromCSVRow(row);
+        const displayFormat = OrderNumberManager.createDisplayFormat(orderNumber);
+        divc.textContent = displayFormat;
+        labelarr.push(orderNumber);
       } else if (row[c]) {
         divc.textContent = row[c];
       }
@@ -541,10 +622,9 @@ function createIndividualImageDropZone(cOrder, orderNumber) {
     debugLog('注文画像表示が有効のため個別ゾーンを表示');
   }
 
-  if (individualDropZoneContainer && orderNumber) {
-    // 注文番号を正規化（"注文番号 : 66463556" → "66463556"）
-    const normalizedOrderNumber = orderNumber.replace(/^.*?:\s*/, '').trim();
-    debugLog(`個別画像ドロップゾーン作成 - 元の注文番号: "${orderNumber}" → 正規化後: "${normalizedOrderNumber}"`);
+  if (individualDropZoneContainer && OrderNumberManager.isValid(orderNumber)) {
+    // 注文番号を正規化
+    const normalizedOrderNumber = OrderNumberManager.normalize(orderNumber);
     
     try {
       const individualImageDropZone = createIndividualOrderImageDropZone(normalizedOrderNumber);
@@ -614,10 +694,9 @@ function displayOrderImage(cOrder, orderNumber) {
   }
 
   let imageToShow = null;
-  if (orderNumber) {
+  if (OrderNumberManager.isValid(orderNumber)) {
     // 注文番号を正規化
-    const normalizedOrderNumber = orderNumber.replace(/^.*?:\s*/, '').trim();
-    debugLog(`displayOrderImage - 元の注文番号: "${orderNumber}" → 正規化後: "${normalizedOrderNumber}"`);
+    const normalizedOrderNumber = OrderNumberManager.normalize(orderNumber);
     
     // 個別画像があるかチェック
     const individualImage = StorageManager.getOrderImage(normalizedOrderNumber);
@@ -895,7 +974,8 @@ function readQR(elImage){
           const b = String(barcode.data).replace(/^\s+|\s+$/g,'').replace(/ +/g,' ').split(" ");
           
           if(b.length === CONSTANTS.QR.EXPECTED_PARTS){
-            const ordernum = elImage.closest("td").querySelector(".ordernum p").innerHTML;
+            const rawOrderNum = elImage.closest("td").querySelector(".ordernum p").innerHTML;
+            const ordernum = OrderNumberManager.normalize(rawOrderNum);
             
             // 重複チェック
             const duplicates = StorageManager.checkQRDuplicate(barcode.data, ordernum);
@@ -1076,27 +1156,8 @@ function createBaseImageDropZone(options = {}) {
       const imageContainer = orderSection.querySelector('.order-image-container');
       if (!imageContainer) return;
 
-      // 注文番号を複数の方法で取得を試行
-      let orderNumber = null;
-      
-      // 方法1: .注文番号クラスから取得
-      const orderNumberElement = orderSection.querySelector('.注文番号');
-      if (orderNumberElement) {
-        const rawOrderNumber = orderNumberElement.textContent.trim();
-        // 注文番号を正規化（"注文番号 : 66463556" → "66463556"）
-        orderNumber = rawOrderNumber.replace(/^.*?:\s*/, '').trim();
-        debugLog(`生の注文番号: "${rawOrderNumber}" → 正規化後: "${orderNumber}"`);
-      }
-      
-      // 方法2: .ordernum pから取得（ラベル用）
-      if (!orderNumber) {
-        const ordernumElement = orderSection.querySelector('.ordernum p');
-        if (ordernumElement) {
-          const rawOrderNumber = ordernumElement.textContent.trim();
-          orderNumber = rawOrderNumber.replace(/^.*?:\s*/, '').trim();
-          debugLog(`ラベル用注文番号: "${rawOrderNumber}" → 正規化後: "${orderNumber}"`);
-        }
-      }
+      // 統一化された方法で注文番号を取得
+      const orderNumber = OrderNumberManager.getFromOrderSection(orderSection);
 
       // 個別画像があるかチェック（個別画像を最優先）
       let imageToShow = null;
@@ -1379,13 +1440,8 @@ function updateAllOrderImagesVisibility(enabled) {
         individualZone.style.display = 'block';
       }
       
-      // 注文番号を取得
-      let orderNumber = null;
-      const orderNumberElement = orderSection.querySelector('.注文番号');
-      if (orderNumberElement) {
-        const rawOrderNumber = orderNumberElement.textContent.trim();
-        orderNumber = rawOrderNumber.replace(/^.*?:\s*/, '').trim();
-      }
+      // 統一化された方法で注文番号を取得
+      const orderNumber = OrderNumberManager.getFromOrderSection(orderSection);
       
       // 個別画像ドロップゾーンが存在するが中身が空の場合、ドロップゾーンを作成
       if (individualDropZoneContainer && orderNumber && individualDropZoneContainer.children.length === 0) {
