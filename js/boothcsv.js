@@ -108,6 +108,43 @@ class StorageManager {
     this.set(orderNumber, JSON.stringify(qrData));
   }
 
+  // QRコードの重複チェック
+  static checkQRDuplicate(qrContent, currentOrderNumber) {
+    const qrHash = this.generateQRHash(qrContent);
+    const duplicates = [];
+    
+    Object.keys(localStorage).forEach(key => {
+      if (key !== currentOrderNumber) {
+        const data = this.get(key);
+        if (data) {
+          try {
+            const parsedData = JSON.parse(data);
+            if (parsedData.qrhash === qrHash) {
+              duplicates.push(key);
+            }
+          } catch (e) {
+            // 無視
+          }
+        }
+      }
+    });
+    
+    return duplicates;
+  }
+
+  // QRコンテンツのハッシュ化
+  static generateQRHash(qrContent) {
+    // シンプルなハッシュ関数（本格的な場合はCrypto APIを使用）
+    let hash = 0;
+    if (qrContent.length === 0) return hash;
+    for (let i = 0; i < qrContent.length; i++) {
+      const char = qrContent.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 32bit整数に変換
+    }
+    return hash.toString();
+  }
+
   // 基本的なlocalStorage操作
   static get(key, defaultValue = null) {
     const value = localStorage.getItem(key);
@@ -407,61 +444,61 @@ function createDiv(classname="", text=""){
   }
   return div;
 }
-function createDropzone(div){
-  const divDrop = createDiv('dropzone', 'Paste QR image here!');
-  divDrop.setAttribute("contenteditable", "true");
-  divDrop.setAttribute("effectAllowed", "move");
-  divDrop.addEventListener('dragover', function(event) {
+function setupDropzoneEvents(dropzone) {
+  dropzone.addEventListener('dragover', function(event) {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
     showDropping(this);
   });
-  divDrop.addEventListener('dragleave', function(event) {
+
+  dropzone.addEventListener('dragleave', function(event) {
     hideDropping(this);
   });
-  divDrop.addEventListener('drop', function (event) {
+
+  dropzone.addEventListener('drop', function (event) {
     event.preventDefault();
     hideDropping(this);
     const elImage = document.createElement('img');
+    
     if(event.dataTransfer.types.includes("text/uri-list")){
       const url = event.dataTransfer.getData('text/uri-list');
-      //elImage.src = "{% url 'mp:boothreceipt' %}?url=" + url;
       elImage.src = url;
       this.parentNode.appendChild(elImage);
       readQR(elImage);
-    }else{
+    } else {
       const file = event.dataTransfer.files[0];
-      if(file.type.indexOf('image/') === 0){
+      if(file && file.type.indexOf('image/') === 0){
         this.parentNode.appendChild(elImage);
         attachImage(file, elImage);
       }
     }
+    
     this.classList.remove('dropzone');
     this.style.zIndex = -1;
     elImage.style.zIndex = 9;
     addEventQrReset(elImage);
   });
-  divDrop.addEventListener("paste", function(event){
+
+  dropzone.addEventListener("paste", function(event){
     event.preventDefault();
     if (!event.clipboardData 
             || !event.clipboardData.types
             || (!event.clipboardData.types.includes("Files"))) {
             return true;
     }
+    
     for(let item of event.clipboardData.items){
-      //console.log(item);
       if(item["kind"] == "file"){
         const imageFile = item.getAsFile();
-        // FileReaderで読み込む
         const fr = new FileReader();
         fr.onload = function(e) {
           const elImage = document.createElement('img');
           elImage.src = e.target.result;
           elImage.onload = function() {
-            divDrop.parentNode.appendChild(elImage);
+            dropzone.parentNode.appendChild(elImage);
             readQR(elImage);
-            divDrop.classList.remove('dropzone');
-            divDrop.style.zIndex = -1;
+            dropzone.classList.remove('dropzone');
+            dropzone.style.zIndex = -1;
             elImage.style.zIndex = 9;
             addEventQrReset(elImage);
           };
@@ -469,10 +506,21 @@ function createDropzone(div){
         fr.readAsDataURL(imageFile);
       }
     }
+    
     // 画像以外がペーストされたときのために、元に戻しておく
     this.textContent = null;
     this.innerHTML = "<p>Paste QR image here!</p>";
   });
+}
+
+function createDropzone(div){
+  const divDrop = createDiv('dropzone', 'Paste QR image here!');
+  divDrop.setAttribute("contenteditable", "true");
+  divDrop.setAttribute("effectAllowed", "move");
+  
+  // 共通のイベントリスナーを設定
+  setupDropzoneEvents(divDrop);
+  
   div.appendChild(divDrop);
 }
 
@@ -506,7 +554,7 @@ function createLabel(ordernum=""){
 function addEventQrReset(elImage){
     elImage.addEventListener('click', function(event) {
       event.preventDefault();
-      elDrop = elImage.parentNode.querySelector("div");
+      const elDrop = elImage.parentNode.querySelector("div");
       elDrop.classList.add('dropzone');
       elDrop.style.zIndex = 99;
       elImage.parentNode.removeChild(elImage);
@@ -545,6 +593,45 @@ function readQR(elImage){
           
           if(b.length === CONSTANTS.QR.EXPECTED_PARTS){
             const ordernum = elImage.closest("td").querySelector(".ordernum p").innerHTML;
+            
+            // 重複チェック
+            const duplicates = StorageManager.checkQRDuplicate(barcode.data, ordernum);
+            if (duplicates.length > 0) {
+              const duplicateList = duplicates.join(', ');
+              const confirmMessage = `警告: このQRコードは既に以下の注文で使用されています:\n${duplicateList}\n\n同じQRコードを使用すると配送ミスの原因となる可能性があります。\n続行しますか？`;
+              
+              if (!confirm(confirmMessage)) {
+                console.log('QRコード登録がキャンセルされました');
+                // 画像を削除して元の状態に戻す
+                const parentQr = elImage.parentNode;
+                const dropzone = parentQr.querySelector('.dropzone, div[class="dropzone"]');
+                
+                if (dropzone) {
+                  // 既存のドロップゾーンを復元
+                  dropzone.classList.add('dropzone');
+                  dropzone.style.zIndex = '99';
+                  dropzone.innerHTML = '<p>Paste QR image here!</p>';
+                  dropzone.style.display = 'block';
+                } else {
+                  // ドロップゾーンが見つからない場合は新しく作成
+                  const newDropzone = document.createElement('div');
+                  newDropzone.className = 'dropzone';
+                  newDropzone.contentEditable = 'true';
+                  newDropzone.setAttribute('effectallowed', 'move');
+                  newDropzone.style.zIndex = '99';
+                  newDropzone.innerHTML = '<p>Paste QR image here!</p>';
+                  parentQr.appendChild(newDropzone);
+                  
+                  // ドロップゾーンのイベントリスナーを再設定
+                  setupDropzoneEvents(newDropzone);
+                }
+                
+                // 画像を削除
+                elImage.parentNode.removeChild(elImage);
+                return;
+              }
+            }
+            
             const d = elImage.closest("td").querySelector(".yamato");
             d.innerHTML = "";
             
@@ -557,7 +644,8 @@ function readQR(elImage){
             const qrData = { 
               "receiptnum": b[1], 
               "receiptpassword": b[2], 
-              "qrimage": b64data 
+              "qrimage": b64data,
+              "qrhash": StorageManager.generateQRHash(barcode.data)
             };
             
             StorageManager.setQRData(ordernum, qrData);
@@ -662,7 +750,8 @@ function createBaseImageDropZone(options = {}) {
     if (isIndividual) {
       dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
     } else {
-      const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
+      const defaultContentElement = document.getElementById('dropZoneDefaultContent');
+      const defaultContent = defaultContentElement ? defaultContentElement.innerHTML : defaultMessage;
       dropZone.innerHTML = defaultContent;
     }
   }
@@ -698,7 +787,8 @@ function createBaseImageDropZone(options = {}) {
         dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
         updateOrderImageDisplay(null);
       } else {
-        const defaultContent = document.getElementById('dropZoneDefaultContent').innerHTML;
+        const defaultContentElement = document.getElementById('dropZoneDefaultContent');
+        const defaultContent = defaultContentElement ? defaultContentElement.innerHTML : defaultMessage;
         dropZone.innerHTML = defaultContent;
       }
     });
