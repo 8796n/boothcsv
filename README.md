@@ -40,7 +40,8 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 - [デバッグ機能](#デバッグ機能)
 - [サンプルで試す](#boothで売れてないけど試したい)  
 
-<img width="1248" height="634" alt="Image" src="https://github.com/user-attachments/assets/819afe49-88db-4f0c-8a48-bea5e66235c1" />
+![BOOTH CSV ツールのメイン画面](docs/images/main-interface.png)
+
 ## どうやって使うの？
 * [ここ](https://github.com/8796n/boothcsv/archive/master.zip)からzipファイルをダウンロードして展開します。
 * boothcsv.html を Chrome から開きます。
@@ -62,20 +63,24 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 * ラベルシールも印刷するにチェックを入れます。
 * 途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。
 * さっきと一緒でCSVファイルを選んで実行ボタンを押すと、ラベル用紙の枚数も表示されます。
-<img width="857" height="901" alt="image" src="https://github.com/user-attachments/assets/66bd425e-2fc5-4751-b8ef-a5be943aa400" />
+
+![ラベルシール印刷画面](docs/images/label-sheets.png)
 
 * BOOTHの注文詳細で[あんしんBOOTHパックのQRコードを作成](https://booth.pm/anshin_booth_pack_guides/usage)して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！
-<img width="858" height="283" alt="image" src="https://github.com/user-attachments/assets/cb50426f-79a6-4ad2-a34f-362fec1afa2a" />
+
+![QRコード貼り付け後の画面](docs/images/qr-code-result.png)
 * なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。
 * 印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。
 
 ## 画像機能について
-<img width="821" height="1136" alt="image" src="https://github.com/user-attachments/assets/aac1d2cf-9188-4d55-a967-e11afd870d42" />
+
+![画像機能の概要](docs/images/image-function.png)
 
 注文明細に画像を追加できる機能があります。
 
 ### 基本的な使い方
-<img width="1193" height="602" alt="image" src="https://github.com/user-attachments/assets/54a20a5d-2833-4042-9de3-abcae53def69" />
+
+![基本的な使い方](docs/images/usage-guide.png)
 
 1. **画像表示の有効化**: まず「注文明細に画像を表示」にチェックを入れてください。
 2. **画像設定**: 以下の2つの方法で画像を設定できます：
@@ -94,7 +99,8 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 画像をクリックすると削除されるので、間違えて設定した場合も簡単にリセットできます。印刷時は画像ドロップゾーンは表示されないので邪魔になりません。
 
 ## カスタムラベル機能について
-<img width="861" height="353" alt="image" src="https://github.com/user-attachments/assets/db49a208-bd67-46be-b4f7-055d52e9a823" />
+
+![カスタムラベル機能](docs/images/custom-labels.png)
 
 余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。
 * **有効化**: 「残りラベルに任意文字列を印刷」のチェックボックスをオンにします。
@@ -104,13 +110,18 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 * **削除**: 不要なラベルは「削除」ボタンで削除できます（最低1つは必要）。
 
 **文字列の編集方法**：
-<img width="908" height="908" alt="image" src="https://github.com/user-attachments/assets/3bf85481-8876-4b6e-ac8d-159fa715ab71" />
+
+![文字列編集方法](docs/images/text-editing.png)
 
 * テキストエリア内で普通に文字を入力
 * 改行: Enterキー
 * 書式設定: 右クリックでコンテキストメニューを表示
-  - 太字、斜体の切り替え
-  - フォントサイズの変更（8pt〜24pt）
+  - 太字、斜体、下線の切り替え
+  - フォントサイズの変更（6pt〜28pt）
+* キーボードショートカット:
+  - Ctrl+B: 太字の切り替え
+  - Ctrl+I: 斜体の切り替え
+  - Ctrl+U: 下線の切り替え
 
 設定した内容はブラウザに保存されるので、ページを再読み込みしても残ります。
 

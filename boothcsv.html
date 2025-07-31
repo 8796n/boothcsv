@@ -42,7 +42,10 @@
           <div class="multiple-custom-labels-config">
             <div class="custom-labels-header">
               <h4>カスタムラベル設定</h4>
-              <button type="button" id="addCustomLabelBtn" class="btn-add">ラベル追加</button>
+              <div class="custom-labels-buttons">
+                <button type="button" id="addCustomLabelBtn" class="btn-base btn-success btn-medium">ラベル追加</button>
+                <button type="button" id="clearCustomLabelsBtn" class="btn-base btn-danger btn-medium">全削除</button>
+              </div>
             </div>
             <div id="customLabelsContainer" class="custom-labels-container">
               <!-- 複数のカスタムラベル項目がここに追加される -->
@@ -70,8 +73,8 @@
     </div>
   </form>
   <p style="text-align: center;">ローカルストレージに保存された画像を全削除：
-    <button id="clearAllButton" class="btn-clear">全てのQR画像をクリア</button>
-    <button id="clearAllOrderImagesButton" class="btn-clear">全ての注文画像をクリア</button>
+    <button id="clearAllButton" class="btn-base btn-danger btn-clear">全てのQR画像をクリア</button>
+    <button id="clearAllOrderImagesButton" class="btn-base btn-danger btn-clear">全ての注文画像をクリア</button>
   </p>
   <div style="text-align: center; margin: 15px 0;">
     <a href="help.html" target="_blank" style="background-color: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">📚 使い方ガイド</a>

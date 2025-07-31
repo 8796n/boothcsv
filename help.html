@@ -174,6 +174,8 @@
 
     <h2 id="基本的な使い方">基本的な使い方</h2>
     
+    <img src="docs/images/main-interface.png" alt="BOOTH CSV ツールのメイン画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0;">
+    
     <div class="step-list">
       <ol>
         <li><a href="https://github.com/8796n/boothcsv/archive/master.zip" target="_blank">ここ</a>からzipファイルをダウンロードして展開します。</li>
@@ -200,7 +202,21 @@
         <li>ラベルシールも印刷するにチェックを入れます。</li>
         <li>途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。</li>
         <li>さっきと一緒でCSVファイルを選んで実行ボタンを押すと、ラベル用紙の枚数も表示されます。</li>
+      </ol>
+    </div>
+    
+    <img src="docs/images/label-sheets.png" alt="ラベルシール印刷画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
+    <div class="step-list">
+      <ol start="5">
         <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
+      </ol>
+    </div>
+    
+    <img src="docs/images/qr-code-result.png" alt="QRコード貼り付け後の画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
+    <div class="step-list">
+      <ol start="6">
         <li>なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。</li>
         <li>印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。</li>
       </ol>
@@ -208,9 +224,14 @@
 
     <h2 id="画像機能について">画像機能について</h2>
 
+    <img src="docs/images/image-function.png" alt="画像機能の概要" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+
     <p>注文明細に画像を追加できる機能があります。</p>
 
     <h3>基本的な使い方</h3>
+    
+    <img src="docs/images/usage-guide.png" alt="基本的な使い方" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
     <div class="step-list">
       <ol>
         <li><strong>画像表示の有効化</strong>: まず「注文明細に画像を表示」にチェックを入れてください。</li>
@@ -242,6 +263,8 @@
 
     <h2 id="カスタムラベル機能について">カスタムラベル機能について</h2>
     
+    <img src="docs/images/custom-labels.png" alt="カスタムラベル機能" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
     <p>余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。</p>
 
     <ul>
@@ -253,13 +276,23 @@
     </ul>
 
     <h3>文字列の編集方法</h3>
+    
+    <img src="docs/images/text-editing.png" alt="文字列編集方法" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
     <ul>
       <li>テキストエリア内で普通に文字を入力</li>
       <li>改行: Enterキー</li>
       <li>書式設定: 右クリックでコンテキストメニューを表示
         <ul>
-          <li>太字、斜体の切り替え</li>
-          <li>フォントサイズの変更（8pt〜24pt）</li>
+          <li>太字、斜体、下線の切り替え</li>
+          <li>フォントサイズの変更（6pt〜28pt）</li>
+        </ul>
+      </li>
+      <li>キーボードショートカット:
+        <ul>
+          <li>Ctrl+B: 太字の切り替え</li>
+          <li>Ctrl+I: 斜体の切り替え</li>
+          <li>Ctrl+U: 下線の切り替え</li>
         </ul>
       </li>
     </ul>

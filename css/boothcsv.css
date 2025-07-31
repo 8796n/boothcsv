@@ -348,21 +348,83 @@ table.label44 td {
   margin: 0 5px 10px 5px;
 }
 
-.btn-clear {
+/* 共通ボタンベーススタイル */
+.btn-base {
   display: inline-block;
-  padding: 5px 15px;
-  font-size: 14px;
-  color: #fff;
-  background-color: #dc3545; /* レッド */
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
-  margin: 0 5px;
-  transition: background-color 0.3s ease;
+  font-family: inherit;
+  font-weight: 500;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  outline: none;
 }
 
-.btn-clear:hover {
-  background-color: #c82333; /* ホバー時の濃いレッド */
+.btn-base:hover {
+  transform: translateY(-1px);
+}
+
+.btn-base:active {
+  transform: translateY(0);
+}
+
+.btn-base:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+/* サイズバリエーション */
+.btn-small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.btn-medium {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.btn-large {
+  padding: 10px 40px;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* カラーバリエーション */
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.btn-success {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.btn-clear {
+  padding: 5px 15px;
+  font-size: 14px;
+  margin: 0 5px;
 }
 
 /* 複数カスタムラベル設定エリア */
@@ -397,25 +459,15 @@ table.label44 td {
   padding-bottom: 10px;
 }
 
+.custom-labels-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .custom-labels-header h4 {
   margin: 0;
   color: #333;
   font-size: 16px;
-}
-
-.btn-add {
-  background-color: #28a745;
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
-}
-
-.btn-add:hover {
-  background-color: #218838;
 }
 
 .custom-labels-container {
@@ -447,63 +499,45 @@ table.label44 td {
   color: #333;
 }
 
-.btn-remove {
-  background-color: #dc3545;
-  color: white;
-  border: none;
-  padding: 4px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 11px;
-  transition: background-color 0.2s;
-}
-
-.btn-remove:hover {
-  background-color: #c82333;
-}
-
-.custom-label-input-group,
-.custom-label-count-group {
-  margin-bottom: 15px;
-}
-
 .custom-label-input-group {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center; /* 中央寄せに変更 */
+  margin-bottom: 10px; /* マージンを縮小 */
+}
+
+.custom-label-editor-row {
+  display: flex;
+  align-items: center; /* 上下中央寄せに変更 */
+  gap: 20px;
+  width: 100%;
+  justify-content: center; /* 中央寄せに変更 */
+}
+
+.custom-label-count-group {
+  display: flex;
+  flex-direction: row; /* 横並びに変更 */
+  align-items: center; /* 縦方向の中央揃え */
+  gap: 8px; /* ラベルと入力欄の間隔 */
+  min-width: 140px; /* 最小幅を少し広げる */
+  flex-shrink: 0;
 }
 
 .custom-label-input-group label,
 .custom-label-count-group label {
-  display: block;
-  margin-bottom: 5px;
+  margin-bottom: 0; /* 下マージンを削除 */
   font-weight: bold;
   color: #333;
   font-size: 12px;
+  white-space: nowrap; /* テキストの折り返しを防ぐ */
 }
 
-.rich-text-editor-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* 中央寄せ */
-  gap: 10px;
-  width: 100%;
-}
-
-.editor-main-area {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  width: 100%;
-  justify-content: center; /* 中央寄せ */
-}
-
-.label-preview-note {
-  font-size: 11px;
-  color: #666;
-  line-height: 1.3;
-  width: 300px; /* 固定幅に変更して折り返しを防ぐ */
-  padding-top: 5px;
+.custom-label-count-group input {
+  width: 80px;
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
 }
 
 .custom-labels-summary {
@@ -599,14 +633,6 @@ table.label44 td {
   max-width: 160px;
 }
 
-.custom-label-count-group input {
-  width: 80px;
-  padding: 5px;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  font-size: 14px;
-}
-
 .label-count-help {
   display: block;
   color: #666;
@@ -680,4 +706,48 @@ table.label44 td {
   #orderImageRow {
     display: none !important;
   }
+}
+
+/* カスタムラベル設定の説明文 */
+.custom-labels-instructions {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 5px;
+  padding: 12px;
+  margin-bottom: 15px;
+  font-size: 12px;
+  color: #495057;
+}
+
+.instructions-content {
+  line-height: 1.4;
+}
+
+.instructions-content strong {
+  color: #212529;
+}
+
+/* カスタムラベルのヘッダー部分 */
+.custom-label-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.custom-label-item-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-label-enabled {
+  margin: 0;
+}
+
+.custom-label-item-title {
+  font-weight: bold;
+  color: #333;
+  margin: 0;
+  cursor: pointer;
 }

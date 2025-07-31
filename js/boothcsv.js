@@ -292,13 +292,14 @@ function getConfigFromUI() {
   const sortByPaymentDate = document.getElementById("sortByPaymentDate").checked;
   const customLabelEnable = document.getElementById("customLabelEnable").checked;
   
-  // 複数のカスタムラベルを取得
-  const customLabels = getCustomLabelsFromUI();
+  // 複数のカスタムラベルを取得（有効なもののみ）
+  const allCustomLabels = getCustomLabelsFromUI();
+  const customLabels = customLabelEnable ? allCustomLabels.filter(label => label.enabled) : [];
   
   StorageManager.set(StorageManager.KEYS.LABEL_SETTING, labelyn);
   StorageManager.set(StorageManager.KEYS.LABEL_SKIP, labelskip);
   StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, customLabelEnable);
-  StorageManager.setCustomLabels(customLabels);
+  StorageManager.setCustomLabels(allCustomLabels); // 全てのラベルを保存（有効/無効問わず）
   
   const labelarr = [];
   const labelskipNum = parseInt(labelskip, 10) || 0;
@@ -1339,9 +1340,23 @@ function initializeCustomLabels(customLabels) {
   const container = document.getElementById('customLabelsContainer');
   container.innerHTML = '';
   
+  // 説明文を一番上に追加
+  const instructionDiv = document.createElement('div');
+  instructionDiv.className = 'custom-labels-instructions';
+  instructionDiv.innerHTML = `
+    <div class="instructions-content">
+      <strong>カスタムラベル設定について：</strong><br>
+      • 実際のラベルサイズ: 48.3mm × 25.3mm<br>
+      • テキストのみ入力可能<br>
+      • 改行: Enterキー<br>
+      • 書式設定: 右クリックでコンテキストメニューを表示（太字、斜体、フォントサイズ変更）
+    </div>
+  `;
+  container.appendChild(instructionDiv);
+  
   if (customLabels && customLabels.length > 0) {
     customLabels.forEach((label, index) => {
-      addCustomLabelItem(label.html || label.text, label.count, index);
+      addCustomLabelItem(label.html || label.text, label.count, index, label.enabled !== false);
       
       // 文字サイズを復元
       if (label.fontSize) {
@@ -1349,21 +1364,22 @@ function initializeCustomLabels(customLabels) {
         const editor = item.querySelector('.rich-text-editor');
         
         if (editor) {
-          const fontSizeValue = parseInt(label.fontSize) || 12;
-          editor.style.fontSize = fontSizeValue + 'pt';
+          // フォントサイズが既にpt単位なら そのまま使用、数値のみなら pt を追加
+          const fontSize = label.fontSize.toString().includes('pt') ? label.fontSize : label.fontSize + 'pt';
+          editor.style.fontSize = fontSize;
         }
       }
     });
   } else {
     // デフォルトで1つ追加
-    addCustomLabelItem('', 1, 0);
+    addCustomLabelItem('', 1, 0, true);
   }
   
   updateCustomLabelsSummary();
 }
 
 // カスタムラベル項目を追加
-function addCustomLabelItem(text = '', count = 1, index = null) {
+function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) {
   debugLog('addCustomLabelItem関数が呼び出されました'); // デバッグ用
   debugLog('引数:', { text, count, index }); // デバッグ用
   
@@ -1383,32 +1399,28 @@ function addCustomLabelItem(text = '', count = 1, index = null) {
   
   item.innerHTML = `
     <div class="custom-label-item-header">
-      <span class="custom-label-item-title">ラベル ${itemIndex + 1}</span>
-      <button type="button" class="btn-remove" onclick="removeCustomLabelItem(${itemIndex})">削除</button>
+      <div class="custom-label-item-header-left">
+        <input type="checkbox" class="custom-label-enabled" 
+               id="customLabel_${itemIndex}_enabled" 
+               data-index="${itemIndex}" 
+               checked onchange="saveCustomLabels(); updateCustomLabelsSummary();">
+        <label for="customLabel_${itemIndex}_enabled" class="custom-label-item-title">印刷する</label>
+      </div>
+      <button type="button" class="btn-base btn-danger btn-small" onclick="removeCustomLabelItem(${itemIndex})">削除</button>
     </div>
     <div class="custom-label-input-group">
-      <label>印刷する文字列：</label>
-      <div class="rich-text-editor-container">
-        <div class="editor-main-area">
-          <div class="rich-text-editor" contenteditable="true" 
-               placeholder="印刷したい文字列を入力してください..."
-               data-index="${itemIndex}"
-               style="font-size: 12pt;">${text}</div>
-          <span class="label-preview-note">
-            ← 実際のラベルサイズ<br>
-            (48.3mm × 25.3mm)<br>
-            テキストのみ入力可能<br>
-            改行: Enter<br>
-            右クリック: フォーマット・フォントサイズ
-          </span>
+      <div class="custom-label-editor-row">
+        <div class="rich-text-editor" contenteditable="true" 
+             placeholder="印刷したい文字列を入力してください..."
+             data-index="${itemIndex}"
+             style="font-size: 12pt;"></div>
+        <div class="custom-label-count-group">
+          <label>印刷枚数：</label>
+          <input type="number" min="1" value="${count}" 
+                 data-index="${itemIndex}" 
+                 onchange="updateCustomLabelsSummary()">
         </div>
       </div>
-    </div>
-    <div class="custom-label-count-group">
-      <label>印刷枚数：</label>
-      <input type="number" min="1" value="${count}" 
-             data-index="${itemIndex}" 
-             onchange="updateCustomLabelsSummary()">
     </div>
   `;
   
@@ -1419,6 +1431,11 @@ function addCustomLabelItem(text = '', count = 1, index = null) {
   const editor = item.querySelector('.rich-text-editor');
   debugLog('editor要素:', editor); // デバッグ用
   if (editor) {
+    // テキスト内容を設定（HTMLとして）
+    if (text && text.trim() !== '') {
+      editor.innerHTML = text;
+    }
+    
     setupRichTextFormatting(editor);
     setupTextOnlyEditor(editor);
     
@@ -1428,6 +1445,12 @@ function addCustomLabelItem(text = '', count = 1, index = null) {
     });
   } else {
     console.error('editor要素が見つかりません');
+  }
+  
+  // チェックボックスの状態を設定
+  const enabledCheckbox = item.querySelector('.custom-label-enabled');
+  if (enabledCheckbox) {
+    enabledCheckbox.checked = enabled;
   }
   
   // 枚数入力のイベントリスナーを設定
@@ -1503,21 +1526,23 @@ function getCustomLabelsFromUI() {
   items.forEach(item => {
     const editor = item.querySelector('.rich-text-editor');
     const countInput = item.querySelector('input[type="number"]');
+    const enabledCheckbox = item.querySelector('.custom-label-enabled');
     const text = editor.innerHTML.trim();
     const count = parseInt(countInput.value, 10) || 1;
+    const enabled = enabledCheckbox ? enabledCheckbox.checked : true;
     
     // フォントサイズをエディタのスタイルから取得
     const computedStyle = window.getComputedStyle(editor);
     const fontSize = computedStyle.fontSize || '12pt';
     
-    if (text && text !== editor.getAttribute('placeholder')) {
-      labels.push({ 
-        text, 
-        count, 
-        fontSize,
-        html: text // HTMLフォーマットも保存
-      });
-    }
+    // テキストがある場合、または設定を保持するため常に保存
+    labels.push({ 
+      text, 
+      count, 
+      fontSize,
+      html: text, // HTMLフォーマットも保存
+      enabled // 印刷有効フラグを追加
+    });
   });
   
   return labels;
@@ -1532,7 +1557,8 @@ function saveCustomLabels() {
 // カスタムラベルの総計を更新
 function updateCustomLabelsSummary() {
   const labels = getCustomLabelsFromUI();
-  const totalCount = labels.reduce((sum, label) => sum + label.count, 0);
+  const enabledLabels = labels.filter(label => label.enabled);
+  const totalCount = enabledLabels.reduce((sum, label) => sum + label.count, 0);
   const skipCount = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
   const fileInput = document.getElementById("file");
   
@@ -1545,9 +1571,9 @@ function updateCustomLabelsSummary() {
   const summary = document.getElementById('customLabelsSummary');
   
   if (csvRowCount > 0) {
-    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
+    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
   } else {
-    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル。44枚シート中、スキップ${skipCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
+    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
   }
   
   // 上限を超えている場合は警告色にする
@@ -1630,13 +1656,45 @@ function setupCustomLabelEvents() {
   if (addButton) {
     addButton.addEventListener('click', function() {
       debugLog('ラベル追加ボタンがクリックされました'); // デバッグ用
-      addCustomLabelItem();
+      addCustomLabelItem('', 1, null, true);
       saveCustomLabels();
       updateButtonStates();
     });
   } else {
     console.error('addCustomLabelBtn要素が見つかりません');
   }
+
+  // カスタムラベル全削除ボタン
+  const clearButton = document.getElementById('clearCustomLabelsBtn');
+  if (clearButton) {
+    clearButton.addEventListener('click', function() {
+      debugLog('ラベル全削除ボタンがクリックされました'); // デバッグ用
+      if (confirm('本当に全てのカスタムラベルを削除しますか？')) {
+        clearAllCustomLabels();
+      }
+    });
+  } else {
+    console.error('clearCustomLabelsBtn要素が見つかりません');
+  }
+}
+
+// 全てのカスタムラベルを削除
+function clearAllCustomLabels() {
+  const container = document.getElementById('customLabelsContainer');
+  
+  // 説明文以外の全ての項目を削除
+  const items = container.querySelectorAll('.custom-label-item');
+  items.forEach(item => item.remove());
+  
+  // デフォルトで1つ追加
+  addCustomLabelItem('', 1, 0, true);
+  
+  // 保存とUI更新
+  saveCustomLabels();
+  updateCustomLabelsSummary();
+  updateButtonStates();
+  
+  debugLog('全てのカスタムラベルが削除されました');
 }
 
 function updateCustomLabelCountDescription(skipCount, csvRowCount, maxCustomLabels) {
