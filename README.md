@@ -40,6 +40,7 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 - [デバッグ機能](#デバッグ機能)
 - [サンプルで試す](#boothで売れてないけど試したい)  
 
+<img width="1248" height="634" alt="Image" src="https://github.com/user-attachments/assets/819afe49-88db-4f0c-8a48-bea5e66235c1" />
 ## どうやって使うの？
 * [ここ](https://github.com/8796n/boothcsv/archive/master.zip)からzipファイルをダウンロードして展開します。
 * boothcsv.html を Chrome から開きます。
@@ -54,8 +55,6 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 * ラベルシールも印刷するときの説明はまたあとで。
 * プリンターに用紙をセットして印刷します。
 * おしまい。
-<img width="1296" height="1181" alt="image" src="https://github.com/user-attachments/assets/44cd09d6-16fa-4daf-b30b-3adc9f3af967" />
-
 
 ## ラベルシールも印刷したい
 これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。[PUDOステーション](https://booth.pixiv.help/hc/ja/articles/360013148033)に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。
@@ -63,18 +62,21 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 * ラベルシールも印刷するにチェックを入れます。
 * 途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。
 * さっきと一緒でCSVファイルを選んで実行ボタンを押すと、ラベル用紙の枚数も表示されます。
-![ラベルシール](https://user-images.githubusercontent.com/982314/55878887-5940e700-5bd8-11e9-963a-20ec106db3ad.png)
+<img width="857" height="901" alt="image" src="https://github.com/user-attachments/assets/66bd425e-2fc5-4751-b8ef-a5be943aa400" />
+
 * BOOTHの注文詳細で[あんしんBOOTHパックのQRコードを作成](https://booth.pm/anshin_booth_pack_guides/usage)して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！
-![QRコード貼付け後](https://user-images.githubusercontent.com/982314/55879200-fd2a9280-5bd8-11e9-8ffa-5c3ffa7b2254.png)
+<img width="858" height="283" alt="image" src="https://github.com/user-attachments/assets/cb50426f-79a6-4ad2-a34f-362fec1afa2a" />
 * なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。
 * 印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。
 
 ## 画像機能について
-<img width="824" height="1136" alt="image" src="https://github.com/user-attachments/assets/4ea9de9e-3515-4125-be0e-6d1addf733ad" />
+<img width="821" height="1136" alt="image" src="https://github.com/user-attachments/assets/aac1d2cf-9188-4d55-a967-e11afd870d42" />
 
 注文明細に画像を追加できる機能があります。
 
 ### 基本的な使い方
+<img width="1193" height="602" alt="image" src="https://github.com/user-attachments/assets/54a20a5d-2833-4042-9de3-abcae53def69" />
+
 1. **画像表示の有効化**: まず「注文明細に画像を表示」にチェックを入れてください。
 2. **画像設定**: 以下の2つの方法で画像を設定できます：
    * **グローバル画像**: 全ての注文明細に同じ画像を表示したい場合。「注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択」の部分に画像をドロップするか選択します。
@@ -92,6 +94,8 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 画像をクリックすると削除されるので、間違えて設定した場合も簡単にリセットできます。印刷時は画像ドロップゾーンは表示されないので邪魔になりません。
 
 ## カスタムラベル機能について
+<img width="861" height="353" alt="image" src="https://github.com/user-attachments/assets/db49a208-bd67-46be-b4f7-055d52e9a823" />
+
 余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。
 * **有効化**: 「残りラベルに任意文字列を印刷」のチェックボックスをオンにします。
 * **文字列入力**: ラベルに印刷したい文字列を入力します。商品名、品番、管理コードなど任意のテキストが可能です。太字や斜体、フォントサイズの変更もできます。
@@ -100,6 +104,8 @@ JavaScriptでどうにかしてるので**別途サーバーなどは必要あ�
 * **削除**: 不要なラベルは「削除」ボタンで削除できます（最低1つは必要）。
 
 **文字列の編集方法**：
+<img width="908" height="908" alt="image" src="https://github.com/user-attachments/assets/3bf85481-8876-4b6e-ac8d-159fa715ab71" />
+
 * テキストエリア内で普通に文字を入力
 * 改行: Enterキー
 * 書式設定: 右クリックでコンテキストメニューを表示
