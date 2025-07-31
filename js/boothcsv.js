@@ -111,6 +111,49 @@ class OrderNumberManager {
   }
 }
 
+// カスタムラベルの複数シート計算ユーティリティ
+class CustomLabelCalculator {
+  // 複数シートにわたるカスタムラベルの配置計算
+  static calculateMultiSheetDistribution(totalLabels, skipCount) {
+    const sheetsInfo = [];
+    let remainingLabels = totalLabels;
+    let currentSkip = skipCount;
+    let sheetNumber = 1;
+    
+    while (remainingLabels > 0) {
+      const availableInSheet = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - currentSkip;
+      const labelsInThisSheet = Math.min(remainingLabels, availableInSheet);
+      const remainingInSheet = availableInSheet - labelsInThisSheet;
+      
+      sheetsInfo.push({
+        sheetNumber,
+        skipCount: currentSkip,
+        labelCount: labelsInThisSheet,
+        remainingCount: remainingInSheet,
+        totalInSheet: currentSkip + labelsInThisSheet
+      });
+      
+      remainingLabels -= labelsInThisSheet;
+      currentSkip = 0; // 2シート目以降はスキップなし
+      sheetNumber++;
+    }
+    
+    return sheetsInfo;
+  }
+  
+  // 最終シートの情報を取得
+  static getLastSheetInfo(totalLabels, skipCount) {
+    const sheetsInfo = this.calculateMultiSheetDistribution(totalLabels, skipCount);
+    return sheetsInfo[sheetsInfo.length - 1] || null;
+  }
+  
+  // 総シート数を計算
+  static calculateTotalSheets(totalLabels, skipCount) {
+    const sheetsInfo = this.calculateMultiSheetDistribution(totalLabels, skipCount);
+    return sheetsInfo.length;
+  }
+}
+
 // localStorage操作を管理するクラス
 class StorageManager {
   static KEYS = {
@@ -495,58 +538,86 @@ function processCSVResults(results, config) {
   // 印刷枚数の表示
   showPrintSummary();
   
+  // CSV処理完了後のカスタムラベルサマリー更新
+  updateCustomLabelsSummaryAfterCSV(csvRowCount);
+  
   // ボタンの状態を更新
   updateButtonStates();
 }
 
 function processCustomLabelsOnly(config) {
-  // スキップラベルの配列を作成
-  const labelarr = [];
-  const labelskipNum = parseInt(config.labelskip, 10) || 0;
-  const maxAvailableLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - labelskipNum;
-  
   // 複数カスタムラベルの総枚数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
+  const labelskipNum = parseInt(config.labelskip, 10) || 0;
   
-  // カスタムラベル枚数が上限を超えている場合は調整
-  if (totalCustomLabelCount > maxAvailableLabels) {
-    adjustCustomLabelsForTotal(config.customLabels, maxAvailableLabels);
+  // 有効なカスタムラベルがあるかチェック
+  const validLabels = config.customLabels.filter(label => label.text.trim() !== '');
+  if (validLabels.length === 0) {
+    alert('印刷する文字列を入力してください。');
+    return;
+  }
+  
+  if (totalCustomLabelCount === 0) {
+    alert('印刷する枚数を1以上に設定してください。');
+    return;
+  }
+  
+  // 複数シートの分散計算
+  const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalCustomLabelCount, labelskipNum);
+  const totalSheets = sheetsInfo.length;
+  
+  debugLog(`カスタムラベル複数シート分散:`, sheetsInfo);
+  
+  // 各シート用のラベル配列を作成
+  let remainingLabels = [...config.customLabels]; // コピーを作成
+  let currentSkip = labelskipNum;
+  
+  for (let sheetIndex = 0; sheetIndex < totalSheets; sheetIndex++) {
+    const sheetInfo = sheetsInfo[sheetIndex];
+    const labelarr = [];
     
-    if (maxAvailableLabels === 0) {
-      alert(`スキップが${labelskipNum}枚で44枚シートが満杯のため、カスタムラベルは印刷できません。`);
-      return;
-    } else {
-      alert(`スキップ分を考慮して、カスタムラベル総枚数を${maxAvailableLabels}枚に調整しました。`);
-    }
-  }
-  
-  if (labelskipNum > 0) {
-    for (let i = 0; i < labelskipNum; i++) {
-      labelarr.push("");
-    }
-  }
-  
-  // カスタムラベルを追加
-  if (config.customLabelEnable && config.customLabels.length > 0) {
-    for (const customLabel of config.customLabels) {
-      for (let i = 0; i < customLabel.count; i++) {
-        labelarr.push({ 
-          type: 'custom', 
-          content: customLabel.html || customLabel.text,
-          fontSize: customLabel.fontSize || '10pt'
-        });
+    // スキップラベルを追加（最初のシートのみ）
+    if (sheetIndex === 0 && currentSkip > 0) {
+      for (let i = 0; i < currentSkip; i++) {
+        labelarr.push("");
       }
     }
+    
+    // このシートに配置するラベル数
+    let labelsToPlaceInSheet = sheetInfo.labelCount;
+    
+    // カスタムラベルを配置
+    for (let labelIndex = 0; labelIndex < remainingLabels.length && labelsToPlaceInSheet > 0; labelIndex++) {
+      const customLabel = remainingLabels[labelIndex];
+      
+      if (customLabel.count > 0) {
+        const placedCount = Math.min(customLabel.count, labelsToPlaceInSheet);
+        
+        for (let i = 0; i < placedCount; i++) {
+          labelarr.push({ 
+            type: 'custom', 
+            content: customLabel.html || customLabel.text,
+            fontSize: customLabel.fontSize || '10pt'
+          });
+        }
+        
+        customLabel.count -= placedCount;
+        labelsToPlaceInSheet -= placedCount;
+      }
+    }
+    
+    // このシートのラベルを生成
+    if (labelarr.length > 0) {
+      generateLabels(labelarr);
+    }
+    
+    // 使い切ったラベルを削除
+    remainingLabels = remainingLabels.filter(label => label.count > 0);
+    currentSkip = 0; // 2シート目以降はスキップなし
   }
   
-  // ラベル生成
-  if (labelarr.length > 0) {
-    generateLabels(labelarr);
-  }
-  
-  // 印刷枚数の表示（カスタムラベル専用）
-  const adjustedTotalCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
-  showCustomLabelPrintSummary(adjustedTotalCount, labelskipNum);
+  // 印刷枚数の表示（複数シート対応）
+  showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, labelskipNum, sheetsInfo);
   
   // ボタンの状態を更新
   updateButtonStates();
@@ -775,6 +846,40 @@ function showCustomLabelPrintSummary(customLabelCount, skipCount) {
   
   if (labelTable.length > 0) {
     alert(`カスタムラベル印刷枚数\nA4 44面ラベルシール: ${labelTable.length}枚\nスキップ: ${skipCount}枚\nカスタムラベル: ${customLabelCount}枚\n合計ラベル数: ${totalLabels}枚`);
+  }
+}
+
+function showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, skipCount, sheetsInfo) {
+  const labelTable = document.querySelectorAll(".label44");
+  const totalSheets = sheetsInfo.length;
+  
+  if (labelTable.length > 0) {
+    let summaryMessage = `カスタムラベル印刷枚数（複数シート対応）\n`;
+    summaryMessage += `A4 44面ラベルシール: ${labelTable.length}枚\n`;
+    summaryMessage += `総カスタムラベル数: ${totalCustomLabelCount}枚\n`;
+    summaryMessage += `スキップ: ${skipCount}枚（1シート目のみ）\n\n`;
+    
+    // 各シートの詳細
+    summaryMessage += `シート別詳細:\n`;
+    sheetsInfo.forEach((sheetInfo, index) => {
+      summaryMessage += `${sheetInfo.sheetNumber}シート目: `;
+      if (index === 0 && skipCount > 0) {
+        summaryMessage += `スキップ${sheetInfo.skipCount}枚 + `;
+      }
+      summaryMessage += `ラベル${sheetInfo.labelCount}枚`;
+      if (sheetInfo.remainingCount > 0) {
+        summaryMessage += ` (余り${sheetInfo.remainingCount}枚)`;
+      }
+      summaryMessage += `\n`;
+    });
+    
+    // 最終シート情報
+    const lastSheet = sheetsInfo[sheetsInfo.length - 1];
+    if (lastSheet.remainingCount > 0) {
+      summaryMessage += `\n最終シート余り: ${lastSheet.remainingCount}枚`;
+    }
+    
+    alert(summaryMessage);
   }
 }
 function addP(div, text){
@@ -1387,6 +1492,7 @@ function createIndividualOrderImageDropZone(orderNumber) {
 
 document.getElementById("file").addEventListener("change", function() {
   updateButtonStates();
+  updateCustomLabelsSummary();
 });
 
 // ページロード時に説明を表示し、ユーザーにファイル選択を促す
@@ -1724,19 +1830,62 @@ function updateCustomLabelsSummary() {
   const skipCount = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
   const fileInput = document.getElementById("file");
   
-  let csvRowCount = 0;
-  if (fileInput.files.length > 0) {
-    csvRowCount = 0; // 実際の行数は処理時に決定
-  }
-  
-  const maxLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount;
   const summary = document.getElementById('customLabelsSummary');
   
-  if (csvRowCount > 0) {
-    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
-  } else {
-    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚使用済み。残り${maxLabels}枚まで設定可能。`;
+  if (totalCount === 0) {
+    summary.textContent = `カスタムラベルが設定されていません。44枚シート中、スキップ${skipCount}枚使用済み。`;
+    summary.style.color = '#666';
+    summary.style.fontWeight = 'normal';
+    return;
   }
+  
+  // CSVファイルが選択されている場合
+  if (fileInput.files.length > 0) {
+    // CSV処理がある場合は1シートのみの制限
+    // 実際のCSV行数は処理時に決定されるため、ここでは概算として表示
+    summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。CSVファイル選択済み。CSV処理実行後に最終的な配置が決定されます。`;
+    summary.style.color = '#666';
+    summary.style.fontWeight = 'normal';
+  } else {
+    // カスタムラベルのみの場合は複数シート対応
+    const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalCount, skipCount);
+    const totalSheets = sheetsInfo.length;
+    const lastSheet = sheetsInfo[sheetsInfo.length - 1];
+    
+    if (totalSheets === 1) {
+      // 1シートのみの場合
+      summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。1シート使用。スキップ${skipCount}枚使用済み。最終シート残り${lastSheet.remainingCount}枚。`;
+    } else {
+      // 複数シートの場合
+      summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。${totalSheets}シート使用。最終シート残り${lastSheet.remainingCount}枚。`;
+    }
+    
+    summary.style.color = '#666';
+    summary.style.fontWeight = 'normal';
+  }
+}
+
+// CSV処理完了後のカスタムラベルサマリー更新（新規追加）
+function updateCustomLabelsSummaryAfterCSV(csvRowCount) {
+  const labels = getCustomLabelsFromUI();
+  const enabledLabels = labels.filter(label => label.enabled);
+  const totalCount = enabledLabels.reduce((sum, label) => sum + label.count, 0);
+  const skipCount = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
+  
+  const summary = document.getElementById('customLabelsSummary');
+  
+  if (totalCount === 0) {
+    summary.textContent = `カスタムラベルが設定されていません。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚使用済み。残り${CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount}枚。`;
+    summary.style.color = '#666';
+    summary.style.fontWeight = 'normal';
+    return;
+  }
+  
+  // CSV処理がある場合は1シートのみの制限
+  const maxLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount;
+  const remainingLabels = Math.max(0, maxLabels - totalCount);
+  
+  summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚 + カスタム${totalCount}枚使用済み。最終シート残り${remainingLabels}枚。`;
   
   // 上限を超えている場合は警告色にする
   if (totalCount > maxLabels) {
