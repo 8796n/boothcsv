@@ -1371,6 +1371,7 @@ function updateAllOrderImagesVisibility(enabled) {
   allOrderSections.forEach(orderSection => {
     const imageContainer = orderSection.querySelector('.order-image-container');
     const individualZone = orderSection.querySelector('.individual-order-image-zone');
+    const individualDropZoneContainer = orderSection.querySelector('.individual-image-dropzone');
     
     if (enabled) {
       // 有効な場合：画像を表示し、個別画像ゾーンも表示
@@ -1378,15 +1379,30 @@ function updateAllOrderImagesVisibility(enabled) {
         individualZone.style.display = 'block';
       }
       
-      if (imageContainer) {
-        // 注文番号を取得
-        let orderNumber = null;
-        const orderNumberElement = orderSection.querySelector('.注文番号');
-        if (orderNumberElement) {
-          const rawOrderNumber = orderNumberElement.textContent.trim();
-          orderNumber = rawOrderNumber.replace(/^.*?:\s*/, '').trim();
+      // 注文番号を取得
+      let orderNumber = null;
+      const orderNumberElement = orderSection.querySelector('.注文番号');
+      if (orderNumberElement) {
+        const rawOrderNumber = orderNumberElement.textContent.trim();
+        orderNumber = rawOrderNumber.replace(/^.*?:\s*/, '').trim();
+      }
+      
+      // 個別画像ドロップゾーンが存在するが中身が空の場合、ドロップゾーンを作成
+      if (individualDropZoneContainer && orderNumber && individualDropZoneContainer.children.length === 0) {
+        debugLog(`個別画像ドロップゾーンを後から作成: ${orderNumber}`);
+        try {
+          const individualImageDropZone = createIndividualOrderImageDropZone(orderNumber);
+          if (individualImageDropZone && individualImageDropZone.element) {
+            individualDropZoneContainer.appendChild(individualImageDropZone.element);
+            debugLog(`個別画像ドロップゾーン作成成功: ${orderNumber}`);
+          }
+        } catch (error) {
+          debugLog(`個別画像ドロップゾーン作成エラー: ${error.message}`);
+          console.error('個別画像ドロップゾーン作成エラー:', error);
         }
-        
+      }
+      
+      if (imageContainer) {
         // 画像を表示
         let imageToShow = null;
         if (orderNumber) {
