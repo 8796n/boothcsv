@@ -30,7 +30,7 @@
         <td><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"></td>
       </tr>
       <tr>
-        <td><label for="labelskip">ラベルをスキップする枚数：</label></td>
+        <td><label for="labelskip">ラベルをスキップする面数：</label></td>
         <td><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0"></td>
       </tr>
       <tr>
@@ -88,6 +88,28 @@
       <table class="label44">
       </table>
     </section>
+</template>
+<template id="customLabelItem">
+  <div class="custom-label-item">
+    <div class="custom-label-item-header">
+      <div class="custom-label-item-header-left">
+        <input type="checkbox" class="custom-label-enabled" checked>
+        <label class="custom-label-item-title">印刷する</label>
+      </div>
+      <button type="button" class="btn-base btn-danger btn-small btn-remove">削除</button>
+    </div>
+    <div class="custom-label-input-group">
+      <div class="custom-label-editor-row">
+        <div class="rich-text-editor" contenteditable="true" 
+             placeholder="印刷したい文字列を入力してください..."
+             style="font-size: 12pt;"></div>
+        <div class="custom-label-count-group">
+          <label>印刷面数：</label>
+          <input type="number" min="1" value="1">
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 <template id="注文明細">
   <section class="sheet">

@@ -36,19 +36,16 @@ class OrderNumberManager {
   // 注文番号の正規化（"注文番号 : 66463556" → "66463556"）
   static normalize(orderNumber) {
     if (!orderNumber || typeof orderNumber !== 'string') {
-      debugLog('OrderNumberManager.normalize: 無効な注文番号', orderNumber);
       return '';
     }
     
     const normalized = orderNumber.replace(/^.*?:\s*/, '').trim();
-    debugLog(`注文番号正規化: "${orderNumber}" → "${normalized}"`);
     return normalized;
   }
   
   // DOM要素から注文番号を取得（注文明細用）
   static getFromOrderSection(orderSection) {
     if (!orderSection) {
-      debugLog('OrderNumberManager.getFromOrderSection: orderSection が null');
       return null;
     }
     
@@ -57,7 +54,6 @@ class OrderNumberManager {
     if (orderNumberElement) {
       const rawOrderNumber = orderNumberElement.textContent.trim();
       const normalized = this.normalize(rawOrderNumber);
-      debugLog(`注文明細から注文番号取得: "${rawOrderNumber}" → "${normalized}"`);
       return normalized;
     }
     
@@ -66,23 +62,19 @@ class OrderNumberManager {
     if (ordernumElement) {
       const rawOrderNumber = ordernumElement.textContent.trim();
       const normalized = this.normalize(rawOrderNumber);
-      debugLog(`ラベルから注文番号取得: "${rawOrderNumber}" → "${normalized}"`);
       return normalized;
     }
     
-    debugLog('OrderNumberManager.getFromOrderSection: 注文番号要素が見つかりません');
     return null;
   }
   
   // CSV行データから注文番号を取得（表示用フォーマット付き）
   static getFromCSVRow(row) {
     if (!row || !row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN]) {
-      debugLog('OrderNumberManager.getFromCSVRow: 無効なCSV行データ');
       return '';
     }
     
     const orderNumber = row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN];
-    debugLog(`CSVから注文番号取得: "${orderNumber}"`);
     return orderNumber;
   }
   
@@ -98,7 +90,6 @@ class OrderNumberManager {
     }
     
     const formatted = `注文番号 : ${orderNumber}`;
-    debugLog(`表示用フォーマット生成: "${orderNumber}" → "${formatted}"`);
     return formatted;
   }
   
@@ -106,7 +97,6 @@ class OrderNumberManager {
   static isValid(orderNumber) {
     const normalized = this.normalize(orderNumber);
     const isValid = normalized && normalized.length > 0;
-    debugLog(`注文番号妥当性チェック: "${orderNumber}" → ${isValid}`);
     return isValid;
   }
 }
@@ -169,7 +159,6 @@ class CSVAnalyzer {
         skipEmptyLines: true,
         complete: function(results) {
           const rowCount = results.data.length;
-          debugLog(`CSV行数取得: ${rowCount}行`);
           resolve(rowCount);
         },
         error: function(error) {
@@ -373,8 +362,6 @@ class StorageManager {
 window.addEventListener("load", function(){
   const settings = StorageManager.getSettings();
   
-  debugLog(settings.labelyn, settings.labelskip);
-  
   document.getElementById("labelyn").checked = settings.labelyn;
   document.getElementById("labelskipnum").value = settings.labelskip;
   document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
@@ -540,7 +527,7 @@ async function processCSVResults(results, config) {
   // CSV行数を取得
   const csvRowCount = results.data.length;
   
-  // 複数カスタムラベルの総枚数を計算
+  // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   
   // 複数シート対応：1シートの制限を撤廃
@@ -548,14 +535,6 @@ async function processCSVResults(results, config) {
   const skipCount = parseInt(config.labelskip, 10) || 0;
   const totalLabelsNeeded = skipCount + csvRowCount + totalCustomLabelCount;
   const requiredSheets = Math.ceil(totalLabelsNeeded / CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET);
-  
-  debugLog(`CSV処理 - 複数シート対応:`, {
-    csvRowCount,
-    totalCustomLabelCount,
-    skipCount,
-    totalLabelsNeeded,
-    requiredSheets
-  });
 
   // データの並び替え
   if (config.sortByPaymentDate) {
@@ -602,7 +581,7 @@ async function processCSVResults(results, config) {
 }
 
 function processCustomLabelsOnly(config) {
-  // 複数カスタムラベルの総枚数を計算
+  // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   const labelskipNum = parseInt(config.labelskip, 10) || 0;
   
@@ -614,15 +593,13 @@ function processCustomLabelsOnly(config) {
   }
   
   if (totalCustomLabelCount === 0) {
-    alert('印刷する枚数を1以上に設定してください。');
+    alert('印刷する面数を1以上に設定してください。');
     return;
   }
   
   // 複数シートの分散計算
   const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalCustomLabelCount, labelskipNum);
   const totalSheets = sheetsInfo.length;
-  
-  debugLog(`カスタムラベル複数シート分散:`, sheetsInfo);
   
   // 各シート用のラベル配列を作成
   let remainingLabels = [...config.customLabels]; // コピーを作成
@@ -889,53 +866,28 @@ function showPrintSummary() {
   const labelTable = document.querySelectorAll(".label44");
   const pageDiv = document.querySelectorAll(".page");
   
-  if (labelTable.length > 0) {
-    alert("印刷枚数\nA4 44面ラベルシール:" + labelTable.length + "枚\nA4普通紙:" + pageDiv.length + "枚");
+  if (labelTable.length > 0 && pageDiv.length > 0) {
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚\n注文明細: ${pageDiv.length}枚`);
+  } else if (labelTable.length > 0) {
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
   } else if (pageDiv.length > 0) {
-    alert("印刷枚数\nA4普通紙:" + pageDiv.length + "枚");
+    alert(`印刷準備完了\n注文明細: ${pageDiv.length}枚`);
   }
 }
 
 function showCustomLabelPrintSummary(customLabelCount, skipCount) {
   const labelTable = document.querySelectorAll(".label44");
-  const totalLabels = skipCount + customLabelCount;
   
   if (labelTable.length > 0) {
-    alert(`カスタムラベル印刷枚数\nA4 44面ラベルシール: ${labelTable.length}枚\nスキップ: ${skipCount}枚\nカスタムラベル: ${customLabelCount}枚\n合計ラベル数: ${totalLabels}枚`);
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
   }
 }
 
 function showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, skipCount, sheetsInfo) {
   const labelTable = document.querySelectorAll(".label44");
-  const totalSheets = sheetsInfo.length;
   
   if (labelTable.length > 0) {
-    let summaryMessage = `カスタムラベル印刷枚数（複数シート対応）\n`;
-    summaryMessage += `A4 44面ラベルシール: ${labelTable.length}枚\n`;
-    summaryMessage += `総カスタムラベル数: ${totalCustomLabelCount}枚\n`;
-    summaryMessage += `スキップ: ${skipCount}枚（1シート目のみ）\n\n`;
-    
-    // 各シートの詳細
-    summaryMessage += `シート別詳細:\n`;
-    sheetsInfo.forEach((sheetInfo, index) => {
-      summaryMessage += `${sheetInfo.sheetNumber}シート目: `;
-      if (index === 0 && skipCount > 0) {
-        summaryMessage += `スキップ${sheetInfo.skipCount}枚 + `;
-      }
-      summaryMessage += `ラベル${sheetInfo.labelCount}枚`;
-      if (sheetInfo.remainingCount > 0) {
-        summaryMessage += ` (余り${sheetInfo.remainingCount}枚)`;
-      }
-      summaryMessage += `\n`;
-    });
-    
-    // 最終シート情報
-    const lastSheet = sheetsInfo[sheetsInfo.length - 1];
-    if (lastSheet.remainingCount > 0) {
-      summaryMessage += `\n最終シート余り: ${lastSheet.remainingCount}枚`;
-    }
-    
-    alert(summaryMessage);
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
   }
 }
 
@@ -943,20 +895,12 @@ function showCSVWithCustomLabelPrintSummary(csvRowCount, customLabelCount, skipC
   const labelTable = document.querySelectorAll(".label44");
   const pageDiv = document.querySelectorAll(".page");
   
-  if (labelTable.length > 0) {
-    let summaryMessage = `CSV + カスタムラベル印刷枚数（複数シート対応）\n`;
-    summaryMessage += `A4 44面ラベルシール: ${labelTable.length}枚\n`;
-    summaryMessage += `CSV注文データ: ${csvRowCount}行\n`;
-    summaryMessage += `カスタムラベル: ${customLabelCount}枚\n`;
-    if (skipCount > 0) {
-      summaryMessage += `スキップ: ${skipCount}枚（1シート目のみ）\n`;
-    }
-    summaryMessage += `合計ラベル数: ${skipCount + csvRowCount + customLabelCount}枚\n`;
-    summaryMessage += `必要シート数: ${requiredSheets}シート`;
-    
-    alert(summaryMessage);
+  if (labelTable.length > 0 && pageDiv.length > 0) {
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚\n注文明細: ${pageDiv.length}枚`);
+  } else if (labelTable.length > 0) {
+    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
   } else if (pageDiv.length > 0) {
-    alert("印刷枚数\nA4普通紙:" + pageDiv.length + "枚");
+    alert(`印刷準備完了\n注文明細: ${pageDiv.length}枚`);
   }
 }
 function addP(div, text){
@@ -1152,7 +1096,6 @@ function readQR(elImage){
         const barcode = jsQR(imageData.data, imageData.width, imageData.height);
         
         if(barcode){
-          debugLog("[" + barcode.data + "]");
           const b = String(barcode.data).replace(/^\s+|\s+$/g,'').replace(/ +/g,' ').split(" ");
           
           if(b.length === CONSTANTS.QR.EXPECTED_PARTS){
@@ -1736,58 +1679,65 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
     return;
   }
   
+  // テンプレートを取得
+  const template = document.getElementById('customLabelItem');
+  if (!template) {
+    console.error('customLabelItemテンプレートが見つかりません');
+    return;
+  }
+  
+  // テンプレートをクローン
+  const item = template.content.cloneNode(true);
+  const itemDiv = item.querySelector('.custom-label-item');
+  
   const itemIndex = index !== null ? index : container.children.length;
   debugLog('itemIndex:', itemIndex); // デバッグ用
   
-  const item = document.createElement('div');
-  item.classList.add('custom-label-item');
-  item.dataset.index = itemIndex;
+  // データ属性を設定
+  itemDiv.dataset.index = itemIndex;
   
-  item.innerHTML = `
-    <div class="custom-label-item-header">
-      <div class="custom-label-item-header-left">
-        <input type="checkbox" class="custom-label-enabled" 
-               id="customLabel_${itemIndex}_enabled" 
-               data-index="${itemIndex}" 
-               checked>
-        <label for="customLabel_${itemIndex}_enabled" class="custom-label-item-title">印刷する</label>
-      </div>
-      <button type="button" class="btn-base btn-danger btn-small" onclick="removeCustomLabelItem(${itemIndex})">削除</button>
-    </div>
-    <div class="custom-label-input-group">
-      <div class="custom-label-editor-row">
-        <div class="rich-text-editor" contenteditable="true" 
-             placeholder="印刷したい文字列を入力してください..."
-             data-index="${itemIndex}"
-             style="font-size: 12pt;"></div>
-        <div class="custom-label-count-group">
-          <label>印刷枚数：</label>
-          <input type="number" min="1" value="${count}" 
-                 data-index="${itemIndex}">
-        </div>
-      </div>
-    </div>
-  `;
+  // チェックボックスの設定
+  const checkbox = item.querySelector('.custom-label-enabled');
+  checkbox.id = `customLabel_${itemIndex}_enabled`;
+  checkbox.dataset.index = itemIndex;
+  checkbox.checked = enabled;
+  
+  // ラベルのfor属性を設定
+  const label = item.querySelector('.custom-label-item-title');
+  label.setAttribute('for', `customLabel_${itemIndex}_enabled`);
+  
+  // エディタの設定
+  const editor = item.querySelector('.rich-text-editor');
+  editor.dataset.index = itemIndex;
+  
+  // 枚数入力の設定
+  const countInput = item.querySelector('input[type="number"]');
+  countInput.value = count;
+  countInput.dataset.index = itemIndex;
+  
+  // 削除ボタンの設定
+  const removeBtn = item.querySelector('.btn-remove');
+  removeBtn.onclick = () => removeCustomLabelItem(itemIndex);
   
   container.appendChild(item);
   debugLog('item要素がコンテナに追加されました'); // デバッグ用
   
   // リッチテキストエディタのイベントリスナーを設定
-  const editor = item.querySelector('.rich-text-editor');
-  debugLog('editor要素:', editor); // デバッグ用
-  if (editor) {
+  const editorElement = container.querySelector(`[data-index="${itemIndex}"].rich-text-editor`);
+  debugLog('editorElement:', editorElement); // デバッグ用
+  if (editorElement) {
     // テキスト内容を設定（HTMLとして）
     if (text && text.trim() !== '') {
-      editor.innerHTML = text;
+      editorElement.innerHTML = text;
     }
     
-    setupRichTextFormatting(editor);
-    setupTextOnlyEditor(editor);
+    setupRichTextFormatting(editorElement);
+    setupTextOnlyEditor(editorElement);
     
-    editor.addEventListener('input', async function() {
+    editorElement.addEventListener('input', async function() {
       // 文字列が入力されたら強調表示をクリア
-      const item = editor.closest('.custom-label-item');
-      if (item && editor.textContent.trim() !== '') {
+      const item = editorElement.closest('.custom-label-item');
+      if (item && editorElement.textContent.trim() !== '') {
         item.classList.remove('error');
       }
       
@@ -1796,11 +1746,11 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
       await updateCustomLabelsSummary();
     });
   } else {
-    console.error('editor要素が見つかりません');
+    console.error('editorElement要素が見つかりません');
   }
   
   // チェックボックスの状態を設定とイベントリスナー追加
-  const enabledCheckbox = item.querySelector('.custom-label-enabled');
+  const enabledCheckbox = container.querySelector(`[data-index="${itemIndex}"].custom-label-enabled`);
   if (enabledCheckbox) {
     enabledCheckbox.checked = enabled;
     enabledCheckbox.addEventListener('change', async function() {
@@ -1810,10 +1760,10 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
   }
   
   // 枚数入力のイベントリスナーを設定
-  const countInput = item.querySelector('input[type="number"]');
-  debugLog('countInput要素:', countInput); // デバッグ用
-  if (countInput) {
-    countInput.addEventListener('input', async function() {
+  const countInputElement = container.querySelector(`[data-index="${itemIndex}"][type="number"]`);
+  debugLog('countInputElement要素:', countInputElement); // デバッグ用
+  if (countInputElement) {
+    countInputElement.addEventListener('input', async function() {
       saveCustomLabels();
       updateButtonStates();
       await updateCustomLabelsSummary();
@@ -1846,32 +1796,6 @@ function removeCustomLabelItem(index) {
   saveCustomLabels();
   updateCustomLabelsSummary().catch(console.error);
   updateButtonStates();
-}
-
-// カスタムラベル項目のインデックスを再設定
-function reindexCustomLabelItems() {
-  const container = document.getElementById('customLabelsContainer');
-  const items = container.querySelectorAll('.custom-label-item');
-  
-  items.forEach((item, newIndex) => {
-    item.dataset.index = newIndex;
-    
-    // タイトルを更新
-    const title = item.querySelector('.custom-label-item-title');
-    title.textContent = `ラベル ${newIndex + 1}`;
-    
-    // 削除ボタンのonclickを更新
-    const removeBtn = item.querySelector('.btn-remove');
-    removeBtn.onclick = () => removeCustomLabelItem(newIndex);
-    
-    // エディタのdata-indexを更新
-    const editor = item.querySelector('.rich-text-editor');
-    editor.dataset.index = newIndex;
-    
-    // 枚数入力のdata-indexを更新
-    const countInput = item.querySelector('input[type="number"]');
-    countInput.dataset.index = newIndex;
-  });
 }
 
 // UIからカスタムラベルデータを取得
@@ -1927,12 +1851,12 @@ async function updateCustomLabelsSummary() {
       try {
         const csvInfo = await CSVAnalyzer.getFileInfo(fileInput.files[0]);
         const remainingLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvInfo.rowCount;
-        summary.innerHTML = `カスタムラベルなし。<br>44枚シート中 スキップ${skipCount} + CSV${csvInfo.rowCount} = ${skipCount + csvInfo.rowCount}枚使用済み。<br>残り${Math.max(0, remainingLabels)}枚設定可能。`;
+        summary.innerHTML = `カスタムラベルなし。<br>44面シート中 スキップ${skipCount} + CSV${csvInfo.rowCount} = ${skipCount + csvInfo.rowCount}面使用済み。<br>残り${Math.max(0, remainingLabels)}面設定可能。`;
       } catch (error) {
         summary.innerHTML = `カスタムラベルなし。<br>CSVファイル選択済み（行数解析中...）。`;
       }
     } else {
-      summary.innerHTML = `カスタムラベルなし。<br>44枚シート中 スキップ${skipCount}枚使用済み。`;
+      summary.innerHTML = `カスタムラベルなし。<br>44面シート中 スキップ${skipCount}面使用済み。`;
     }
     summary.style.color = '#666';
     summary.style.fontWeight = 'normal';
@@ -1953,16 +1877,16 @@ async function updateCustomLabelsSummary() {
       const lastSheet = sheetsInfo[sheetsInfo.length - 1];
       
       if (totalSheets === 1) {
-        summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>1シート使用: スキップ${skipCount} + CSV${csvRowCount} + カスタム${totalCount} = ${skipCount + csvRowCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+        summary.innerHTML = `合計 ${totalCount}面のカスタムラベル。<br>1シート使用: スキップ${skipCount} + CSV${csvRowCount} + カスタム${totalCount} = ${skipCount + csvRowCount + totalCount}面<br>最終シート残り${lastSheet.remainingCount}面。`;
       } else {
-        summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>${totalSheets}シート使用: CSV${csvRowCount} + カスタム${totalCount} = ${csvRowCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+        summary.innerHTML = `合計 ${totalCount}面のカスタムラベル。<br>${totalSheets}シート使用: CSV${csvRowCount} + カスタム${totalCount} = ${csvRowCount + totalCount}面<br>最終シート残り${lastSheet.remainingCount}面。`;
       }
       
       summary.style.color = '#666';
       summary.style.fontWeight = 'normal';
     } catch (error) {
       console.error('CSV解析エラー:', error);
-      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>CSVファイル選択済み（行数解析エラー）<br>CSV処理実行後に最終配置が決定されます。`;
+      summary.innerHTML = `合計 ${totalCount}面のカスタムラベル。<br>CSVファイル選択済み（行数解析エラー）<br>CSV処理実行後に最終配置が決定されます。`;
       summary.style.color = '#ffc107';
       summary.style.fontWeight = 'normal';
     }
@@ -1974,78 +1898,16 @@ async function updateCustomLabelsSummary() {
     
     if (totalSheets === 1) {
       // 1シートのみの場合
-      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>1シート使用: スキップ${skipCount} + カスタム${totalCount} = ${skipCount + totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+      summary.innerHTML = `合計 ${totalCount}面のカスタムラベル。<br>1シート使用: スキップ${skipCount} + カスタム${totalCount} = ${skipCount + totalCount}面<br>最終シート残り${lastSheet.remainingCount}面。`;
     } else {
       // 複数シートの場合
-      summary.innerHTML = `合計 ${totalCount}枚のカスタムラベル。<br>${totalSheets}シート使用: カスタム${totalCount}枚<br>最終シート残り${lastSheet.remainingCount}枚。`;
+      summary.innerHTML = `合計 ${totalCount}面のカスタムラベル。<br>${totalSheets}シート使用: カスタム${totalCount}面<br>最終シート残り${lastSheet.remainingCount}面。`;
     }
     
     summary.style.color = '#666';
     summary.style.fontWeight = 'normal';
   }
 }
-
-// 以下の関数は複数シート対応により不要となったためコメントアウト
-/*
-// CSV処理完了後のカスタムラベルサマリー更新（旧版：1シート制限）
-function updateCustomLabelsSummaryAfterCSV(csvRowCount) {
-  const labels = getCustomLabelsFromUI();
-  const enabledLabels = labels.filter(label => label.enabled);
-  const totalCount = enabledLabels.reduce((sum, label) => sum + label.count, 0);
-  const skipCount = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
-  
-  const summary = document.getElementById('customLabelsSummary');
-  
-  if (totalCount === 0) {
-    summary.textContent = `カスタムラベルが設定されていません。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚使用済み。残り${CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount}枚。`;
-    summary.style.color = '#666';
-    summary.style.fontWeight = 'normal';
-    return;
-  }
-  
-  // CSV処理がある場合は1シートのみの制限
-  const maxLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - csvRowCount;
-  const remainingLabels = Math.max(0, maxLabels - totalCount);
-  
-  summary.textContent = `合計 ${totalCount} 枚のカスタムラベル（有効なもののみ）。44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚 + カスタム${totalCount}枚使用済み。最終シート残り${remainingLabels}枚。`;
-  
-  // 上限を超えている場合は警告色にする
-  if (totalCount > maxLabels) {
-    summary.style.color = '#dc3545';
-    summary.style.fontWeight = 'bold';
-  } else {
-    summary.style.color = '#666';
-    summary.style.fontWeight = 'normal';
-  }
-}
-
-// CSV用の調整関数（旧版：1シート制限）
-async function adjustCustomLabelsForCSV(customLabels, maxCustomLabels) {
-  let remaining = maxCustomLabels;
-  
-  for (let i = 0; i < customLabels.length; i++) {
-    if (remaining <= 0) {
-      customLabels[i].count = 0;
-    } else if (customLabels[i].count > remaining) {
-      customLabels[i].count = remaining;
-    }
-    remaining -= customLabels[i].count;
-  }
-  
-  // UIを更新
-  const container = document.getElementById('customLabelsContainer');
-  const items = container.querySelectorAll('.custom-label-item');
-  items.forEach((item, index) => {
-    const countInput = item.querySelector('input[type="number"]');
-    if (customLabels[index]) {
-      countInput.value = customLabels[index].count;
-    }
-  });
-  
-  saveCustomLabels();
-  await updateCustomLabelsSummary();
-}
-*/
 
 // 総枚数用の調整関数
 async function adjustCustomLabelsForTotal(customLabels, maxTotalLabels) {
@@ -2127,30 +1989,6 @@ async function clearAllCustomLabels() {
   saveCustomLabels();
   await updateCustomLabelsSummary();
   updateButtonStates();
-  
-  debugLog('全てのカスタムラベルが削除されました');
-}
-
-function updateCustomLabelCountDescription(skipCount, csvRowCount, maxCustomLabels) {
-  const customLabelCountGroup = document.querySelector('.custom-label-count-group');
-  let descriptionElement = customLabelCountGroup.querySelector('.label-count-description');
-  
-  if (!descriptionElement) {
-    descriptionElement = document.createElement('small');
-    descriptionElement.classList.add('label-count-description');
-    descriptionElement.style.cssText = 'display: block; color: #666; margin-top: 5px; font-size: 12px;';
-    customLabelCountGroup.appendChild(descriptionElement);
-  }
-  
-  const totalLabels = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
-  const usedLabels = skipCount + csvRowCount;
-  const remainingLabels = totalLabels - usedLabels;
-  
-  if (csvRowCount > 0) {
-    descriptionElement.textContent = `44枚シート中、スキップ${skipCount}枚 + CSV${csvRowCount}枚 = ${usedLabels}枚使用済み。残り${remainingLabels}枚まで設定可能。`;
-  } else {
-    descriptionElement.textContent = `44枚シート中、スキップ${skipCount}枚使用済み。残り${remainingLabels}枚まで設定可能。`;
-  }
 }
 
 async function updateButtonStates() {
@@ -2303,12 +2141,6 @@ function reindexCustomLabelItems() {
   items.forEach((item, index) => {
     item.dataset.index = index;
     
-    // タイトルのインデックスも更新
-    const title = item.querySelector('.custom-label-item-title');
-    if (title) {
-      title.textContent = `カスタムラベル ${index + 1}`;
-    }
-    
     // 削除ボタンのonclick属性も更新
     const deleteButton = item.querySelector('.btn-danger');
     if (deleteButton) {
@@ -2363,7 +2195,7 @@ function setupRichTextFormatting(editor) {
     const selection = window.getSelection();
     const hasSelection = selection.toString().length > 0;
     
-    const menu = createFontSizeMenu(e.pageX, e.pageY, editor, hasSelection);
+    const menu = createFontSizeMenu(e.clientX, e.clientY, editor, hasSelection);
     document.body.appendChild(menu);
     
     // クリック外でメニューを閉じる
@@ -2381,10 +2213,10 @@ function setupRichTextFormatting(editor) {
 // フォントサイズ選択メニューを作成
 function createFontSizeMenu(x, y, editor, hasSelection = true) {
   const menu = document.createElement('div');
+  
+  // 初期スタイル設定（位置は後で調整）
   menu.style.cssText = `
     position: fixed;
-    left: ${x}px;
-    top: ${y}px;
     background: white;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -2393,7 +2225,11 @@ function createFontSizeMenu(x, y, editor, hasSelection = true) {
     z-index: 10000;
     font-family: sans-serif;
     min-width: 140px;
+    visibility: hidden;
   `;
+  
+  // 一時的に追加してサイズを測定
+  document.body.appendChild(menu);
   
   // フォーマットオプション
   const formatOptions = [
@@ -2518,6 +2354,28 @@ function createFontSizeMenu(x, y, editor, hasSelection = true) {
       menu.appendChild(item);
     });
   }
+  
+  // メニューのサイズを取得して位置を調整
+  const menuRect = menu.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  // 右端からはみ出る場合は左にずらす
+  let adjustedX = x;
+  if (x + menuRect.width > viewportWidth) {
+    adjustedX = viewportWidth - menuRect.width - 5;
+  }
+  
+  // 下端からはみ出る場合は上にずらす
+  let adjustedY = y;
+  if (y + menuRect.height > viewportHeight) {
+    adjustedY = y - menuRect.height;
+  }
+  
+  // 調整後の位置を設定して表示
+  menu.style.left = `${adjustedX}px`;
+  menu.style.top = `${adjustedY}px`;
+  menu.style.visibility = 'visible';
   
   return menu;
 }
@@ -2729,60 +2587,6 @@ function setupTextOnlyEditor(editor) {
     childList: true,
     subtree: true
   });
-}
-
-function createFormatMenu(x, y) {
-  const menu = document.createElement('div');
-  menu.style.cssText = `
-    position: absolute;
-    left: ${x}px;
-    top: ${y}px;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 5px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    z-index: 1000;
-    font-size: 12px;
-  `;
-
-  const buttons = [
-    { text: '太字', command: 'bold' },
-    { text: '斜体', command: 'italic' },
-    { text: '下線', command: 'underline' }
-  ];
-
-  buttons.forEach(btn => {
-    const button = document.createElement('button');
-    button.textContent = btn.text;
-    button.style.cssText = `
-      display: block;
-      width: 100%;
-      padding: 3px 8px;
-      margin: 2px 0;
-      border: none;
-      background: #f5f5f5;
-      cursor: pointer;
-      border-radius: 2px;
-    `;
-    
-    button.addEventListener('click', () => {
-      document.execCommand(btn.command, false, null);
-      menu.parentNode.removeChild(menu);
-    });
-    
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#e0e0e0';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '#f5f5f5';
-    });
-    
-    menu.appendChild(button);
-  });
-
-  return menu;
 }
 
 // 印刷ボタンのイベントリスナーを変更
