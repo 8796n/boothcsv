@@ -843,6 +843,93 @@ class UnifiedDatabase {
       };
     });
   }
+
+  // === フォント管理メソッド ===
+
+  // フォントを保存
+  async setFont(fontName, fontData) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readwrite');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.put(fontData);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('フォント保存エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  // フォントを取得
+  async getFont(fontName) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readonly');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.get(fontName);
+      
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        console.error('フォント取得エラー:', request.error);
+        resolve(null);
+      };
+    });
+  }
+
+  // すべてのフォントを取得
+  async getAllFonts() {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readonly');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.getAll();
+      
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => {
+        console.error('フォント一覧取得エラー:', request.error);
+        resolve([]);
+      };
+    });
+  }
+
+  // フォントを削除
+  async deleteFont(fontName) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readwrite');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.delete(fontName);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('フォント削除エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  // すべてのフォントを削除
+  async clearAllFonts() {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readwrite');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.clear();
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('全フォント削除エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
 }
 
 // === グローバル初期化 ===
@@ -861,6 +948,9 @@ async function initializeUnifiedDatabase() {
     
     if (migrationSuccess) {
       console.log('📂 統合データベース初期化完了');
+      
+      // 旧フォント専用データベースのクリーンアップ
+      await cleanupOldFontDatabase();
     } else {
       console.log('⚠️ 移行がキャンセルされました');
     }
@@ -873,176 +963,107 @@ async function initializeUnifiedDatabase() {
   }
 }
 
-// IndexedDBを使用したフォント管理クラス
-class FontDatabase {
-  constructor() {
-    this.dbName = 'BoothCSVFonts';
-    this.version = 1;
-    this.storeName = 'fonts';
-    this.db = null;
-  }
-
-  // データベースを初期化
-  async init() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, this.version);
+// 旧フォント専用データベースのクリーンアップ
+async function cleanupOldFontDatabase() {
+  try {
+    console.log('🧹 旧フォントデータベースのクリーンアップを開始...');
+    
+    // 旧データベースを削除
+    await new Promise((resolve, reject) => {
+      const deleteRequest = indexedDB.deleteDatabase('BoothCSVFonts');
       
-      request.onerror = () => {
-        console.error('IndexedDB初期化エラー:', request.error);
-        reject(request.error);
+      deleteRequest.onerror = () => {
+        console.warn('旧フォントデータベース削除エラー:', deleteRequest.error);
+        resolve(); // エラーでも続行
       };
       
-      request.onsuccess = () => {
-        this.db = request.result;
-        console.log('IndexedDB初期化完了');
-        resolve(this.db);
+      deleteRequest.onsuccess = () => {
+        console.log('✅ 旧フォントデータベース「BoothCSVFonts」を削除しました');
+        resolve();
       };
       
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        
-        // フォントストアを作成
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          const store = db.createObjectStore(this.storeName, { keyPath: 'name' });
-          store.createIndex('createdAt', 'createdAt', { unique: false });
-          store.createIndex('size', 'size', { unique: false });
-          console.log('フォントストア作成完了');
-        }
+      deleteRequest.onblocked = () => {
+        console.warn('⚠️ 旧フォントデータベースの削除がブロックされました（他のタブで使用中の可能性）');
+        resolve(); // ブロックされても続行
       };
     });
+    
+    console.log('🎉 フォントデータベースの統合完了！');
+    
+  } catch (error) {
+    console.warn('旧フォントデータベースのクリーンアップエラー:', error);
+    // エラーでも処理を続行（致命的ではない）
+  }
+}
+
+// グローバルなフォントマネージャー（UnifiedDatabaseを使用）
+let fontManager = null;
+
+// 統合フォント管理クラス
+class FontManager {
+  constructor(unifiedDB) {
+    this.unifiedDB = unifiedDB;
   }
 
   // フォントを保存
   async saveFont(fontName, fontData, metadata = {}) {
-    if (!this.db) await this.init();
+    const fontObject = {
+      name: fontName,
+      data: fontData, // ArrayBufferを直接保存
+      type: metadata.type || 'font/ttf',
+      originalName: metadata.originalName || fontName,
+      size: fontData.byteLength || fontData.length,
+      createdAt: Date.now()
+    };
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      
-      const fontObject = {
-        name: fontName,
-        data: fontData, // ArrayBufferを直接保存
-        metadata: {
-          type: metadata.type || 'font/ttf',
-          originalName: metadata.originalName || fontName,
-          size: fontData.byteLength || fontData.length,
-          createdAt: Date.now()
-        }
-      };
-      
-      const request = store.put(fontObject);
-      
-      request.onsuccess = () => {
-        console.log(`フォント保存完了: ${fontName}`);
-        resolve(fontObject);
-      };
-      
-      request.onerror = () => {
-        console.error('フォント保存エラー:', request.error);
-        reject(request.error);
-      };
-    });
+    await this.unifiedDB.setFont(fontName, fontObject);
+    console.log(`フォント保存完了: ${fontName}`);
+    return fontObject;
   }
 
   // フォントを取得
   async getFont(fontName) {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.get(fontName);
-      
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-      
-      request.onerror = () => {
-        console.error('フォント取得エラー:', request.error);
-        reject(request.error);
-      };
-    });
+    return await this.unifiedDB.getFont(fontName);
   }
 
   // すべてのフォントを取得（オブジェクト形式で返す）
   async getAllFonts() {
-    if (!this.db) await this.init();
+    const fonts = await this.unifiedDB.getAllFonts();
+    const fontMap = {};
     
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.getAll();
-      
-      request.onsuccess = () => {
-        const fonts = request.result;
-        const fontMap = {};
-        
-        // 配列をオブジェクトマップに変換
-        fonts.forEach(font => {
-          if (font && font.name) {
-            fontMap[font.name] = {
-              data: font.data,
-              metadata: font.metadata || {}
-            };
+    // 配列をオブジェクトマップに変換
+    fonts.forEach(font => {
+      if (font && font.name) {
+        fontMap[font.name] = {
+          data: font.data,
+          metadata: {
+            type: font.type,
+            originalName: font.originalName,
+            size: font.size,
+            createdAt: font.createdAt
           }
-        });
-        
-        resolve(fontMap);
-      };
-      
-      request.onerror = () => {
-        console.error('フォント一覧取得エラー:', request.error);
-        reject(request.error);
-      };
+        };
+      }
     });
+    
+    return fontMap;
   }
 
   // フォントを削除
   async deleteFont(fontName) {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.delete(fontName);
-      
-      request.onsuccess = () => {
-        console.log(`フォント削除完了: ${fontName}`);
-        resolve();
-      };
-      
-      request.onerror = () => {
-        console.error('フォント削除エラー:', request.error);
-        reject(request.error);
-      };
-    });
+    await this.unifiedDB.deleteFont(fontName);
+    console.log(`フォント削除完了: ${fontName}`);
   }
 
   // すべてのフォントを削除
   async clearAllFonts() {
-    if (!this.db) await this.init();
-    
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.clear();
-      
-      request.onsuccess = () => {
-        console.log('全フォント削除完了');
-        resolve();
-      };
-      
-      request.onerror = () => {
-        console.error('全フォント削除エラー:', request.error);
-        reject(request.error);
-      };
-    });
+    await this.unifiedDB.clearAllFonts();
+    console.log('全フォント削除完了');
   }
 
   // ストレージ使用量を取得
   async getStorageInfo() {
-    const fonts = await this.getAllFonts();
+    const fonts = await this.unifiedDB.getAllFonts();
     const totalSize = fonts.reduce((sum, font) => sum + (font.size || 0), 0);
     const fontCount = fonts.length;
     
@@ -1060,20 +1081,18 @@ class FontDatabase {
   }
 }
 
-// グローバルなフォントデータベースインスタンス
-let fontDB = null;
-
-// フォントデータベースを初期化
-async function initializeFontDatabase() {
+// フォントマネージャーを初期化
+async function initializeFontManager() {
   try {
-    fontDB = new FontDatabase();
-    await fontDB.init();
-    console.log('フォントデータベース初期化完了');
-    return fontDB;
+    if (!unifiedDB) {
+      await initializeUnifiedDatabase();
+    }
+    fontManager = new FontManager(unifiedDB);
+    console.log('フォントマネージャー初期化完了');
+    return fontManager;
   } catch (error) {
-    console.error('フォントデータベース初期化失敗:', error);
-    // フォールバック: localStorageを使用
-    alert('IndexedDBの初期化に失敗しました。localStorageを使用します。\n大容量のフォントファイルは制限される場合があります。');
+    console.error('フォントマネージャー初期化失敗:', error);
+    alert('フォント管理システムの初期化に失敗しました。');
     return null;
   }
 }
@@ -1435,14 +1454,15 @@ window.addEventListener("load", async function(){
   // フォントセクションの初期状態設定
   await initializeFontSection();
   
-  // カスタムフォントのCSS読み込み（非同期で実行）
+  // フォントマネージャーの初期化と カスタムフォントのCSS読み込み（非同期で実行）
   setTimeout(async () => {
     try {
+      await initializeFontManager();
       await loadCustomFontsCSS();
     } catch (error) {
-      console.warn('フォントCSS読み込みエラー:', error);
+      console.warn('フォント初期化エラー:', error);
     }
-  }, 100); // 少し遅らせて確実にfontDBが初期化されるのを待つ
+  }, 100); // 少し遅らせて確実にunifiedDBが初期化されるのを待つ
 
   // 全ての画像をクリアするボタンのイベントリスナーを追加
   const clearAllButton = document.getElementById('clearAllButton');
@@ -1474,7 +1494,10 @@ window.addEventListener("load", async function(){
     clearAllFontsButton.onclick = async () => {
       if (confirm('本当に全てのカスタムフォントをクリアしますか？')) {
         try {
-          await fontDB.clearAllFonts();
+          if (!fontManager) {
+            await initializeFontManager();
+          }
+          await fontManager.clearAllFonts();
           await loadCustomFontsCSS();
           updateFontList();
           alert('全てのカスタムフォントをクリアしました');
@@ -3618,9 +3641,9 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
       menu.appendChild(item);
     });
 
-    // カスタムフォント選択オプション（IndexedDBベース）
+    // カスタムフォント選択オプション（統合DBベース）
     try {
-      if (fontDB) {
+      if (fontManager) {
         // フォント用区切り線（常に表示）
         const fontSeparator = document.createElement('div');
         fontSeparator.style.cssText = `
@@ -3707,7 +3730,15 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
         menu.appendChild(defaultFontItem);
 
         // カスタムフォントを取得
-        const customFonts = await fontDB.getAllFonts();
+        let customFonts = {};
+        if (fontManager) {
+          try {
+            customFonts = await fontManager.getAllFonts();
+          } catch (error) {
+            console.error('カスタムフォント取得エラー:', error);
+            customFonts = {};
+          }
+        }
 
         // システムフォント
         const systemFonts = [
@@ -4332,9 +4363,9 @@ async function updateSkipCount() {
 
 // カスタムフォント管理機能
 function initializeFontDropZone() {
-  // FontDatabaseを初期化（まだ初期化されていない場合）
-  if (!fontDB) {
-    fontDB = new FontDatabase();
+  // FontManagerを初期化（まだ初期化されていない場合）
+  if (!fontManager) {
+    initializeFontManager();
   }
 
   const dropZone = document.createElement('div');
@@ -4415,9 +4446,9 @@ function initializeFontDropZone() {
 
 async function handleFontFile(file) {
   try {
-    // fontDBが初期化されていない場合
-    if (!fontDB) {
-      alert('フォントデータベースが初期化されていません。\nページを再読み込みしてから再試行してください。');
+    // fontManagerが初期化されていない場合
+    if (!fontManager) {
+      alert('フォントマネージャーが初期化されていません。\nページを再読み込みしてから再試行してください。');
       return;
     }
     
@@ -4469,8 +4500,13 @@ async function handleFontFile(file) {
     // フォント名の生成（拡張子を除く）
     const fontName = file.name.replace(/\.[^/.]+$/, "");
     
+    // FontManagerが初期化されていない場合は初期化
+    if (!fontManager) {
+      await initializeFontManager();
+    }
+    
     // 重複チェック
-    const existingFont = await fontDB.getFont(fontName);
+    const existingFont = await fontManager.getFont(fontName);
     if (existingFont) {
       if (!confirm(`フォント "${fontName}" は既に存在します。上書きしますか？`)) {
         showFontUploadProgress(false);
@@ -4479,7 +4515,7 @@ async function handleFontFile(file) {
     }
 
     // IndexedDBに保存
-    await fontDB.saveFont(fontName, arrayBuffer, {
+    await fontManager.saveFont(fontName, arrayBuffer, {
       type: mimeType,
       originalName: file.name
     });
@@ -4584,13 +4620,13 @@ function getFontFormat(mimeType) {
 
 async function loadCustomFontsCSS() {
   try {
-    // fontDBが初期化されていない場合は何もしない
-    if (!fontDB) {
-      console.warn('FontDatabaseが初期化されていません');
+    // fontManagerが初期化されていない場合は何もしない
+    if (!fontManager) {
+      console.warn('FontManagerが初期化されていません');
       return;
     }
     
-    const fonts = await fontDB.getAllFonts();
+    const fonts = await fontManager.getAllFonts();
     
     // 既存のカスタムフォントCSSをクリア
     let styleElement = document.getElementById('custom-fonts-style');
@@ -4651,13 +4687,13 @@ async function updateFontList() {
   if (!fontListElement) return;
 
   try {
-    // fontDBが初期化されていない場合はメッセージを表示
-    if (!fontDB) {
-      fontListElement.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">フォントデータベースを初期化中...</div>';
+    // fontManagerが初期化されていない場合はメッセージを表示
+    if (!fontManager) {
+      fontListElement.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">フォントマネージャーを初期化中...</div>';
       return;
     }
     
-    const fonts = await fontDB.getAllFonts();
+    const fonts = await fontManager.getAllFonts();
     
     if (Object.keys(fonts).length === 0) {
       fontListElement.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">フォントファイルをアップロードしてください</div>';
@@ -4700,27 +4736,27 @@ async function updateFontList() {
 
 async function removeFontFromList(fontName) {
   try {
-    // fontDBが初期化されていない場合
-    if (!fontDB) {
-      alert('フォントデータベースが初期化されていません。');
+    // fontManagerが初期化されていない場合
+    if (!fontManager) {
+      alert('フォントマネージャーが初期化されていません。');
       return;
     }
     
-    const fontData = await fontDB.getFont(fontName);
+    const fontData = await fontManager.getFont(fontName);
     
     if (!fontData) {
       alert('指定されたフォントが見つかりません。');
       return;
     }
     
-    const originalName = fontData.metadata?.originalName || fontName;
-    const sizeMB = (fontData.data.byteLength / 1024 / 1024).toFixed(2);
+    const originalName = fontData.originalName || fontName;
+    const sizeMB = (fontData.size / 1024 / 1024).toFixed(2);
     
     const confirmMessage = `フォント "${fontName}" (${originalName}, ${sizeMB}MB) を削除しますか？\n\n削除すると、このフォントを使用しているカスタムラベルの表示が変わる可能性があります。`;
     
     if (confirm(confirmMessage)) {
       try {
-        await fontDB.deleteFont(fontName);
+        await fontManager.deleteFont(fontName);
         await updateFontList();
         await loadCustomFontsCSS();
         
