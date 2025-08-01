@@ -17,14 +17,6 @@
   <div class="fixed-header-content">
     <h1 class="fixed-title">BOOTH宛名印刷用CSV帳票化</h1>
     <div class="main-actions">
-      <!-- ファイル選択 -->
-      <div class="file-input-wrapper-compact">
-        <button type="button" class="file-input-button-compact" onclick="document.getElementById('file').click()">
-          📁 CSVファイルを選択
-        </button>
-        <input type="file" id="file" name="csvfile" accept=".csv" style="display: none;">
-        <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
-      </div>
       <!-- 印刷枚数表示 -->
       <div class="print-count-display" id="printCountDisplay" style="display: none;">
         <div class="print-count-item">
@@ -43,9 +35,22 @@
           <span class="print-count-unit">面</span>
         </div>
       </div>
+      <!-- CSVダウンロード -->
+      <div class="csv-download-wrapper">
+        <button type="button" class="btn-compact btn-download" title="BOOTHの注文一覧へ飛びます" onclick="window.open('https://manage.booth.pm/orders?state=paid', '_blank')">
+          📥 CSVをダウンロード
+        </button>
+      </div>
+      <!-- ファイル選択 -->
+      <div class="file-input-wrapper-compact">
+        <button type="button" class="file-input-button-compact" onclick="document.getElementById('file').click()">
+          📁 CSVファイルを選択
+        </button>
+        <input type="file" id="file" name="csvfile" accept=".csv" style="display: none;">
+        <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
+      </div>
       <!-- 主要アクションボタン -->
       <div class="main-action-buttons">
-        <button type="button" class="btn-compact btn-primary" onClick="clickstart();" id="executeButtonCompact" disabled>手動実行</button>
         <button id="print-btn" type="button" title="印刷">印刷</button>
       </div>
     </div>
@@ -55,7 +60,6 @@
 <!-- メインコンテンツ（既存の内容） -->
 <div class="main-content">
 <div class="no_print" style="text-align: center;">
-  <p><a href="https://manage.booth.pm/orders?state=paid" target="_blank">BOOTHの注文一覧(未発送)</a>から「宛名印刷用CSV」をダウンロード</p>
   <form method="POST" enctype="multipart/form-data" id="form">
     <table class="form-table" style="margin: 0 auto;">
       <tr>

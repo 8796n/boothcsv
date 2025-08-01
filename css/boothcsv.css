@@ -524,6 +524,18 @@ table.label44 td {
   color: white;
 }
 
+.btn-compact.btn-download {
+  background: linear-gradient(45deg, #9C27B0, #7B1FA2);
+  color: white;
+}
+
+/* CSVダウンロードボタンのラッパー */
+.csv-download-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* メインコンテンツのスタイル調整 */
 .main-content {
   margin-top: 80px; /* 固定ヘッダーの高さ分の余白 */

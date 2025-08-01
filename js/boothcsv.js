@@ -1561,57 +1561,6 @@ window.addEventListener("load", async function(){
 
 }, false);
 
-async function clickstart() {
-  // カスタムラベルのバリデーション
-  if (!validateAndPromptCustomLabels()) {
-    return; // バリデーション失敗時は処理を中断
-  }
-  
-  clearPreviousResults();
-  const config = await getConfigFromUI();
-  
-  Papa.parse(config.file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: async function(results) {
-      await processCSVResults(results, config);
-    }
-  });
-}
-
-// カスタムラベル専用実行関数（リアルタイムプレビューにより将来的に削除予定）
-async function executeCustomLabelsOnly() {
-  // カスタムラベルのバリデーション
-  if (!validateAndPromptCustomLabels()) {
-    return; // バリデーション失敗時は処理を中断
-  }
-  
-  clearPreviousResults();
-  const config = await getConfigFromUI();
-  
-  // カスタムラベルが有効でない場合は警告
-  if (!config.customLabelEnable) {
-    alert('カスタムラベル機能を有効にしてください。');
-    return;
-  }
-  
-  // カスタムラベルの内容が空の場合は警告
-  if (!config.customLabels || config.customLabels.length === 0) {
-    alert('印刷する文字列を入力してください。');
-    return;
-  }
-  
-  // 有効なカスタムラベルがあるかチェック
-  const validLabels = config.customLabels.filter(label => label.text.trim() !== '');
-  if (validLabels.length === 0) {
-    alert('印刷する文字列を入力してください。');
-    return;
-  }
-  
-  // カスタムラベルのみを処理
-  await processCustomLabelsOnly(config);
-}
-
 // 自動処理関数（ファイル選択時や設定変更時に呼ばれる）
 async function autoProcessCSV() {
   try {
@@ -1627,7 +1576,7 @@ async function autoProcessCSV() {
 
     // カスタムラベルのバリデーション（エラー表示なし）
     if (!validateCustomLabelsQuiet()) {
-      console.log('カスタムラベルにエラーがあります。手動実行が必要です。');
+      console.log('カスタムラベルにエラーがあります。設定を確認してください。');
       return;
     }
     
@@ -3390,24 +3339,10 @@ async function clearAllCustomLabels() {
 
 async function updateButtonStates() {
   const fileInput = document.getElementById("file");
-  const executeButton = document.getElementById("executeButton");
-  const customLabelOnlyButton = document.getElementById("customLabelOnlyButton");
   const printButton = document.getElementById("printButton");
   
   // 固定ヘッダーのボタン要素も取得
-  const executeButtonCompact = document.getElementById("executeButtonCompact");
   const printButtonCompact = document.getElementById("printButtonCompact");
-  
-  const customLabelEnable = document.getElementById("customLabelEnable");
-
-  // CSV処理実行ボタンの状態
-  const executeDisabled = fileInput.files.length === 0;
-  if (executeButton) executeButton.disabled = executeDisabled;
-  if (executeButtonCompact) executeButtonCompact.disabled = executeDisabled;
-
-// カスタムラベル専用実行ボタンの状態（将来的に削除予定 - リアルタイムプレビューにより不要）
-  const hasValidCustomLabels = customLabelEnable.checked && hasCustomLabelsWithContent();
-  if (customLabelOnlyButton) customLabelOnlyButton.disabled = !hasValidCustomLabels;
 
   // 印刷ボタンの状態（何らかのコンテンツが生成されている場合に有効）
   const hasSheets = document.querySelectorAll('.sheet').length > 0;
@@ -3438,39 +3373,6 @@ function hasEmptyEnabledCustomLabels() {
   
   // 有効なラベルで文字列が空のものがあるかチェック
   return enabledLabels.some(label => label.text.trim() === '');
-}
-
-// カスタムラベルのバリデーションと入力促進
-function validateAndPromptCustomLabels() {
-  const customLabelEnable = document.getElementById("customLabelEnable");
-  if (!customLabelEnable.checked) {
-    return true; // カスタムラベル無効の場合は問題なし
-  }
-  
-  if (hasEmptyEnabledCustomLabels()) {
-    // 未設定項目を強調表示
-    highlightEmptyCustomLabels();
-    
-    const result = confirm(
-      'カスタムラベルが有効になっていますが、文字列が未設定の項目があります。\n\n' +
-      '選択肢：\n' +
-      'OK: 入力画面に戻って文字列を設定する\n' +
-      'キャンセル: 未設定のラベル項目を削除して続行する'
-    );
-    
-    if (result) {
-      // OKの場合は処理を中断して入力を促す
-      alert('赤く強調表示された項目の文字列を入力してから再度実行してください。');
-      return false;
-    } else {
-      // キャンセルの場合は未設定項目を削除して続行
-      removeEmptyCustomLabels();
-      clearCustomLabelHighlights(); // 強調表示をクリア
-      return true;
-    }
-  }
-  
-  return true; // 問題なし
 }
 
 // 未設定のカスタムラベル項目を削除
