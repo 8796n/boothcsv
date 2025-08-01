@@ -348,6 +348,243 @@ table.label44 td {
   margin: 0 5px 10px 5px;
 }
 
+/* ファイル選択ボタンのカスタムスタイル */
+.file-input-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* 固定ヘッダーのスタイル */
+.fixed-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 8px 0;
+}
+
+.fixed-header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.fixed-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+  flex-shrink: 0;
+}
+
+.main-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.main-action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* コンパクトなファイル選択 */
+.file-input-wrapper-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.1);
+  padding: 6px 12px;
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+}
+
+.file-input-button-compact {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.file-input-button-compact:hover {
+  background: rgba(255,255,255,0.3);
+  transform: translateY(-1px);
+}
+
+.file-selected-info-compact {
+  font-size: 12px;
+  color: rgba(255,255,255,0.8);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-selected-info-compact.has-file {
+  color: #90EE90;
+  font-weight: 500;
+}
+
+/* コンパクトボタンスタイル */
+.btn-compact {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btn-compact:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.btn-compact:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-compact:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-compact.btn-primary {
+  background: linear-gradient(45deg, #4CAF50, #45a049);
+  color: white;
+}
+
+.btn-compact.btn-success {
+  background: linear-gradient(45deg, #2196F3, #1976D2);
+  color: white;
+}
+
+.btn-compact.btn-secondary {
+  background: linear-gradient(45deg, #FF9800, #F57C00);
+  color: white;
+}
+
+/* メインコンテンツのスタイル調整 */
+.main-content {
+  margin-top: 80px; /* 固定ヘッダーの高さ分の余白 */
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .fixed-header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  
+  .fixed-title {
+    font-size: 16px;
+    text-align: center;
+  }
+  
+  .main-actions {
+    justify-content: center;
+    gap: 10px;
+  }
+  
+  .main-action-buttons {
+    justify-content: center;
+    gap: 6px;
+  }
+  
+  .btn-compact {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  
+  .main-content {
+    margin-top: 120px;
+  }
+}
+
+/* 印刷時は固定ヘッダーを非表示 */
+@media print {
+  .fixed-header {
+    display: none !important;
+  }
+  
+  .main-content {
+    margin-top: 0 !important;
+  }
+}
+
+.file-input-button {
+  display: inline-block;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  background-color: #007bff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  user-select: none;
+}
+
+.file-input-button:hover {
+  background-color: #0056b3;
+}
+
+.file-input-button:active {
+  transform: scale(0.95);
+}
+
+.file-input-button:focus {
+  outline: none;
+  box-shadow: 0 0 5px #007bff;
+}
+
+/* 実際のファイル入力要素を隠す */
+.file-input-wrapper input[type="file"] {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* ファイル選択済み表示 */
+.file-selected-info {
+  margin-left: 10px;
+  font-size: 14px;
+  color: #666;
+  font-style: italic;
+}
+
+.file-selected-info.has-file {
+  color: #28a745;
+  font-weight: 500;
+}
+
 /* 共通ボタンベーススタイル */
 .btn-base {
   display: inline-block;
@@ -439,15 +676,57 @@ table.label44 td {
   box-sizing: border-box;
 }
 
-/* カスタムラベル行の表示制御 */
-#customLabelRow {
+/* 画像ドロップゾーンコンテナ（カスタムラベル設定と統一） */
+.dropzone-container,
+#imageDropZone {
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+  margin: 10px 0;
+  width: 100%;
+  max-width: 760px;
+  box-sizing: border-box;
+}
+
+/* カスタムラベル行と注文画像行の表示制御 */
+#customLabelRow,
+#orderImageRow {
   transition: opacity 0.3s ease;
 }
 
-#customLabelRow[style*="display: none"] {
+#customLabelRow[style*="display: none"],
+#orderImageRow[style*="display: none"] {
   opacity: 0;
   height: 0;
   overflow: hidden;
+}
+
+/* 機能有効化チェックボックスのスタイル統一 */
+#customLabelEnable,
+#orderImageEnable {
+  transform: scale(1.2);
+  margin-left: 8px;
+  cursor: pointer;
+}
+
+#customLabelEnable:checked,
+#orderImageEnable:checked {
+  accent-color: #007bff;
+}
+
+/* 機能有効化ラベルのスタイル統一 */
+label[for="customLabelEnable"],
+label[for="orderImageEnable"] {
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+label[for="customLabelEnable"]:hover,
+label[for="orderImageEnable"]:hover {
+  color: #007bff;
 }
 
 .custom-labels-header {

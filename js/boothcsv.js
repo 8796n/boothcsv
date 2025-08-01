@@ -722,6 +722,23 @@ class UnifiedDatabase {
       const transaction = this.db.transaction([this.qrDataStoreName], 'readwrite');
       const store = transaction.objectStore(this.qrDataStoreName);
       
+      // qrDataがnullの場合は削除処理
+      if (qrData === null || qrData === undefined) {
+        const deleteRequest = store.delete(orderNumber);
+        
+        deleteRequest.onsuccess = () => {
+          debugLog(`🗑️ QRデータを削除しました: ${orderNumber}`);
+          resolve();
+        };
+        
+        deleteRequest.onerror = () => {
+          console.error('QRデータ削除エラー:', deleteRequest.error);
+          reject(deleteRequest.error);
+        };
+        
+        return;
+      }
+      
       // QR画像のバイナリ最適化
       let optimizedQRImage = qrData.qrimage;
       let isBinary = false;
@@ -1300,7 +1317,7 @@ class StorageManager {
       return await db.checkQRDuplicate(qrContent, currentOrderNumber);
     } else {
       // localStorage版の重複チェック
-      const qrHash = this.generateQRHash(qrContent);
+      const qrHash = StorageManager.generateQRHash(qrContent);
       const duplicates = [];
       
       Object.keys(localStorage).forEach(key => {
@@ -1366,8 +1383,8 @@ window.addEventListener("load", async function(){
   let settings;
   
   try {
-    // 統合データベースの初期化
-    await initializeUnifiedDatabase();
+    // StorageManagerを通じて統合データベースを初期化（重複回避）
+    await StorageManager.ensureDatabase();
     
     // 設定の取得（非同期）
     settings = await StorageManager.getSettingsAsync();
@@ -1409,34 +1426,47 @@ window.addEventListener("load", async function(){
    // 画像ドロップゾーンの初期化
   const imageDropZoneElement = document.getElementById('imageDropZone');
   const imageDropZone = await createOrderImageDropZone();
-  imageDropZoneElement.appendChild(imageDropZone);
+  imageDropZoneElement.appendChild(imageDropZone.element);
   window.orderImageDropZone = imageDropZone;
 
   // フォントドロップゾーンの初期化
   initializeFontDropZone();
   
-  // カスタムフォントのCSS読み込み
-  loadCustomFontsCSS();
+  // フォントセクションの初期状態設定
+  await initializeFontSection();
+  
+  // カスタムフォントのCSS読み込み（非同期で実行）
+  setTimeout(async () => {
+    try {
+      await loadCustomFontsCSS();
+    } catch (error) {
+      console.warn('フォントCSS読み込みエラー:', error);
+    }
+  }, 100); // 少し遅らせて確実にfontDBが初期化されるのを待つ
 
   // 全ての画像をクリアするボタンのイベントリスナーを追加
   const clearAllButton = document.getElementById('clearAllButton');
-  clearAllButton.onclick = () => {
-    if (confirm('本当に全てのQR画像をクリアしますか？')) {
-      StorageManager.clearQRImages();
-      alert('全てのQR画像をクリアしました');
-      location.reload();
-    }
-  };
+  if (clearAllButton) {
+    clearAllButton.onclick = async () => {
+      if (confirm('本当に全てのQR画像をクリアしますか？')) {
+        await StorageManager.clearQRImages();
+        alert('全てのQR画像をクリアしました');
+        location.reload();
+      }
+    };
+  }
 
   // 全ての注文画像をクリアするボタンのイベントリスナーを追加
   const clearAllOrderImagesButton = document.getElementById('clearAllOrderImagesButton');
-  clearAllOrderImagesButton.onclick = () => {
-    if (confirm('本当に全ての注文画像（グローバル画像と個別画像）をクリアしますか？')) {
-      StorageManager.clearOrderImages();
-      alert('全ての注文画像をクリアしました');
-      location.reload();
-    }
-  };
+  if (clearAllOrderImagesButton) {
+    clearAllOrderImagesButton.onclick = async () => {
+      if (confirm('本当に全ての注文画像（グローバル画像と個別画像）をクリアしますか？')) {
+        await StorageManager.clearOrderImages();
+        alert('全ての注文画像をクリアしました');
+        location.reload();
+      }
+    };
+  }
 
   // 全てのカスタムフォントをクリアするボタンのイベントリスナーを追加
   const clearAllFontsButton = document.getElementById('clearAllFontsButton');
@@ -1457,25 +1487,25 @@ window.addEventListener("load", async function(){
   }
 
    // チェックボックスの状態が変更されたときにStorageManagerに保存
-   document.getElementById("labelyn").addEventListener("change", function() {
-     StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
+   document.getElementById("labelyn").addEventListener("change", async function() {
+     await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
    });
 
-   document.getElementById("labelskipnum").addEventListener("change", function() {
-     StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
+   document.getElementById("labelskipnum").addEventListener("change", async function() {
+     await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
    });
 
-   document.getElementById("sortByPaymentDate").addEventListener("change", function() {
-     StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
+   document.getElementById("sortByPaymentDate").addEventListener("change", async function() {
+     await StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
    });
 
    // 注文画像表示機能のイベントリスナー
-   document.getElementById("orderImageEnable").addEventListener("change", function() {
-     StorageManager.set(StorageManager.KEYS.ORDER_IMAGE_ENABLE, this.checked);
+   document.getElementById("orderImageEnable").addEventListener("change", async function() {
+     await StorageManager.set(StorageManager.KEYS.ORDER_IMAGE_ENABLE, this.checked);
      toggleOrderImageRow(this.checked);
      
      // 画像表示をリアルタイムで更新
-     updateAllOrderImagesVisibility(this.checked);
+     await updateAllOrderImagesVisibility(this.checked);
    });
 
   // カスタムラベル機能のイベントリスナー（遅延実行）
@@ -1493,14 +1523,14 @@ window.addEventListener("load", async function(){
 
 }, false);
 
-function clickstart() {
+async function clickstart() {
   // カスタムラベルのバリデーション
   if (!validateAndPromptCustomLabels()) {
     return; // バリデーション失敗時は処理を中断
   }
   
   clearPreviousResults();
-  const config = getConfigFromUI();
+  const config = await getConfigFromUI();
   
   Papa.parse(config.file, {
     header: true,
@@ -1511,14 +1541,14 @@ function clickstart() {
   });
 }
 
-function executeCustomLabelsOnly() {
+async function executeCustomLabelsOnly() {
   // カスタムラベルのバリデーション
   if (!validateAndPromptCustomLabels()) {
     return; // バリデーション失敗時は処理を中断
   }
   
   clearPreviousResults();
-  const config = getConfigFromUI();
+  const config = await getConfigFromUI();
   
   // カスタムラベルが有効でない場合は警告
   if (!config.customLabelEnable) {
@@ -1540,7 +1570,7 @@ function executeCustomLabelsOnly() {
   }
   
   // カスタムラベルのみを処理
-  processCustomLabelsOnly(config);
+  await processCustomLabelsOnly(config);
 }
 
 function clearPreviousResults() {
@@ -1549,7 +1579,7 @@ function clearPreviousResults() {
   }
 }
 
-function getConfigFromUI() {
+async function getConfigFromUI() {
   const file = document.getElementById("file").files[0];
   const labelyn = document.getElementById("labelyn").checked;
   const labelskip = document.getElementById("labelskipnum").value;
@@ -1560,10 +1590,10 @@ function getConfigFromUI() {
   const allCustomLabels = getCustomLabelsFromUI();
   const customLabels = customLabelEnable ? allCustomLabels.filter(label => label.enabled) : [];
   
-  StorageManager.set(StorageManager.KEYS.LABEL_SETTING, labelyn);
-  StorageManager.set(StorageManager.KEYS.LABEL_SKIP, labelskip);
-  StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, customLabelEnable);
-  StorageManager.setCustomLabels(allCustomLabels); // 全てのラベルを保存（有効/無効問わず）
+  await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, labelyn);
+  await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, labelskip);
+  await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, customLabelEnable);
+  await StorageManager.setCustomLabels(allCustomLabels); // 全てのラベルを保存（有効/無効問わず）
   
   const labelarr = [];
   const labelskipNum = parseInt(labelskip, 10) || 0;
@@ -1607,7 +1637,7 @@ async function processCSVResults(results, config) {
   }
 
   // 注文明細の生成
-  generateOrderDetails(results.data, config.labelarr);
+  await generateOrderDetails(results.data, config.labelarr);
   
   // ラベル生成（注文分＋カスタムラベル）- 複数シート対応
   if (config.labelyn) {
@@ -1627,7 +1657,7 @@ async function processCSVResults(results, config) {
     }
     
     if (totalLabelArray.length > 0) {
-      generateLabels(totalLabelArray);
+      await generateLabels(totalLabelArray);
     }
   }
   
@@ -1641,7 +1671,7 @@ async function processCSVResults(results, config) {
   updateButtonStates();
 }
 
-function processCustomLabelsOnly(config) {
+async function processCustomLabelsOnly(config) {
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   const labelskipNum = parseInt(config.labelskip, 10) || 0;
@@ -1702,7 +1732,7 @@ function processCustomLabelsOnly(config) {
     
     // このシートのラベルを生成
     if (labelarr.length > 0) {
-      generateLabels(labelarr);
+      await generateLabels(labelarr);
     }
     
     // 使い切ったラベルを削除
@@ -1717,7 +1747,7 @@ function processCustomLabelsOnly(config) {
   updateButtonStates();
 }
 
-function generateOrderDetails(data, labelarr) {
+async function generateOrderDetails(data, labelarr) {
   const tOrder = document.querySelector('#注文明細');
   
   for (let row of data) {
@@ -1728,13 +1758,13 @@ function generateOrderDetails(data, labelarr) {
     orderNumber = setOrderInfo(cOrder, row, labelarr);
     
     // 個別画像ドロップゾーンの作成
-    createIndividualImageDropZone(cOrder, orderNumber);
+    await createIndividualImageDropZone(cOrder, orderNumber);
     
     // 商品項目の処理
     processProductItems(cOrder, row);
     
     // 画像表示の処理
-    displayOrderImage(cOrder, orderNumber);
+    await displayOrderImage(cOrder, orderNumber);
     
     document.body.appendChild(cOrder);
   }
@@ -1760,7 +1790,7 @@ function setOrderInfo(cOrder, row, labelarr) {
   return orderNumber;
 }
 
-function createIndividualImageDropZone(cOrder, orderNumber) {
+async function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`個別画像ドロップゾーン作成開始 - 注文番号: "${orderNumber}"`);
   
   const individualDropZoneContainer = cOrder.querySelector('.individual-image-dropzone');
@@ -1770,7 +1800,7 @@ function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`個別ゾーン発見: ${!!individualZone}`);
   
   // 注文画像表示機能が無効の場合は個別画像ゾーン全体を非表示
-  const settings = StorageManager.getSettings();
+  const settings = await StorageManager.getSettingsAsync();
   debugLog(`注文画像表示設定: ${settings.orderImageEnable}`);
   
   if (!settings.orderImageEnable) {
@@ -1792,7 +1822,7 @@ function createIndividualImageDropZone(cOrder, orderNumber) {
     const normalizedOrderNumber = OrderNumberManager.normalize(orderNumber);
     
     try {
-      const individualImageDropZone = createIndividualOrderImageDropZone(normalizedOrderNumber);
+      const individualImageDropZone = await createIndividualOrderImageDropZone(normalizedOrderNumber);
       if (individualImageDropZone && individualImageDropZone.element) {
         individualDropZoneContainer.appendChild(individualImageDropZone.element);
         debugLog(`個別画像ドロップゾーン作成成功: ${normalizedOrderNumber}`);
@@ -1851,9 +1881,9 @@ function setProductItemElements(cItem, productInfo) {
   }
 }
 
-function displayOrderImage(cOrder, orderNumber) {
+async function displayOrderImage(cOrder, orderNumber) {
   // 注文画像表示機能が無効の場合は何もしない
-  const settings = StorageManager.getSettings();
+  const settings = await StorageManager.getSettingsAsync();
   if (!settings.orderImageEnable) {
     return;
   }
@@ -1864,7 +1894,7 @@ function displayOrderImage(cOrder, orderNumber) {
     const normalizedOrderNumber = OrderNumberManager.normalize(orderNumber);
     
     // 個別画像があるかチェック
-    const individualImage = StorageManager.getOrderImage(normalizedOrderNumber);
+    const individualImage = await StorageManager.getOrderImage(normalizedOrderNumber);
     if (individualImage) {
       imageToShow = individualImage;
     } else {
@@ -1891,7 +1921,7 @@ function displayOrderImage(cOrder, orderNumber) {
   }
 }
 
-function generateLabels(labelarr) {
+async function generateLabels(labelarr) {
   if (labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET) {
     for (let i = 0; i < labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET; i++) {
       labelarr.push("");
@@ -1916,7 +1946,7 @@ function generateLabels(labelarr) {
       tableL44.appendChild(tr);
       tr = document.createElement("tr");
     }
-    tr.appendChild(createLabel(label));
+    tr.appendChild(await createLabel(label));
     i++;
   }
   tableL44.appendChild(tr);
@@ -2059,7 +2089,7 @@ function createDropzone(div){
   div.appendChild(divDrop);
 }
 
-function createLabel(labelData=""){
+async function createLabel(labelData=""){
   const divQr = createDiv('qr');
   const divOrdernum = createDiv('ordernum');
   const divYamato = createDiv('yamato');
@@ -2068,15 +2098,18 @@ function createLabel(labelData=""){
   if (typeof labelData === 'string') {
     if (labelData) {
       addP(divOrdernum, labelData);
-      createDropzone(divQr);
-      const qr = StorageManager.getQRData(labelData);
-      if(qr){
+      const qr = await StorageManager.getQRData(labelData);
+      if(qr && qr['qrimage']){
+        // 保存されたQR画像がある場合は画像を表示
         const elImage = document.createElement('img');
         elImage.src = qr['qrimage'];
-        divQr.insertBefore(elImage, divQr.firstChild)
+        divQr.appendChild(elImage);
         addP(divYamato, qr['receiptnum']);
         addP(divYamato, qr['receiptpassword']);
         addEventQrReset(elImage);
+      } else {
+        // QR画像がない場合のみドロップゾーンを作成
+        createDropzone(divQr);
       }
     }
   } 
@@ -2121,12 +2154,41 @@ function createLabel(labelData=""){
 }
 
 function addEventQrReset(elImage){
-    elImage.addEventListener('click', function(event) {
+    elImage.addEventListener('click', async function(event) {
       event.preventDefault();
-      const elDrop = elImage.parentNode.querySelector("div");
-      elDrop.classList.add('dropzone');
-      elDrop.style.zIndex = 99;
-      elImage.parentNode.removeChild(elImage);
+      
+      // 親要素のQRセクションを取得
+      const qrDiv = elImage.parentNode;
+      const td = qrDiv.closest('td');
+      
+      if (td) {
+        // 注文番号を取得
+        const ordernumDiv = td.querySelector('.ordernum p');
+        const orderNumber = ordernumDiv ? OrderNumberManager.normalize(ordernumDiv.textContent) : null;
+        
+        // 保存されたQRデータを削除
+        if (orderNumber) {
+          try {
+            await StorageManager.setQRData(orderNumber, null);
+            console.log(`QRデータを削除しました: ${orderNumber}`);
+          } catch (error) {
+            console.error('QRデータ削除エラー:', error);
+          }
+        }
+        
+        // ヤマト運輸情報をクリア
+        const yamatoDiv = td.querySelector('.yamato');
+        if (yamatoDiv) {
+          yamatoDiv.innerHTML = '';
+        }
+        
+        // QR画像を削除
+        elImage.remove();
+        
+        // ドロップゾーンを復元
+        qrDiv.innerHTML = '';
+        createDropzone(qrDiv);
+      }
     });
 }
 
@@ -2138,13 +2200,13 @@ function hideDropping(elDrop) {
         elDrop.classList.remove('dropover');
 }
 
-function readQR(elImage){
+async function readQR(elImage){
   try {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = elImage.src;
     
-    img.onload = function() {
+    img.onload = async function() {
       try {
         const canv = document.createElement("canvas");
         const context = canv.getContext("2d");
@@ -2164,7 +2226,7 @@ function readQR(elImage){
             const ordernum = OrderNumberManager.normalize(rawOrderNum);
             
             // 重複チェック
-            const duplicates = StorageManager.checkQRDuplicate(barcode.data, ordernum);
+            const duplicates = await StorageManager.checkQRDuplicate(barcode.data, ordernum);
             if (duplicates.length > 0) {
               const duplicateList = duplicates.join(', ');
               const confirmMessage = `警告: このQRコードは既に以下の注文で使用されています:\n${duplicateList}\n\n同じQRコードを使用すると配送ミスの原因となる可能性があります。\n続行しますか？`;
@@ -2217,7 +2279,7 @@ function readQR(elImage){
               "qrhash": StorageManager.generateQRHash(barcode.data)
             };
             
-            StorageManager.setQRData(ordernum, qrData);
+            await StorageManager.setQRData(ordernum, qrData);
           } else {
             console.warn('QRコードの形式が正しくありません');
           }
@@ -2338,9 +2400,9 @@ async function createBaseImageDropZone(options = {}) {
     }
 
     const allOrderSections = document.querySelectorAll('section');
-    allOrderSections.forEach(orderSection => {
+    for (const orderSection of allOrderSections) {
       const imageContainer = orderSection.querySelector('.order-image-container');
-      if (!imageContainer) return;
+      if (!imageContainer) continue;
 
       // 統一化された方法で注文番号を取得
       const orderNumber = OrderNumberManager.getFromOrderSection(orderSection);
@@ -2348,8 +2410,8 @@ async function createBaseImageDropZone(options = {}) {
       // 個別画像があるかチェック（個別画像を最優先）
       let imageToShow = null;
       if (orderNumber) {
-        const individualImage = StorageManager.getOrderImage(orderNumber);
-        const globalImage = StorageManager.getOrderImage(); // グローバル画像を取得
+        const individualImage = await StorageManager.getOrderImage(orderNumber);
+        const globalImage = await StorageManager.getOrderImage(); // グローバル画像を取得
         
         debugLog(`注文番号: ${orderNumber}`);
         debugLog(`個別画像: ${individualImage ? 'あり' : 'なし'}`);
@@ -2365,7 +2427,7 @@ async function createBaseImageDropZone(options = {}) {
         }
       } else {
         // 注文番号がない場合はグローバル画像を使用
-        const globalImage = StorageManager.getOrderImage(); // グローバル画像を取得
+        const globalImage = await StorageManager.getOrderImage(); // グローバル画像を取得
         debugLog('注文番号なし、グローバル画像を使用', globalImage ? 'あり' : 'なし');
         imageToShow = globalImage;
       }
@@ -2380,7 +2442,7 @@ async function createBaseImageDropZone(options = {}) {
         imageDiv.appendChild(img);
         imageContainer.appendChild(imageDiv);
       }
-    });
+    }
   }
 
   async function updatePreview(imageUrl) {
@@ -2467,7 +2529,15 @@ async function createBaseImageDropZone(options = {}) {
   setupDragAndDropEvents(dropZone, updatePreview, isIndividual);
   setupClickEvent(dropZone, updatePreview, () => droppedImage);
 
-  return dropZone;
+  // メソッドを持つオブジェクトを返す
+  return {
+    element: dropZone,
+    getImage: () => droppedImage,
+    setImage: (imageData) => {
+      droppedImage = imageData;
+      updatePreview(imageData);
+    }
+  };
 }
 
 // ドラッグ&ドロップイベントの共通設定
@@ -2571,6 +2641,22 @@ async function createIndividualOrderImageDropZone(orderNumber) {
 document.getElementById("file").addEventListener("change", async function() {
   updateButtonStates();
   await updateCustomLabelsSummary();
+  
+  // 固定ヘッダーのファイル選択状態を更新
+  const fileInput = this;
+  const fileSelectedInfoCompact = document.getElementById('fileSelectedInfoCompact');
+  if (fileSelectedInfoCompact) {
+    if (fileInput.files && fileInput.files.length > 0) {
+      const fileName = fileInput.files[0].name;
+      // コンパクト表示用に短縮
+      const shortName = fileName.length > 15 ? fileName.substring(0, 12) + '...' : fileName;
+      fileSelectedInfoCompact.textContent = shortName;
+      fileSelectedInfoCompact.classList.add('has-file');
+    } else {
+      fileSelectedInfoCompact.textContent = '未選択';
+      fileSelectedInfoCompact.classList.remove('has-file');
+    }
+  }
 });
 
 // ページロード時に説明を表示し、ユーザーにファイル選択を促す
@@ -2609,11 +2695,11 @@ function toggleOrderImageRow(enabled) {
 }
 
 // 全ての注文明細の画像表示可視性を更新
-function updateAllOrderImagesVisibility(enabled) {
+async function updateAllOrderImagesVisibility(enabled) {
   debugLog(`画像表示機能が${enabled ? '有効' : '無効'}に変更されました`);
   
   const allOrderSections = document.querySelectorAll('section');
-  allOrderSections.forEach(orderSection => {
+  for (const orderSection of allOrderSections) {
     const imageContainer = orderSection.querySelector('.order-image-container');
     const individualZone = orderSection.querySelector('.individual-order-image-zone');
     const individualDropZoneContainer = orderSection.querySelector('.individual-image-dropzone');
@@ -2631,7 +2717,7 @@ function updateAllOrderImagesVisibility(enabled) {
       if (individualDropZoneContainer && orderNumber && individualDropZoneContainer.children.length === 0) {
         debugLog(`個別画像ドロップゾーンを後から作成: ${orderNumber}`);
         try {
-          const individualImageDropZone = createIndividualOrderImageDropZone(orderNumber);
+          const individualImageDropZone = await createIndividualOrderImageDropZone(orderNumber);
           if (individualImageDropZone && individualImageDropZone.element) {
             individualDropZoneContainer.appendChild(individualImageDropZone.element);
             debugLog(`個別画像ドロップゾーン作成成功: ${orderNumber}`);
@@ -2646,12 +2732,12 @@ function updateAllOrderImagesVisibility(enabled) {
         // 画像を表示
         let imageToShow = null;
         if (orderNumber) {
-          const individualImage = StorageManager.getOrderImage(orderNumber);
+          const individualImage = await StorageManager.getOrderImage(orderNumber);
           if (individualImage) {
             imageToShow = individualImage;
             debugLog(`個別画像を表示: ${orderNumber}`);
           } else {
-            const globalImage = StorageManager.getOrderImage();
+            const globalImage = await StorageManager.getOrderImage();
             if (globalImage) {
               imageToShow = globalImage;
               debugLog(`グローバル画像を表示: ${orderNumber}`);
@@ -2678,7 +2764,7 @@ function updateAllOrderImagesVisibility(enabled) {
         individualZone.style.display = 'none';
       }
     }
-  });
+  }
 }
 
 // 複数カスタムラベルの初期化
@@ -3054,20 +3140,30 @@ async function updateButtonStates() {
   const executeButton = document.getElementById("executeButton");
   const customLabelOnlyButton = document.getElementById("customLabelOnlyButton");
   const printButton = document.getElementById("printButton");
+  
+  // 固定ヘッダーのボタン要素も取得
+  const executeButtonCompact = document.getElementById("executeButtonCompact");
+  const customLabelOnlyButtonCompact = document.getElementById("customLabelOnlyButtonCompact");
+  const printButtonCompact = document.getElementById("printButtonCompact");
+  
   const customLabelEnable = document.getElementById("customLabelEnable");
 
   // CSV処理実行ボタンの状態
-  executeButton.disabled = fileInput.files.length === 0;
+  const executeDisabled = fileInput.files.length === 0;
+  if (executeButton) executeButton.disabled = executeDisabled;
+  if (executeButtonCompact) executeButtonCompact.disabled = executeDisabled;
 
   // カスタムラベル専用実行ボタンの状態
   const hasValidCustomLabels = customLabelEnable.checked && hasCustomLabelsWithContent();
-  customLabelOnlyButton.disabled = !hasValidCustomLabels;
+  if (customLabelOnlyButton) customLabelOnlyButton.disabled = !hasValidCustomLabels;
+  if (customLabelOnlyButtonCompact) customLabelOnlyButtonCompact.disabled = !hasValidCustomLabels;
 
   // 印刷ボタンの状態（何らかのコンテンツが生成されている場合に有効）
   const hasSheets = document.querySelectorAll('.sheet').length > 0;
   const hasLabels = document.querySelectorAll('.label44').length > 0;
   const hasContent = hasSheets || hasLabels;
-  printButton.disabled = !hasContent;
+  if (printButton) printButton.disabled = !hasContent;
+  if (printButtonCompact) printButtonCompact.disabled = !hasContent;
 
   // カスタムラベル枚数の上限を更新
   await updateCustomLabelsSummary();
@@ -3259,13 +3355,23 @@ function setupRichTextFormatting(editor) {
     // クリック外でメニューを閉じる
     setTimeout(() => {
       document.addEventListener('click', function closeMenu() {
-        if (menu.parentNode) {
-          menu.parentNode.removeChild(menu);
-        }
+        closeContextMenu(menu);
         document.removeEventListener('click', closeMenu);
       });
     }, 100);
   });
+}
+
+// メニューを閉じるヘルパー関数（フェードアウト効果付き）
+function closeContextMenu(menu) {
+  if (menu && menu.parentNode) {
+    menu.style.opacity = '0';
+    setTimeout(() => {
+      if (menu.parentNode) {
+        menu.parentNode.removeChild(menu);
+      }
+    }, 200);
+  }
 }
 
 // フォントサイズ選択メニューを作成（非同期）
@@ -3277,13 +3383,18 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
     position: fixed;
     background: white;
     border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 5px 0;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    border-radius: 6px;
+    padding: 8px 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     z-index: 10000;
-    font-family: sans-serif;
-    min-width: 140px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-width: 160px;
+    max-width: 250px;
+    max-height: 400px;
+    overflow-y: auto;
     visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease;
   `;
   
   // 一時的に追加してサイズを測定
@@ -3334,9 +3445,7 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
         applyFormatToSelection(option.command, editor);
         
         // メニューを閉じる
-        if (menu.parentNode) {
-          menu.parentNode.removeChild(menu);
-        }
+        closeContextMenu(menu);
         
         saveCustomLabels();
       }, 10);
@@ -3401,9 +3510,7 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
           applyFontSizeToSelection(size, editor);
           
           // メニューを閉じる
-          if (menu.parentNode) {
-            menu.parentNode.removeChild(menu);
-          }
+          closeContextMenu(menu);
           
           saveCustomLabels();
         }, 10);
@@ -3492,9 +3599,7 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
               applyFontFamilyToSelection('', editor);
             }
             
-            if (menu.parentNode) {
-              menu.parentNode.removeChild(menu);
-            }
+            closeContextMenu(menu);
             
             saveCustomLabels();
           }, 10);
@@ -3560,9 +3665,7 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
               setTimeout(() => {
                 applyFontFamilyToSelection(font.family, editor);
                 
-                if (menu.parentNode) {
-                  menu.parentNode.removeChild(menu);
-                }
+                closeContextMenu(menu);
                 
                 saveCustomLabels();
               }, 10);
@@ -3618,9 +3721,7 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
               setTimeout(() => {
                 applyFontFamilyToSelection(fontName, editor);
                 
-                if (menu.parentNode) {
-                  menu.parentNode.removeChild(menu);
-                }
+                closeContextMenu(menu);
                 
                 saveCustomLabels();
               }, 10);
@@ -3639,23 +3740,56 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
   const menuRect = menu.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const scrollX = window.scrollX || window.pageXOffset;
+  const scrollY = window.scrollY || window.pageYOffset;
   
-  // 右端からはみ出る場合は左にずらす
+  // 安全なマージンを設定
+  const margin = 10;
+  
+  // 水平位置の調整
   let adjustedX = x;
   if (x + menuRect.width > viewportWidth) {
-    adjustedX = viewportWidth - menuRect.width - 5;
+    // 右端からはみ出る場合は左にずらす
+    adjustedX = viewportWidth - menuRect.width - margin;
+  }
+  // 左端からはみ出る場合は右にずらす
+  if (adjustedX < margin) {
+    adjustedX = margin;
   }
   
-  // 下端からはみ出る場合は上にずらす
+  // 垂直位置の調整
   let adjustedY = y;
   if (y + menuRect.height > viewportHeight) {
-    adjustedY = y - menuRect.height;
+    // 下端からはみ出る場合は上にずらす
+    adjustedY = y - menuRect.height - margin;
   }
+  // 上端からはみ出る場合の処理
+  if (adjustedY < scrollY + margin) {
+    // 画面上端より上に行く場合は、画面内の適切な位置に配置
+    if (y + menuRect.height <= viewportHeight) {
+      // 元の位置（下向き）で画面内に収まる場合
+      adjustedY = y;
+    } else {
+      // どちらも画面からはみ出る場合は、画面上端に近い位置に配置
+      adjustedY = scrollY + margin;
+    }
+  }
+  
+  // 最終的な位置の安全性チェック
+  adjustedX = Math.max(margin, Math.min(adjustedX, viewportWidth - menuRect.width - margin));
+  adjustedY = Math.max(scrollY + margin, Math.min(adjustedY, scrollY + viewportHeight - menuRect.height - margin));
   
   // 調整後の位置を設定して表示
   menu.style.left = `${adjustedX}px`;
   menu.style.top = `${adjustedY}px`;
   menu.style.visibility = 'visible';
+  
+  // フェードイン効果
+  setTimeout(() => {
+    menu.style.opacity = '1';
+  }, 10);
+  
+  // console.log(`メニュー位置調整: 元(${x}, ${y}) → 調整後(${adjustedX}, ${adjustedY}), サイズ: ${menuRect.width}x${menuRect.height}`);
   
   return menu;
 }
@@ -4002,23 +4136,43 @@ function setupTextOnlyEditor(editor) {
 // 印刷ボタンのイベントリスナーを変更
 document.addEventListener('DOMContentLoaded', function() {
   const printButton = document.getElementById('printButton');
+  const printButtonCompact = document.getElementById('printButtonCompact');
   
-  // 既存のonClickを保存
-  const originalOnClick = printButton.onclick;
-  
-  // 新しい処理を設定
-  printButton.onclick = function() {
-    // まず印刷を実行
-    window.print();
+  // 既存の印刷ボタンがある場合
+  if (printButton) {
+    // 既存のonClickを保存
+    const originalOnClick = printButton.onclick;
     
-    // 印刷ダイアログが閉じた後に実行される
-    setTimeout(() => {
-      // 印刷完了の確認
-      if (confirm('印刷が完了しましたか？完了した場合、次回のスキップ枚数を更新します。')) {
-        updateSkipCount();
-      }
-    }, 100);
-  };
+    // 新しい処理を設定
+    printButton.onclick = function() {
+      // まず印刷を実行
+      window.print();
+      
+      // 印刷ダイアログが閉じた後に実行される
+      setTimeout(() => {
+        // 印刷後の処理があれば実行
+        if (originalOnClick) {
+          originalOnClick.call(this);
+        }
+      }, 1000);
+    };
+  }
+  
+  // 固定ヘッダーの印刷ボタンがある場合
+  if (printButtonCompact) {
+    printButtonCompact.onclick = function() {
+      // まず印刷を実行
+      window.print();
+      
+      // 印刷ダイアログが閉じた後に実行される
+      setTimeout(() => {
+        // 印刷完了の確認
+        if (confirm('印刷が完了しましたか？完了した場合、次回のスキップ枚数を更新します。')) {
+          updateSkipCount();
+        }
+      }, 1000);
+    };
+  }
 });
 
 // スキップ枚数を更新する関数
@@ -4062,6 +4216,11 @@ async function updateSkipCount() {
 
 // カスタムフォント管理機能
 function initializeFontDropZone() {
+  // FontDatabaseを初期化（まだ初期化されていない場合）
+  if (!fontDB) {
+    fontDB = new FontDatabase();
+  }
+
   const dropZone = document.createElement('div');
   dropZone.style.cssText = `
     border: 2px dashed #ccc;
@@ -4462,7 +4621,7 @@ async function removeFontFromList(fontName) {
   }
 }
 
-// シンプルで確実なスタイル適用関数
+// シンプルで確実なスタイル適用関数（ネスト防止版・改良版）
 function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = false) {
   const selection = window.getSelection();
   
@@ -4472,99 +4631,44 @@ function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = fa
   
   try {
     const range = selection.getRangeAt(0);
-    console.log(`スタイル変更: "${styleProperty}: ${styleValue}" を適用中...`);
+    debugLog(`スタイル変更: "${styleProperty}: ${styleValue}" を適用中...`);
     
     // 選択範囲のテキスト内容を取得
     const selectedText = range.toString();
-    console.log('選択されたテキスト:', selectedText);
+    debugLog('選択されたテキスト:', selectedText);
     
     if (!selectedText) {
-      console.log('選択されたテキストがありません');
+      debugLog('選択されたテキストがありません');
       return;
     }
     
-    // 既存のスタイルを簡単に収集（選択範囲の最初の要素から）
-    let existingStyles = '';
-    const startContainer = range.startContainer;
-    let currentNode = startContainer.nodeType === Node.TEXT_NODE ? startContainer.parentNode : startContainer;
+    // 選択範囲の分析
+    const rangeInfo = analyzeSelectionRange(range);
     
-    // 親要素をたどってspan要素を探す（最大3層まで）
-    for (let i = 0; i < 3 && currentNode && currentNode !== editor; i++) {
-      if (currentNode.tagName === 'SPAN') {
-        const style = currentNode.getAttribute('style') || '';
-        console.log('発見したspan要素:', currentNode, 'スタイル:', style);
-        
-        if (style) {
-          // 除外するプロパティ以外を収集
-          const styleRules = style.split(';').filter(rule => {
-            const trimmed = rule.trim();
-            if (!trimmed) return false;
-            const property = trimmed.split(':')[0].trim().toLowerCase();
-            return property !== styleProperty;
-          });
-          
-          existingStyles = styleRules.join('; ');
-          console.log('既存スタイル（除外後）:', existingStyles);
-        }
-        break; // 最初に見つかったspan要素を使用
-      }
-      currentNode = currentNode.parentNode;
-    }
-    
-    // 選択範囲の内容を削除
-    range.deleteContents();
-    
-    // デフォルト値でない場合、または既存スタイルがある場合はspanで囲む
-    if (!isDefault || existingStyles) {
-      console.log('新しいspan要素を作成します');
+    if (rangeInfo.isCompleteSpan) {
+      debugLog('既存span要素を更新:', rangeInfo.targetSpan);
+      updateSpanStyle(rangeInfo.targetSpan, styleProperty, styleValue, isDefault);
       
-      const newSpan = document.createElement('span');
+    } else if (rangeInfo.isPartialSpan) {
+      debugLog('部分選択でspan分割処理');
+      handlePartialSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault);
       
-      // 既存のスタイルを適用
-      if (existingStyles) {
-        newSpan.setAttribute('style', existingStyles);
-      }
+    } else if (rangeInfo.isMultiSpan) {
+      debugLog('複数span要素を統合処理:', rangeInfo.multiSpans.length + '個');
+      handleMultiSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault);
       
-      // 新しいスタイルを設定（デフォルト値でない場合のみ）
-      if (!isDefault) {
-        if (styleProperty === 'font-family') {
-          newSpan.style.fontFamily = styleValue;
-        } else if (styleProperty === 'font-size') {
-          newSpan.style.fontSize = styleValue + (typeof styleValue === 'number' ? 'pt' : '');
-        }
-      }
-      
-      newSpan.textContent = selectedText;
-      range.insertNode(newSpan);
-      
-      // 新しいspan要素を選択状態にする
-      range.selectNodeContents(newSpan);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      
-      console.log(`スタイル "${styleProperty}: ${styleValue}" を適用しました`);
     } else {
-      // デフォルト値で既存スタイルもない場合はプレーンテキストを挿入
-      console.log('プレーンテキストを挿入します');
-      
-      const textNode = document.createTextNode(selectedText);
-      range.insertNode(textNode);
-      
-      range.setStartBefore(textNode);
-      range.setEndAfter(textNode);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      
-      console.log('デフォルト値に戻しました');
+      debugLog('新しいspan要素を作成');
+      createNewSpanForSelection(range, selectedText, styleProperty, styleValue, isDefault);
     }
     
-    // DOM構造の確認用ログ
-    console.log('処理後のエディタHTML:', editor.innerHTML);
+    debugLog(`スタイル "${styleProperty}: ${styleValue}" を適用しました`);
+    debugLog('処理後のエディタHTML:', editor.innerHTML);
     
     // エディタ全体の空のspan要素を掃除
     cleanupEmptySpans(editor);
     
-    console.log('スタイル変更完了');
+    debugLog('スタイル変更完了');
     
   } catch (error) {
     console.warn('スタイル適用エラー:', error);
@@ -4572,6 +4676,214 @@ function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = fa
   
   // エディタにフォーカスを戻す
   editor.focus();
+}
+
+// 選択範囲を分析するヘルパー関数
+function analyzeSelectionRange(range) {
+  const commonAncestor = range.commonAncestorContainer;
+  let targetSpan = null;
+  let isCompleteSpan = false;
+  let isPartialSpan = false;
+  let isMultiSpan = false;
+  let multiSpans = [];
+  
+  // テキストノードの場合は親要素をチェック
+  if (commonAncestor.nodeType === Node.TEXT_NODE) {
+    const parent = commonAncestor.parentElement;
+    if (parent && parent.tagName === 'SPAN') {
+      const spanText = parent.textContent;
+      const selectedText = range.toString();
+      
+      if (selectedText === spanText) {
+        // 完全一致：span要素全体が選択されている
+        targetSpan = parent;
+        isCompleteSpan = true;
+      } else {
+        // 部分一致：span要素の一部が選択されている
+        targetSpan = parent;
+        isPartialSpan = true;
+      }
+    }
+  } else if (commonAncestor.tagName === 'SPAN') {
+    targetSpan = commonAncestor;
+    isCompleteSpan = true;
+  } else {
+    // 複数のspan要素にまたがる選択の可能性をチェック
+    const selectedText = range.toString();
+    const spans = Array.from(commonAncestor.querySelectorAll('span'));
+    
+    // 選択範囲に含まれるspan要素を検出
+    const rangeSpans = spans.filter(span => {
+      const spanRange = document.createRange();
+      spanRange.selectNodeContents(span);
+      
+      // 選択範囲とspan要素が重複するかチェック
+      return range.intersectsNode(span) && selectedText.includes(span.textContent);
+    });
+    
+    if (rangeSpans.length > 1) {
+      // 複数のspan要素にまたがる選択
+      isMultiSpan = true;
+      multiSpans = rangeSpans;
+    }
+  }
+  
+  return {
+    targetSpan,
+    isCompleteSpan,
+    isPartialSpan,
+    isMultiSpan,
+    multiSpans,
+    commonAncestor
+  };
+}
+
+// span要素のスタイルを更新するヘルパー関数
+function updateSpanStyle(span, styleProperty, styleValue, isDefault) {
+  const currentStyle = span.getAttribute('style') || '';
+  const styleMap = parseStyleString(currentStyle);
+  
+  // 新しいスタイルを適用または削除
+  if (isDefault) {
+    styleMap.delete(styleProperty);
+  } else {
+    const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
+    styleMap.set(styleProperty, styleValue + unit);
+  }
+  
+  // スタイル属性を再構築
+  if (styleMap.size === 0) {
+    span.removeAttribute('style');
+  } else {
+    const newStyle = Array.from(styleMap.entries())
+      .map(([prop, val]) => `${prop}: ${val}`)
+      .join('; ');
+    span.setAttribute('style', newStyle);
+  }
+  
+  debugLog('span要素のスタイルを更新:', span.getAttribute('style') || '(スタイルなし)');
+}
+
+// 部分選択時のspan分割処理
+function handlePartialSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault) {
+  const targetSpan = rangeInfo.targetSpan;
+  const selectedText = range.toString();
+  
+  // 元のspan要素のスタイルを取得
+  const originalStyle = targetSpan.getAttribute('style') || '';
+  
+  // 選択範囲の前後でspan要素を分割
+  const beforeText = targetSpan.textContent.substring(0, targetSpan.textContent.indexOf(selectedText));
+  const afterText = targetSpan.textContent.substring(targetSpan.textContent.indexOf(selectedText) + selectedText.length);
+  
+  // 親要素を取得
+  const parent = targetSpan.parentNode;
+  const nextSibling = targetSpan.nextSibling;
+  
+  // 元のspan要素を削除
+  targetSpan.remove();
+  
+  // 新しい要素を作成（順番通りに）
+  const elements = [];
+  
+  // 1. 前の部分があれば元のスタイルで作成
+  if (beforeText) {
+    const beforeSpan = document.createElement('span');
+    beforeSpan.setAttribute('style', originalStyle);
+    beforeSpan.textContent = beforeText;
+    elements.push(beforeSpan);
+  }
+  
+  // 2. 選択部分に新しいスタイルを適用
+  const selectedSpan = document.createElement('span');
+  const styleMap = parseStyleString(originalStyle);
+  
+  if (isDefault) {
+    styleMap.delete(styleProperty);
+  } else {
+    const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
+    styleMap.set(styleProperty, styleValue + unit);
+  }
+  
+  if (styleMap.size > 0) {
+    const newStyle = Array.from(styleMap.entries())
+      .map(([prop, val]) => `${prop}: ${val}`)
+      .join('; ');
+    selectedSpan.setAttribute('style', newStyle);
+  }
+  selectedSpan.textContent = selectedText;
+  elements.push(selectedSpan);
+  
+  // 3. 後の部分があれば元のスタイルで作成
+  if (afterText) {
+    const afterSpan = document.createElement('span');
+    afterSpan.setAttribute('style', originalStyle);
+    afterSpan.textContent = afterText;
+    elements.push(afterSpan);
+  }
+  
+  // 正しい順序で全ての要素を挿入
+  elements.forEach(element => {
+    if (nextSibling) {
+      parent.insertBefore(element, nextSibling);
+    } else {
+      parent.appendChild(element);
+    }
+  });
+  
+  // 新しい選択範囲を設定
+  range.selectNodeContents(selectedSpan);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// 複数span要素選択時の統合処理（改行保持版）
+function handleMultiSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault) {
+  const spans = rangeInfo.multiSpans;
+  
+  debugLog('複数span統合:', spans.map(s => s.outerHTML));
+  
+  // 複数span選択時は個別にスタイルを適用する方式に変更
+  // これにより改行や他の要素を保持
+  spans.forEach(span => {
+    updateSpanStyle(span, styleProperty, styleValue, isDefault);
+  });
+  
+  debugLog('個別スタイル適用完了');
+  
+  // 選択範囲を維持
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+    const currentRange = selection.getRangeAt(0);
+    selection.removeAllRanges();
+    selection.addRange(currentRange);
+  }
+}
+
+// 新しいspan要素を作成するヘルパー関数
+function createNewSpanForSelection(range, selectedText, styleProperty, styleValue, isDefault) {
+  if (isDefault) return; // デフォルト値の場合は新しいspan要素を作成しない
+  
+  const newSpan = document.createElement('span');
+  
+  // スタイルを設定
+  if (styleProperty === 'font-family') {
+    newSpan.style.fontFamily = styleValue;
+  } else if (styleProperty === 'font-size') {
+    newSpan.style.fontSize = styleValue + (typeof styleValue === 'number' ? 'pt' : '');
+  }
+  
+  // 選択範囲の内容を削除してspan要素を挿入
+  range.deleteContents();
+  newSpan.textContent = selectedText;
+  range.insertNode(newSpan);
+  
+  // 新しいspan要素を選択状態にする
+  range.selectNodeContents(newSpan);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 // フォントファミリーを選択範囲に適用（統合された関数を使用）
@@ -4620,7 +4932,7 @@ function applyDefaultFontToSelection(editor) {
     }
     
     if (targetSpan) {
-      console.log('対象span要素を発見:', targetSpan.outerHTML);
+      debugLog('対象span要素を発見:', targetSpan.outerHTML);
       
       // font-family以外のスタイルを保持
       const currentStyle = targetSpan.getAttribute('style') || '';
@@ -4634,7 +4946,7 @@ function applyDefaultFontToSelection(editor) {
       if (cleanStyle.trim()) {
         // 他のスタイルがある場合は、font-familyのみ削除
         targetSpan.setAttribute('style', cleanStyle);
-        console.log('font-familyスタイルを削除:', cleanStyle);
+        debugLog('font-familyスタイルを削除:', cleanStyle);
       } else {
         // スタイルがfont-familyのみの場合は、span要素を完全に削除
         const parent = targetSpan.parentNode;
@@ -4643,7 +4955,7 @@ function applyDefaultFontToSelection(editor) {
         if (parent) {
           const textNode = document.createTextNode(textContent);
           parent.replaceChild(textNode, targetSpan);
-          console.log('span要素を削除し、テキストノードに置換');
+          debugLog('span要素を削除し、テキストノードに置換');
           
           // 新しいテキストノードを選択
           range.selectNode(textNode);
@@ -4652,13 +4964,13 @@ function applyDefaultFontToSelection(editor) {
         }
       }
     } else {
-      console.log('対象のspan要素が見つからないため、通常処理を実行');
+      debugLog('対象のspan要素が見つからないため、通常処理を実行');
       // フォールバック: 元のapplyStyleToSelection関数を使用
       applyStyleToSelection('font-family', '', editor, true);
     }
     
-    console.log('デフォルトフォントに戻しました');
-    console.log('処理後のエディタHTML:', editor.innerHTML);
+    debugLog('デフォルトフォントに戻しました');
+    debugLog('処理後のエディタHTML:', editor.innerHTML);
     
     // エディタ全体の空のspan要素を掃除
     cleanupEmptySpans(editor);
@@ -4673,54 +4985,85 @@ function applyDefaultFontToSelection(editor) {
   editor.focus();
 }
 
-// 空のspan要素やfont-family以外にスタイルを持たないspan要素を掃除
+// 空のspan要素やネストしたspan要素を掃除（改良版）
 function cleanupEmptySpans(editor) {
   console.log('cleanupEmptySpans開始');
   let removedCount = 0;
   
   try {
-    // 複数回実行して、ネストしたspan要素も処理
-    for (let i = 0; i < 3; i++) {
-      const spans = editor.querySelectorAll('span');
+    // 最大5回実行して、深いネストも処理
+    for (let round = 0; round < 5; round++) {
+      const spans = Array.from(editor.querySelectorAll('span'));
       let currentRoundRemoved = 0;
       
-      spans.forEach(span => {
+      // 後ろから処理してインデックスのずれを防ぐ
+      for (let i = spans.length - 1; i >= 0; i--) {
+        const span = spans[i];
+        if (!span.parentNode) continue; // 既に削除されている場合はスキップ
+        
         const style = span.getAttribute('style') || '';
         const trimmedStyle = style.trim();
+        const hasText = span.textContent.trim() !== '';
         
         // スタイルが空の場合
         if (!trimmedStyle) {
-          const parent = span.parentNode;
-          if (parent) {
-            // span要素の内容を親要素に直接移動
+          if (hasText) {
+            // テキストがある場合は内容を親に移動
+            const parent = span.parentNode;
             while (span.firstChild) {
               parent.insertBefore(span.firstChild, span);
             }
             parent.removeChild(span);
             currentRoundRemoved++;
+            console.log('空スタイルのspan削除:', span.textContent);
+          } else {
+            // テキストもない場合は単純に削除
+            span.parentNode.removeChild(span);
+            currentRoundRemoved++;
+            console.log('空のspan削除');
           }
         } else {
-          // font-familyのみで他にスタイルがないかチェック
-          const styleRules = trimmedStyle.split(';')
-            .map(rule => rule.trim())
-            .filter(rule => rule.length > 0);
-          
-          const hasOnlyFontFamily = styleRules.length === 1 && 
-            styleRules[0].toLowerCase().startsWith('font-family');
-          
-          if (hasOnlyFontFamily) {
-            const parent = span.parentNode;
-            if (parent) {
-              // span要素の内容を親要素に直接移動
-              while (span.firstChild) {
-                parent.insertBefore(span.firstChild, span);
+          // 重複したネストの処理
+          const parent = span.parentNode;
+          if (parent && parent.tagName === 'SPAN') {
+            const parentStyle = parent.getAttribute('style') || '';
+            
+            // 親と子で同じスタイルプロパティがある場合
+            const childStyles = parseStyles(trimmedStyle);
+            const parentStyles = parseStyles(parentStyle);
+            
+            let hasConflict = false;
+            for (const [property, value] of childStyles) {
+              if (parentStyles.has(property)) {
+                hasConflict = true;
+                break;
               }
-              parent.removeChild(span);
+            }
+            
+            if (hasConflict) {
+              // 子要素のスタイルを優先し、親の重複スタイルを削除
+              const mergedStyles = new Map([...parentStyles, ...childStyles]);
+              const mergedStyleString = Array.from(mergedStyles.entries())
+                .map(([prop, val]) => `${prop}: ${val}`)
+                .join('; ');
+              
+              // 新しいspan要素を作成
+              const newSpan = document.createElement('span');
+              newSpan.setAttribute('style', mergedStyleString);
+              
+              // 子要素の内容をコピー
+              while (span.firstChild) {
+                newSpan.appendChild(span.firstChild);
+              }
+              
+              // 親要素を新しいspan要素で置換
+              parent.parentNode.replaceChild(newSpan, parent);
               currentRoundRemoved++;
+              console.log('ネストspan統合:', mergedStyleString);
             }
           }
         }
-      });
+      }
       
       removedCount += currentRoundRemoved;
       
@@ -4730,10 +5073,24 @@ function cleanupEmptySpans(editor) {
       }
     }
     
-    console.log(`cleanupEmptySpans完了: ${removedCount}個のspanを削除`);
+    console.log(`cleanupEmptySpans完了: ${removedCount}個のspanを処理`);
   } catch (error) {
     console.warn('span要素掃除エラー:', error);
   }
+}
+
+// CSSスタイル文字列をMapに変換するヘルパー関数
+function parseStyles(styleString) {
+  const styles = new Map();
+  if (styleString) {
+    styleString.split(';').forEach(rule => {
+      const [property, value] = rule.split(':').map(s => s.trim());
+      if (property && value) {
+        styles.set(property.toLowerCase(), value);
+      }
+    });
+  }
+  return styles;
 }
 
 // フォントサイズを選択範囲に適用（統合された関数を使用）
@@ -4742,39 +5099,160 @@ function applyFontSizeToSelection(fontSize, editor) {
 }
 
 // 選択範囲から既存のスタイルを収集する関数（指定されたプロパティを除外）
-// 空のspan要素を掃除する関数（シンプル版）
+// 包括的なspan要素クリーンアップ関数（ネスト解決・改良版）
 function cleanupEmptySpans(editor) {
-  console.log('cleanupEmptySpans開始');
+  if (!editor) return;
   
-  let removedCount = 0;
-  const spans = editor.querySelectorAll('span');
+  let deletedCount = 0;
+  let processedInRound = 0;
+  let roundCount = 0;
+  const maxRounds = 10; // 無限ループ防止
   
-  // 後ろから処理して、インデックスのずれを防ぐ
-  Array.from(spans).reverse().forEach(span => {
-    // 空のspanを削除
-    if (span.innerHTML.trim() === '' || span.textContent.trim() === '') {
-      console.log('空のspanを削除:', span);
-      span.remove();
-      removedCount++;
-      return;
-    }
+  debugLog('cleanupEmptySpans: クリーンアップ開始');
+  debugLog('処理前HTML:', editor.innerHTML);
+  
+  // 複数回実行して深いネストを解決
+  do {
+    processedInRound = 0;
+    roundCount++;
+    debugLog(`cleanupEmptySpans: ラウンド ${roundCount}`);
     
-    // スタイル属性が空のspanは子要素を親に移動して削除
-    const style = span.getAttribute('style') || '';
-    if (style.trim() === '') {
-      console.log('スタイルが空のspanを削除:', span);
-      const parent = span.parentNode;
-      if (parent) {
+    // 1. 空のspan要素を削除
+    const emptySpans = editor.querySelectorAll('span:empty');
+    processedInRound += emptySpans.length;
+    emptySpans.forEach(span => {
+      debugLog('空のspan要素を削除:', span.outerHTML);
+      span.remove();
+      deletedCount++;
+    });
+    
+    // 2. スタイルのないspan要素を削除
+    const unstyledSpans = editor.querySelectorAll('span:not([style]), span[style=""]');
+    unstyledSpans.forEach(span => {
+      if (span.children.length === 0) { // テキストのみの場合
+        debugLog('スタイルなしspan要素をアンラップ:', span.textContent);
+        const parent = span.parentNode;
         while (span.firstChild) {
           parent.insertBefore(span.firstChild, span);
         }
         span.remove();
-        removedCount++;
+        processedInRound++;
+        deletedCount++;
       }
+    });
+    
+    // 3. ネストしたspan要素を統合
+    const nestedSpans = editor.querySelectorAll('span span');
+    nestedSpans.forEach(innerSpan => {
+      const outerSpan = innerSpan.parentElement;
+      if (outerSpan && outerSpan.tagName === 'SPAN') {
+        debugLog('ネストspan検出:', {
+          outer: outerSpan.outerHTML,
+          inner: innerSpan.outerHTML
+        });
+        
+        // 子要素が1つのspan要素のみの場合
+        if (outerSpan.children.length === 1 && outerSpan.firstElementChild === innerSpan) {
+          // スタイルを統合
+          const mergedStyle = mergeSpanStyles(outerSpan, innerSpan);
+          debugLog('統合されたスタイル:', mergedStyle);
+          
+          // 外側のspan要素のスタイルを更新
+          if (mergedStyle) {
+            outerSpan.setAttribute('style', mergedStyle);
+          } else {
+            outerSpan.removeAttribute('style');
+          }
+          
+          // 内側のspan要素の内容を外側に移動
+          while (innerSpan.firstChild) {
+            outerSpan.insertBefore(innerSpan.firstChild, innerSpan);
+          }
+          innerSpan.remove();
+          processedInRound++;
+          deletedCount++;
+          debugLog('ネストspan統合完了:', outerSpan.outerHTML);
+        }
+      }
+    });
+    
+    // 4. 同じスタイルの隣接span要素を統合
+    const spans = Array.from(editor.querySelectorAll('span[style]'));
+    for (let i = 0; i < spans.length - 1; i++) {
+      const currentSpan = spans[i];
+      const nextSpan = spans[i + 1];
+      
+      if (nextSpan && currentSpan.nextSibling === nextSpan) {
+        const currentStyle = normalizeStyle(currentSpan.getAttribute('style') || '');
+        const nextStyle = normalizeStyle(nextSpan.getAttribute('style') || '');
+        
+        if (currentStyle === nextStyle) {
+          debugLog('隣接span要素を統合:', currentSpan.textContent, '+', nextSpan.textContent);
+          currentSpan.textContent += nextSpan.textContent;
+          nextSpan.remove();
+          processedInRound++;
+          deletedCount++;
+        }
+      }
+    }
+    
+    debugLog(`ラウンド ${roundCount} 完了: ${processedInRound}個処理`);
+    
+  } while (processedInRound > 0 && roundCount < maxRounds);
+  
+  debugLog(`cleanupEmptySpans完了: 合計${deletedCount}個のspan要素を処理/削除`);
+  debugLog('処理後HTML:', editor.innerHTML);
+  
+  return deletedCount;
+}
+
+// span要素のスタイルを統合するヘルパー関数
+function mergeSpanStyles(outerSpan, innerSpan) {
+  const outerStyle = parseStyleString(outerSpan.getAttribute('style') || '');
+  const innerStyle = parseStyleString(innerSpan.getAttribute('style') || '');
+  
+  // 内側のスタイルが優先される
+  const mergedStyle = new Map([...outerStyle, ...innerStyle]);
+  
+  if (mergedStyle.size === 0) {
+    return '';
+  }
+  
+  return Array.from(mergedStyle.entries())
+    .map(([prop, val]) => `${prop}: ${val}`)
+    .join('; ');
+}
+
+// スタイル文字列を正規化するヘルパー関数
+function normalizeStyle(styleString) {
+  if (!styleString) return '';
+  
+  const styleMap = parseStyleString(styleString);
+  return Array.from(styleMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([prop, val]) => `${prop}: ${val}`)
+    .join('; ');
+}
+
+// スタイル文字列をMapに変換するヘルパー関数
+function parseStyleString(styleString) {
+  const styleMap = new Map();
+  
+  if (!styleString) return styleMap;
+  
+  styleString.split(';').forEach(rule => {
+    const [property, value] = rule.split(':').map(s => s.trim());
+    if (property && value) {
+      styleMap.set(property.toLowerCase(), value);
     }
   });
   
-  console.log(`cleanupEmptySpans完了: ${removedCount}個のspanを削除`);
+  return styleMap;
+}
+
+// フォントサイズを選択範囲に適用（統合された関数を使用）
+function applyFontSizeToSelection(fontSize, editor) {
+  applyStyleToSelection('font-size', fontSize, editor, false);
 }
 
 // ===========================================
@@ -4786,16 +5264,37 @@ async function toggleFontSection() {
   const content = document.getElementById('fontSectionContent');
   const arrow = document.getElementById('fontSectionArrow');
   
+  debugLog('toggleFontSection called');
+  debugLog('Current maxHeight:', content.style.maxHeight);
+  debugLog('ScrollHeight:', content.scrollHeight);
+  debugLog('Content element:', content);
+  debugLog('Arrow element:', arrow);
+  
   if (content.style.maxHeight && content.style.maxHeight !== '0px') {
     // 折りたたむ
+    debugLog('Collapsing font section');
     content.style.maxHeight = '0px';
     arrow.style.transform = 'rotate(-90deg)';
     await StorageManager.setFontSectionCollapsed(true);
+    debugLog('Font section collapsed, state saved as true');
   } else {
     // 展開する
+    debugLog('Expanding font section');
+    // 一時的にトランジションを無効化
+    content.style.transition = 'none';
     content.style.maxHeight = content.scrollHeight + 'px';
+    // トランジションを再有効化
+    setTimeout(() => {
+      content.style.transition = 'max-height 0.3s ease-out';
+    }, 10);
     arrow.style.transform = 'rotate(0deg)';
     await StorageManager.setFontSectionCollapsed(false);
+    debugLog('Font section expanded to', content.scrollHeight + 'px', 'state saved as false');
+    
+    // 確認のため再度ログ出力
+    setTimeout(() => {
+      debugLog('After expansion - maxHeight:', content.style.maxHeight, 'computedHeight:', getComputedStyle(content).height);
+    }, 50);
   }
 }
 
@@ -4805,63 +5304,44 @@ async function initializeFontSection() {
   const arrow = document.getElementById('fontSectionArrow');
   const isCollapsed = await StorageManager.getFontSectionCollapsed();
   
+  debugLog('initializeFontSection called');
+  debugLog('Stored collapsed state:', isCollapsed);
+  debugLog('Content element:', content);
+  debugLog('Arrow element:', arrow);
+  
   // 初期状態は折りたたみ（明示的に展開が設定されている場合のみ展開）
   if (!isCollapsed) {
     // 展開状態
+    debugLog('Setting initial state to expanded');
     setTimeout(() => {
       content.style.maxHeight = content.scrollHeight + 'px';
+      debugLog('Font section initialized to expanded height:', content.scrollHeight + 'px');
     }, 100);
     arrow.style.transform = 'rotate(0deg)';
   } else {
     // 折りたたみ状態（デフォルト）
+    debugLog('Setting initial state to collapsed');
     content.style.maxHeight = '0px';
     arrow.style.transform = 'rotate(-90deg)';
+    debugLog('Font section initialized to collapsed');
   }
 }
 
 // フォントリスト更新時にセクション高さを調整
 function adjustFontSectionHeight() {
   const content = document.getElementById('fontSectionContent');
+  debugLog('adjustFontSectionHeight called');
+  debugLog('Content element:', content);
+  debugLog('Current maxHeight:', content?.style.maxHeight);
+  debugLog('ScrollHeight:', content?.scrollHeight);
+  
   if (content && content.style.maxHeight !== '0px') {
     content.style.maxHeight = content.scrollHeight + 'px';
+    debugLog('Font section height adjusted to:', content.scrollHeight + 'px');
+  } else {
+    debugLog('Font section height not adjusted (collapsed or element missing)');
   }
 }
-
-// フォント機能の初期化
-document.addEventListener('DOMContentLoaded', async function() {
-  try {
-    // フォントセクションの初期化
-    await initializeFontSection();
-    
-    // FontDatabaseインスタンスを作成して初期化
-    fontDB = new FontDatabase();
-    await fontDB.init();
-    console.log('FontDatabase初期化完了');
-    
-    // 既存のデータをチェックして、不正なデータがあればクリア
-    const fonts = await fontDB.getAllFonts();
-    let hasInvalidData = false;
-    
-    for (const [fontName, fontData] of Object.entries(fonts)) {
-      if (!fontData || !fontData.data || !fontData.metadata || !fontName || fontName === '' || fontName === '0') {
-        console.warn(`不正なフォントデータを発見: "${fontName}"`, fontData);
-        hasInvalidData = true;
-        break;
-      }
-    }
-    
-    if (hasInvalidData) {
-      console.log('不正なフォントデータが見つかりました。データベースをクリアします。');
-      await fontDB.clearAllFonts();
-    }
-    
-    // IndexedDBのフォントをCSSに読み込み
-    await loadCustomFontsCSS();
-    
-  } catch (error) {
-    console.error('フォント機能初期化エラー:', error);
-  }
-});
 
 // 成功メッセージ表示ヘルパー
 function showSuccessMessage(message) {
