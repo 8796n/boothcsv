@@ -193,6 +193,669 @@ class CSVAnalyzer {
   }
 }
 
+// ===== バイナリデータ変換ユーティリティ =====
+
+// Base64文字列をArrayBufferに変換
+function base64ToArrayBuffer(base64) {
+  try {
+    // Data URLの場合はプレフィックスを除去
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  } catch (error) {
+    console.error('Base64変換エラー:', error);
+    return null;
+  }
+}
+
+// ArrayBufferをBase64文字列に変換
+function arrayBufferToBase64(buffer) {
+  try {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  } catch (error) {
+    console.error('ArrayBuffer変換エラー:', error);
+    return null;
+  }
+}
+
+// データがBase64文字列かどうかを判定
+function isBase64String(data) {
+  if (typeof data !== 'string') return false;
+  
+  // Data URLの場合
+  if (data.startsWith('data:')) return true;
+  
+  // Base64文字列の場合（最低限のチェック）
+  const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+  return base64Regex.test(data) && data.length % 4 === 0 && data.length > 20;
+}
+
+// MIMEタイプをData URLから抽出
+function extractMimeType(dataUrl) {
+  if (!dataUrl.startsWith('data:')) return 'application/octet-stream';
+  const match = dataUrl.match(/^data:([^;]+)/);
+  return match ? match[1] : 'application/octet-stream';
+}
+
+// IndexedDBを使用した統合ストレージ管理クラス（破壊的移行版）
+class UnifiedDatabase {
+  constructor() {
+    this.dbName = 'BoothCSVStorage';
+    this.version = 3; // バージョンアップ（破壊的変更）
+    this.fontStoreName = 'fonts';
+    this.settingsStoreName = 'settings';
+    this.imagesStoreName = 'images';
+    this.qrDataStoreName = 'qrData';
+    this.db = null;
+    this.connectionLogged = false;
+  }
+
+  // データベース初期化
+  async init() {
+    if (this.db) {
+      return this.db;
+    }
+    
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.version);
+      
+      request.onerror = () => {
+        console.error('IndexedDB初期化エラー:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        this.db = request.result;
+        if (!this.connectionLogged) {
+          console.log(`📂 IndexedDB "${this.dbName}" v${this.version} に接続しました`);
+          this.connectionLogged = true;
+        }
+        resolve(this.db);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        this.createObjectStores(db);
+      };
+    });
+  }
+
+  // オブジェクトストア作成
+  createObjectStores(db) {
+    // 既存のストアを削除（破壊的変更）
+    const existingStores = Array.from(db.objectStoreNames);
+    existingStores.forEach(storeName => {
+      db.deleteObjectStore(storeName);
+      console.log(`🗑️ 既存ストア削除: ${storeName}`);
+    });
+
+    // フォントストアを作成
+    const fontStore = db.createObjectStore(this.fontStoreName, { keyPath: 'name' });
+    fontStore.createIndex('createdAt', 'createdAt', { unique: false });
+    fontStore.createIndex('size', 'size', { unique: false });
+
+    // 設定ストアを作成
+    const settingsStore = db.createObjectStore(this.settingsStoreName, { keyPath: 'key' });
+
+    // 画像ストアを作成（バイナリ対応）
+    const imagesStore = db.createObjectStore(this.imagesStoreName, { keyPath: 'key' });
+    imagesStore.createIndex('type', 'type', { unique: false });
+    imagesStore.createIndex('orderNumber', 'orderNumber', { unique: false });
+    imagesStore.createIndex('createdAt', 'createdAt', { unique: false });
+
+    // QRデータストアを作成（バイナリ対応）
+    const qrStore = db.createObjectStore(this.qrDataStoreName, { keyPath: 'orderNumber' });
+    qrStore.createIndex('qrhash', 'qrhash', { unique: false });
+    qrStore.createIndex('createdAt', 'createdAt', { unique: false });
+
+    console.log('🆕 新しいデータストアを作成しました');
+  }
+
+  // 破壊的移行処理
+  async performDestructiveMigration() {
+    try {
+      console.log('🚨 破壊的移行を開始します...');
+      
+      // localStorage使用量を確認
+      const usage = this.analyzeLocalStorageUsage();
+      
+      if (usage.totalItems > 0) {
+        console.log(`📊 削除対象: ${usage.totalItems}項目 (${usage.totalSizeMB}MB)`);
+        
+        // ユーザーに通知
+        const userConfirm = confirm(
+          `🔄 システム移行のお知らせ\n\n` +
+          `より高速で安定したデータ保存システムに移行します。\n` +
+          `既存の設定・データ（${usage.totalItems}項目）は削除され、\n` +
+          `改めて設定が必要になります。\n\n` +
+          `移行を実行しますか？\n\n` +
+          `※この操作は取り消せません`
+        );
+        
+        if (!userConfirm) {
+          alert('移行がキャンセルされました。\nアプリケーションは従来の方式で動作します。');
+          return false;
+        }
+        
+        // localStorage完全削除
+        await this.clearAllLocalStorage();
+        
+        // 移行完了通知
+        alert(
+          `✅ システム移行完了\n\n` +
+          `新しいデータ保存システムが有効になりました。\n` +
+          `設定・フォント・画像データを改めて登録してください。\n\n` +
+          `今後はより高速で大容量のデータ保存が可能です。`
+        );
+      }
+      
+      console.log('✅ 破壊的移行が完了しました');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ 破壊的移行エラー:', error);
+      return false;
+    }
+  }
+
+  // localStorage完全削除（アプリケーション固有のキーのみ）
+  async clearAllLocalStorage() {
+    // このアプリケーションで使用するキーのパターン
+    const appKeyPatterns = [
+      'labelyn',
+      'labelskip', 
+      'sortByPaymentDate',
+      'customLabelEnable',
+      'customLabelText',
+      'customLabelCount',
+      'customLabels',
+      'orderImageEnable',
+      'fontSectionCollapsed', // IndexedDBに移行済み
+      'orderImage',
+      'orderImage_',
+      'customFont_',
+      'migrationCompleted'
+    ];
+    
+    const itemsToRemove = [];
+    
+    // 全てのキーをチェックして、アプリケーション固有のもののみを収集
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        const isAppKey = appKeyPatterns.some(pattern => {
+          if (pattern.endsWith('_')) {
+            return key.startsWith(pattern);
+          } else {
+            return key === pattern;
+          }
+        });
+        
+        // QRコードデータの可能性もチェック（JSON形式でqrhashを含む）
+        if (!isAppKey) {
+          try {
+            const value = localStorage.getItem(key);
+            const parsed = JSON.parse(value);
+            if (parsed && parsed.qrhash) {
+              // QRコードデータと判定
+              isAppKey = true;
+            }
+          } catch (e) {
+            // JSON以外は無視
+          }
+        }
+        
+        if (isAppKey) {
+          itemsToRemove.push(key);
+        }
+      }
+    }
+    
+    // アプリケーション固有のキーのみ削除
+    itemsToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log(`🗑️ アプリデータ削除: ${key}`);
+    });
+    
+    const otherKeysCount = localStorage.length;
+    console.log(`🧹 アプリデータ削除完了: ${itemsToRemove.length}項目`);
+    if (otherKeysCount > 0) {
+      console.log(`ℹ️ 他サービスのデータ保持: ${otherKeysCount}項目`);
+    }
+  }
+
+  // localStorage使用量分析（アプリケーション固有のキーのみ）
+  analyzeLocalStorageUsage() {
+    let totalSize = 0;
+    let totalItems = 0;
+    const categories = {
+      fonts: 0,
+      settings: 0,
+      images: 0,
+      qrData: 0,
+      other: 0
+    };
+    
+    // このアプリケーションで使用するキーのパターン
+    const appKeyPatterns = [
+      'labelyn',
+      'labelskip', 
+      'sortByPaymentDate',
+      'customLabelEnable',
+      'customLabelText',
+      'customLabelCount',
+      'customLabels',
+      'orderImageEnable',
+      'fontSectionCollapsed', // IndexedDBに移行済み
+      'orderImage',
+      'orderImage_',
+      'customFont_',
+      'migrationCompleted'
+    ];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        let isAppKey = false;
+        
+        // アプリケーション固有のキーかチェック
+        isAppKey = appKeyPatterns.some(pattern => {
+          if (pattern.endsWith('_')) {
+            return key.startsWith(pattern);
+          } else {
+            return key === pattern;
+          }
+        });
+        
+        // QRコードデータの可能性もチェック
+        if (!isAppKey) {
+          try {
+            const value = localStorage.getItem(key);
+            const parsed = JSON.parse(value);
+            if (parsed && parsed.qrhash) {
+              isAppKey = true;
+            }
+          } catch (e) {
+            // JSON以外は無視
+          }
+        }
+        
+        if (isAppKey) {
+          const value = localStorage.getItem(key);
+          const size = new Blob([value || '']).size;
+          totalSize += size;
+          totalItems++;
+          
+          // カテゴリ分類
+          if (key.startsWith('customFont_')) {
+            categories.fonts++;
+          } else if (['labelyn', 'labelskip', 'sortByPaymentDate', 'customLabelEnable', 'orderImageEnable'].includes(key)) {
+            categories.settings++;
+          } else if (key.startsWith('orderImage')) {
+            categories.images++;
+          } else if (key.includes('qr') || key.includes('receipt')) {
+            categories.qrData++;
+          } else {
+            categories.other++;
+          }
+        }
+      }
+    }
+    
+    return {
+      totalItems,
+      totalSizeKB: Math.round(totalSize / 1024 * 100) / 100,
+      totalSizeMB: Math.round(totalSize / 1024 / 1024 * 100) / 100,
+      categories
+    };
+  }
+
+  // === バイナリ対応メソッド ===
+
+  // 画像保存（バイナリ優先）
+  async setImage(key, imageData, type = 'unknown', orderNumber = null) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.imagesStoreName], 'readwrite');
+      const store = transaction.objectStore(this.imagesStoreName);
+      
+      // データの形式を最適化
+      let optimizedData = imageData;
+      let mimeType = type;
+      let isBinary = false;
+      
+      if (isBase64String(imageData)) {
+        // Base64をバイナリに変換
+        const arrayBuffer = base64ToArrayBuffer(imageData);
+        if (arrayBuffer) {
+          optimizedData = arrayBuffer;
+          mimeType = extractMimeType(imageData);
+          isBinary = true;
+          console.log(`🔄 画像をバイナリ最適化: ${key}`);
+        }
+      } else if (imageData instanceof ArrayBuffer) {
+        isBinary = true;
+      }
+      
+      const imageObject = {
+        key: key,
+        data: optimizedData,
+        type: mimeType,
+        orderNumber: orderNumber,
+        createdAt: Date.now(),
+        isBinary: isBinary
+      };
+      
+      const request = store.put(imageObject);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('画像保存エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  // 画像取得（自動変換）
+  async getImage(key) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.imagesStoreName], 'readonly');
+      const store = transaction.objectStore(this.imagesStoreName);
+      const request = store.get(key);
+      
+      request.onsuccess = () => {
+        const result = request.result;
+        if (!result) {
+          resolve(null);
+          return;
+        }
+        
+        // バイナリデータをData URLに変換
+        if (result.isBinary && result.data instanceof ArrayBuffer) {
+          const base64Data = arrayBufferToBase64(result.data);
+          if (base64Data) {
+            const dataUrl = `data:${result.type || 'image/png'};base64,${base64Data}`;
+            resolve(dataUrl);
+          } else {
+            resolve(result.data);
+          }
+        } else {
+          resolve(result.data);
+        }
+      };
+      
+      request.onerror = () => {
+        console.error('画像取得エラー:', request.error);
+        resolve(null);
+      };
+    });
+  }
+
+  // 設定管理
+  async setSetting(key, value) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.settingsStoreName], 'readwrite');
+      const store = transaction.objectStore(this.settingsStoreName);
+      
+      const settingObject = {
+        key: key,
+        value: value,
+        updatedAt: Date.now()
+      };
+      
+      const request = store.put(settingObject);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('設定保存エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async getSetting(key) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.settingsStoreName], 'readonly');
+      const store = transaction.objectStore(this.settingsStoreName);
+      const request = store.get(key);
+      
+      request.onsuccess = () => {
+        const result = request.result;
+        resolve(result ? result.value : null);
+      };
+      
+      request.onerror = () => {
+        console.error('設定取得エラー:', request.error);
+        resolve(null);
+      };
+    });
+  }
+
+  // フォント管理（バイナリ対応）
+  async setFont(fontName, fontData) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readwrite');
+      const store = transaction.objectStore(this.fontStoreName);
+      
+      // フォントデータの最適化
+      let optimizedData = fontData;
+      let isBinary = false;
+      
+      if (isBase64String(fontData)) {
+        const arrayBuffer = base64ToArrayBuffer(fontData);
+        if (arrayBuffer) {
+          optimizedData = arrayBuffer;
+          isBinary = true;
+          console.log(`🔄 フォントをバイナリ最適化: ${fontName}`);
+        }
+      } else if (fontData instanceof ArrayBuffer) {
+        isBinary = true;
+      }
+      
+      const fontObject = {
+        name: fontName,
+        data: optimizedData,
+        metadata: {
+          type: isBinary ? 'font/ttf' : 'text/plain',
+          size: optimizedData.byteLength || optimizedData.length
+        },
+        createdAt: Date.now(),
+        isBinary: isBinary
+      };
+      
+      const request = store.put(fontObject);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('フォント保存エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async getAllFonts() {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.fontStoreName], 'readonly');
+      const store = transaction.objectStore(this.fontStoreName);
+      const request = store.getAll();
+      
+      request.onsuccess = () => {
+        const fonts = {};
+        request.result.forEach(font => {
+          fonts[font.name] = font;
+        });
+        resolve(fonts);
+      };
+      
+      request.onerror = () => {
+        console.error('フォント一覧取得エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  // QRデータ管理（バイナリ対応）
+  async setQRData(orderNumber, qrData) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.qrDataStoreName], 'readwrite');
+      const store = transaction.objectStore(this.qrDataStoreName);
+      
+      // QR画像のバイナリ最適化
+      let optimizedQRImage = qrData.qrimage;
+      let isBinary = false;
+      
+      if (qrData.qrimage && isBase64String(qrData.qrimage)) {
+        const arrayBuffer = base64ToArrayBuffer(qrData.qrimage);
+        if (arrayBuffer) {
+          optimizedQRImage = arrayBuffer;
+          isBinary = true;
+        }
+      } else if (qrData.qrimage instanceof ArrayBuffer) {
+        isBinary = true;
+      }
+      
+      const qrObject = {
+        orderNumber: orderNumber,
+        receiptnum: qrData.receiptnum,
+        receiptpassword: qrData.receiptpassword,
+        qrimage: optimizedQRImage,
+        qrimageType: qrData.qrimageType || 'image/png',
+        qrhash: qrData.qrhash,
+        createdAt: Date.now(),
+        isBinary: isBinary
+      };
+      
+      const request = store.put(qrObject);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.error('QRデータ保存エラー:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async getQRData(orderNumber) {
+    if (!this.db) await this.init();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.qrDataStoreName], 'readonly');
+      const store = transaction.objectStore(this.qrDataStoreName);
+      const request = store.get(orderNumber);
+      
+      request.onsuccess = () => {
+        const result = request.result;
+        if (!result) {
+          resolve(null);
+          return;
+        }
+        
+        // バイナリQR画像をBase64に変換
+        if (result.isBinary && result.qrimage instanceof ArrayBuffer) {
+          const base64Data = arrayBufferToBase64(result.qrimage);
+          if (base64Data) {
+            result.qrimage = `data:${result.qrimageType || 'image/png'};base64,${base64Data}`;
+          }
+        }
+        
+        resolve(result);
+      };
+      
+      request.onerror = () => {
+        console.error('QRデータ取得エラー:', request.error);
+        resolve(null);
+      };
+    });
+  }
+
+  // QRハッシュ生成
+  generateQRHash(qrContent) {
+    let hash = 0;
+    if (qrContent.length === 0) return hash;
+    for (let i = 0; i < qrContent.length; i++) {
+      const char = qrContent.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString();
+  }
+
+  // 重複チェック
+  async checkQRDuplicate(qrContent, currentOrderNumber) {
+    if (!this.db) await this.init();
+    
+    const qrHash = this.generateQRHash(qrContent);
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.qrDataStoreName], 'readonly');
+      const store = transaction.objectStore(this.qrDataStoreName);
+      const index = store.index('qrhash');
+      const request = index.getAll(qrHash);
+      
+      request.onsuccess = () => {
+        const results = request.result.filter(item => item.orderNumber !== currentOrderNumber);
+        const duplicates = results.map(item => item.orderNumber);
+        resolve(duplicates);
+      };
+      
+      request.onerror = () => {
+        console.error('QR重複チェックエラー:', request.error);
+        resolve([]);
+      };
+    });
+  }
+}
+
+// === グローバル初期化 ===
+
+let unifiedDB = null;
+
+async function initializeUnifiedDatabase() {
+  try {
+    console.log('🚀 統合データベースの初期化を開始します...');
+    
+    unifiedDB = new UnifiedDatabase();
+    await unifiedDB.init();
+    
+    // 破壊的移行を実行
+    const migrationSuccess = await unifiedDB.performDestructiveMigration();
+    
+    if (migrationSuccess) {
+      console.log('📂 統合データベース初期化完了');
+    } else {
+      console.log('⚠️ 移行がキャンセルされました');
+    }
+    
+    return unifiedDB;
+  } catch (error) {
+    console.error('❌ 統合データベース初期化失敗:', error);
+    alert('データベースの初期化に失敗しました。\nページを再読み込みしてください。');
+    return null;
+  }
+}
+
 // IndexedDBを使用したフォント管理クラス
 class FontDatabase {
   constructor() {
@@ -398,7 +1061,7 @@ async function initializeFontDatabase() {
   }
 }
 
-// デバッグ機能：localStorageからIndexedDBへのデータ移行
+// 統合ストレージ管理クラス（UnifiedDatabaseのラッパー）
 class StorageManager {
   static KEYS = {
     ORDER_IMAGE_PREFIX: 'orderImage_',
@@ -409,27 +1072,98 @@ class StorageManager {
     CUSTOM_LABEL_ENABLE: 'customLabelEnable',
     CUSTOM_LABEL_TEXT: 'customLabelText',
     CUSTOM_LABEL_COUNT: 'customLabelCount',
-    CUSTOM_LABELS: 'customLabels', // 複数のカスタムラベルを保存
-    ORDER_IMAGE_ENABLE: 'orderImageEnable' // 注文画像表示の有効/無効
+    CUSTOM_LABELS: 'customLabels',
+    ORDER_IMAGE_ENABLE: 'orderImageEnable',
+    FONT_SECTION_COLLAPSED: 'fontSectionCollapsed'
   };
 
-  // 設定値の取得
-  static getSettings() {
+  // UnifiedDatabaseの初期化確認
+  static async ensureDatabase() {
+    if (!unifiedDB) {
+      unifiedDB = await initializeUnifiedDatabase();
+    }
+    return unifiedDB;
+  }
+
+  // デフォルト設定値
+  static getDefaultSettings() {
     return {
-      labelyn: this.get(this.KEYS.LABEL_SETTING, 'true') !== 'false',
-      labelskip: parseInt(this.get(this.KEYS.LABEL_SKIP, '0'), 10),
-      sortByPaymentDate: this.get(this.KEYS.SORT_BY_PAYMENT) === 'true',
-      customLabelEnable: this.get(this.KEYS.CUSTOM_LABEL_ENABLE) === 'true',
-      customLabelText: this.get(this.KEYS.CUSTOM_LABEL_TEXT, ''),
-      customLabelCount: parseInt(this.get(this.KEYS.CUSTOM_LABEL_COUNT, '1'), 10),
-      customLabels: this.getCustomLabels(),
-      orderImageEnable: this.get(this.KEYS.ORDER_IMAGE_ENABLE) === 'true'
+      labelyn: true,
+      labelskip: 0,
+      sortByPaymentDate: false,
+      customLabelEnable: false,
+      customLabelText: '',
+      customLabelCount: 1,
+      customLabels: [],
+      orderImageEnable: false
     };
   }
 
-  // 複数のカスタムラベルを取得
-  static getCustomLabels() {
-    const labelsData = this.get(this.KEYS.CUSTOM_LABELS);
+  // 設定値の取得（非同期版）
+  static async getSettingsAsync() {
+    const db = await StorageManager.ensureDatabase();
+    if (!db) {
+      return StorageManager.getDefaultSettings();
+    }
+
+    try {
+      const settings = {};
+      for (const [key, storageKey] of Object.entries(StorageManager.KEYS)) {
+        const value = await db.getSetting(storageKey);
+        settings[storageKey] = value;
+      }
+
+      const result = {
+        labelyn: settings.labelyn !== null ? settings.labelyn : true,
+        labelskip: settings.labelskip !== null ? parseInt(settings.labelskip, 10) : 0,
+        sortByPaymentDate: settings.sortByPaymentDate !== null ? settings.sortByPaymentDate : false,
+        customLabelEnable: settings.customLabelEnable !== null ? settings.customLabelEnable : false,
+        customLabelText: settings.customLabelText || '',
+        customLabelCount: settings.customLabelCount !== null ? parseInt(settings.customLabelCount, 10) : 1,
+        customLabels: await StorageManager.getCustomLabels(),
+        orderImageEnable: settings.orderImageEnable !== null ? settings.orderImageEnable : false
+      };
+
+      return result;
+    } catch (error) {
+      console.error('設定取得エラー:', error);
+      return StorageManager.getDefaultSettings();
+    }
+  }
+
+  // 同期版設定取得（後方互換性のため）
+  static getSettings() {
+    // 警告を表示して非同期版の使用を促す
+    console.warn('StorageManager.getSettings() は非推奨です。StorageManager.getSettingsAsync() を使用してください。');
+    
+    // フォールバック用のデフォルト設定
+    return StorageManager.getDefaultSettings();
+  }
+
+  // 設定保存
+  static async set(key, value) {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      await db.setSetting(key, value);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  }
+
+  // 設定取得
+  static async get(key, defaultValue = null) {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      const value = await db.getSetting(key);
+      return value !== null ? value : defaultValue;
+    } else {
+      return localStorage.getItem(key) || defaultValue;
+    }
+  }
+
+  // カスタムラベル取得
+  static async getCustomLabels() {
+    const labelsData = await StorageManager.get(StorageManager.KEYS.CUSTOM_LABELS);
     if (!labelsData) return [];
     
     try {
@@ -440,156 +1174,242 @@ class StorageManager {
     }
   }
 
-  // 複数のカスタムラベルを保存
-  static setCustomLabels(labels) {
-    this.set(this.KEYS.CUSTOM_LABELS, JSON.stringify(labels));
+  // カスタムラベル保存
+  static async setCustomLabels(labels) {
+    await StorageManager.set(StorageManager.KEYS.CUSTOM_LABELS, JSON.stringify(labels));
   }
 
-  // 設定値の保存
-  static saveSettings(settings) {
-    Object.entries(settings).forEach(([key, value]) => {
-      if (this.KEYS[key.toUpperCase()]) {
-        this.set(this.KEYS[key.toUpperCase()], String(value));
-      }
-    });
-  }
-
-  // 注文画像の取得
-  static getOrderImage(orderNumber = null) {
+  // 注文画像取得
+  static async getOrderImage(orderNumber = null) {
     const key = orderNumber ? 
-      `${this.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
-      this.KEYS.GLOBAL_ORDER_IMAGE;
-    return this.get(key);
-  }
-
-  // 注文画像の保存
-  static setOrderImage(imageData, orderNumber = null) {
-    const key = orderNumber ? 
-      `${this.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
-      this.KEYS.GLOBAL_ORDER_IMAGE;
-    this.set(key, imageData);
-  }
-
-  // 注文画像の削除
-  static removeOrderImage(orderNumber = null) {
-    const key = orderNumber ? 
-      `${this.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
-      this.KEYS.GLOBAL_ORDER_IMAGE;
-    this.remove(key);
-  }
-
-  // QR画像の一括削除
-  static clearQRImages() {
-    Object.keys(localStorage).forEach(key => {
-      const value = localStorage.getItem(key);
-      if (value?.includes('qrimage')) {
-        this.remove(key);
-      }
-    });
-  }
-
-  // 注文画像の一括削除
-  static clearOrderImages() {
-    Object.keys(localStorage).forEach(key => {
-      if (key === this.KEYS.GLOBAL_ORDER_IMAGE || 
-          key.startsWith(this.KEYS.ORDER_IMAGE_PREFIX)) {
-        this.remove(key);
-      }
-    });
-  }
-
-  // QRコードデータの取得
-  static getQRData(orderNumber) {
-    const data = this.get(orderNumber);
-    if (!data) return null;
+      `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
+      StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
     
-    try {
-      return JSON.parse(data);
-    } catch (e) {
-      console.warn('QR data parsing failed:', e);
-      return null;
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      return await db.getImage(key);
+    } else {
+      return localStorage.getItem(key);
     }
   }
 
-  // QRコードデータの保存
-  static setQRData(orderNumber, qrData) {
-    this.set(orderNumber, JSON.stringify(qrData));
+  // 注文画像保存
+  static async setOrderImage(imageData, orderNumber = null) {
+    const key = orderNumber ? 
+      `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
+      StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
+    
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      const type = orderNumber ? 'order' : 'global';
+      await db.setImage(key, imageData, type, orderNumber);
+    } else {
+      localStorage.setItem(key, imageData);
+    }
   }
 
-  // QRコードの重複チェック
-  static checkQRDuplicate(qrContent, currentOrderNumber) {
-    const qrHash = this.generateQRHash(qrContent);
-    const duplicates = [];
+  // 注文画像削除
+  static async removeOrderImage(orderNumber = null) {
+    const key = orderNumber ? 
+      `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : 
+      StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
     
-    Object.keys(localStorage).forEach(key => {
-      if (key !== currentOrderNumber) {
-        const data = this.get(key);
-        if (data) {
-          try {
-            const parsedData = JSON.parse(data);
-            if (parsedData.qrhash === qrHash) {
-              duplicates.push(key);
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      try {
+        const transaction = db.db.transaction(['images'], 'readwrite');
+        const store = transaction.objectStore('images');
+        await new Promise((resolve, reject) => {
+          const request = store.delete(key);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+        console.log(`✅ 画像削除完了: ${key}`);
+      } catch (error) {
+        console.error(`❌ 画像削除エラー: ${key}`, error);
+      }
+    } else {
+      localStorage.removeItem(key);
+    }
+  }
+
+  // QR画像一括削除
+  static async clearQRImages() {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      // IndexedDBでのQR画像一括削除実装が必要
+      console.log('QR画像一括削除');
+    } else {
+      Object.keys(localStorage).forEach(key => {
+        const value = localStorage.getItem(key);
+        if (value?.includes('qrimage')) {
+          localStorage.removeItem(key);
+        }
+      });
+    }
+  }
+
+  // 注文画像一括削除
+  static async clearOrderImages() {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      // IndexedDBでの注文画像一括削除実装が必要
+      console.log('注文画像一括削除');
+    } else {
+      Object.keys(localStorage).forEach(key => {
+        if (key === StorageManager.KEYS.GLOBAL_ORDER_IMAGE || 
+            key.startsWith(StorageManager.KEYS.ORDER_IMAGE_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      });
+    }
+  }
+
+  // QRデータ取得
+  static async getQRData(orderNumber) {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      return await db.getQRData(orderNumber);
+    } else {
+      const data = localStorage.getItem(orderNumber);
+      if (!data) return null;
+      
+      try {
+        return JSON.parse(data);
+      } catch (e) {
+        console.warn('QR data parsing failed:', e);
+        return null;
+      }
+    }
+  }
+
+  // QRデータ保存
+  static async setQRData(orderNumber, qrData) {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      await db.setQRData(orderNumber, qrData);
+    } else {
+      localStorage.setItem(orderNumber, JSON.stringify(qrData));
+    }
+  }
+
+  // QR重複チェック
+  static async checkQRDuplicate(qrContent, currentOrderNumber) {
+    const db = await StorageManager.ensureDatabase();
+    if (db) {
+      return await db.checkQRDuplicate(qrContent, currentOrderNumber);
+    } else {
+      // localStorage版の重複チェック
+      const qrHash = this.generateQRHash(qrContent);
+      const duplicates = [];
+      
+      Object.keys(localStorage).forEach(key => {
+        if (key !== currentOrderNumber) {
+          const data = localStorage.getItem(key);
+          if (data) {
+            try {
+              const parsedData = JSON.parse(data);
+              if (parsedData && parsedData.qrhash === qrHash) {
+                duplicates.push(key);
+              }
+            } catch (e) {
+              // JSON以外のデータは無視
             }
-          } catch (e) {
-            // 無視
           }
         }
-      }
-    });
-    
-    return duplicates;
+      });
+      
+      return duplicates;
+    }
   }
 
-  // QRコンテンツのハッシュ化
+  // QRハッシュ生成
   static generateQRHash(qrContent) {
-    // シンプルなハッシュ関数（本格的な場合はCrypto APIを使用）
     let hash = 0;
     if (qrContent.length === 0) return hash;
     for (let i = 0; i < qrContent.length; i++) {
       const char = qrContent.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // 32bit整数に変換
+      hash = hash & hash;
     }
     return hash.toString();
   }
 
-  // 基本的なlocalStorage操作
-  static get(key, defaultValue = null) {
-    const value = localStorage.getItem(key);
-    return value !== null ? value : defaultValue;
-  }
-
-  static set(key, value) {
-    localStorage.setItem(key, value);
-  }
-
+  // 下位互換性のための同期メソッド（非推奨）
   static remove(key) {
+    console.warn(`StorageManager.remove("${key}") は非推奨です。`);
     localStorage.removeItem(key);
+  }
+
+  // UI状態管理メソッド
+  static async setUIState(key, value) {
+    await StorageManager.set(key, value);
+  }
+
+  static async getUIState(key, defaultValue = null) {
+    return await StorageManager.get(key, defaultValue);
+  }
+
+  // フォントセクション折りたたみ状態の管理
+  static async setFontSectionCollapsed(collapsed) {
+    await StorageManager.setUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED, collapsed);
+  }
+
+  static async getFontSectionCollapsed() {
+    const value = await StorageManager.getUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED, false);
+    return value === true || value === 'true';
   }
 }
 
-window.addEventListener("load", function(){
-  const settings = StorageManager.getSettings();
+// 初期化処理（破壊的移行対応）
+window.addEventListener("load", async function(){
+  let settings;
   
-  document.getElementById("labelyn").checked = settings.labelyn;
-  document.getElementById("labelskipnum").value = settings.labelskip;
-  document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
-  document.getElementById("customLabelEnable").checked = settings.customLabelEnable;
-  document.getElementById("orderImageEnable").checked = settings.orderImageEnable;
+  try {
+    // 統合データベースの初期化
+    await initializeUnifiedDatabase();
+    
+    // 設定の取得（非同期）
+    settings = await StorageManager.getSettingsAsync();
+    
+    document.getElementById("labelyn").checked = settings.labelyn;
+    document.getElementById("labelskipnum").value = settings.labelskip;
+    document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
+    document.getElementById("customLabelEnable").checked = settings.customLabelEnable;
+    document.getElementById("orderImageEnable").checked = settings.orderImageEnable;
 
-  // カスタムラベル行の表示/非表示
-  toggleCustomLabelRow(settings.customLabelEnable);
+    // カスタムラベル行の表示/非表示
+    toggleCustomLabelRow(settings.customLabelEnable);
 
-  // 注文画像行の表示/非表示
-  toggleOrderImageRow(settings.orderImageEnable);
+    // 注文画像行の表示/非表示
+    toggleOrderImageRow(settings.orderImageEnable);
+
+    console.log('🎉 アプリケーション初期化完了');
+    
+  } catch (error) {
+    console.error('初期化エラー:', error);
+    
+    // フォールバック: 従来の方式
+    console.log('フォールバック初期化を実行');
+    settings = StorageManager.getDefaultSettings();
+    
+    document.getElementById("labelyn").checked = settings.labelyn;
+    document.getElementById("labelskipnum").value = settings.labelskip;
+    document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
+    document.getElementById("customLabelEnable").checked = settings.customLabelEnable;
+    document.getElementById("orderImageEnable").checked = settings.orderImageEnable;
+
+    toggleCustomLabelRow(settings.customLabelEnable);
+    toggleOrderImageRow(settings.orderImageEnable);
+  }
 
   // 複数のカスタムラベルを初期化
   initializeCustomLabels(settings.customLabels);
 
    // 画像ドロップゾーンの初期化
   const imageDropZoneElement = document.getElementById('imageDropZone');
-  const imageDropZone = createOrderImageDropZone();
-  imageDropZoneElement.appendChild(imageDropZone.element);
+  const imageDropZone = await createOrderImageDropZone();
+  imageDropZoneElement.appendChild(imageDropZone);
   window.orderImageDropZone = imageDropZone;
 
   // フォントドロップゾーンの初期化
@@ -636,7 +1456,15 @@ window.addEventListener("load", function(){
     };
   }
 
-   // チェックボックスの状態が変更されたときにlocalStorageに保存
+   // チェックボックスの状態が変更されたときにStorageManagerに保存
+   document.getElementById("labelyn").addEventListener("change", function() {
+     StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
+   });
+
+   document.getElementById("labelskipnum").addEventListener("change", function() {
+     StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
+   });
+
    document.getElementById("sortByPaymentDate").addEventListener("change", function() {
      StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
    });
@@ -1465,7 +2293,7 @@ const CONFIG = {
 };
 
 // 共通のドラッグ&ドロップ機能を提供するベース関数
-function createBaseImageDropZone(options = {}) {
+async function createBaseImageDropZone(options = {}) {
   const {
     storageKey = 'orderImage',
     isIndividual = false,
@@ -1485,11 +2313,11 @@ function createBaseImageDropZone(options = {}) {
 
   let droppedImage = null;
 
-  // localStorageから保存された画像を読み込む
-  const savedImage = localStorage.getItem(storageKey);
+  // StorageManagerから保存された画像を読み込む
+  const savedImage = await StorageManager.getOrderImage(orderNumber);
   if (savedImage) {
     debugLog(`保存された画像を復元: ${storageKey}`);
-    updatePreview(savedImage);
+    await updatePreview(savedImage);
   } else {
     if (isIndividual) {
       dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
@@ -1502,9 +2330,9 @@ function createBaseImageDropZone(options = {}) {
   }
 
   // 全ての注文明細の画像を更新する関数
-  function updateAllOrderImages() {
+  async function updateAllOrderImages() {
     // 注文画像表示機能が無効の場合は何もしない
-    const settings = StorageManager.getSettings();
+    const settings = await StorageManager.getSettingsAsync();
     if (!settings.orderImageEnable) {
       return;
     }
@@ -1555,7 +2383,7 @@ function createBaseImageDropZone(options = {}) {
     });
   }
 
-  function updatePreview(imageUrl) {
+  async function updatePreview(imageUrl) {
     droppedImage = imageUrl;
     dropZone.innerHTML = '';
     const preview = document.createElement('img');
@@ -1569,39 +2397,39 @@ function createBaseImageDropZone(options = {}) {
     
     preview.title = 'クリックでリセット';
     dropZone.appendChild(preview);
-    localStorage.setItem(storageKey, imageUrl);
+    await StorageManager.setOrderImage(imageUrl, orderNumber);
 
     // 個別画像の場合は即座に表示を更新
     if (isIndividual && orderNumber) {
-      updateOrderImageDisplay(imageUrl);
+      await updateOrderImageDisplay(imageUrl);
     } else if (!isIndividual) {
       // グローバル画像の場合は全ての注文明細の画像を更新
-      updateAllOrderImages();
+      await updateAllOrderImages();
     }
 
     // 画像クリックでリセット
-    preview.addEventListener('click', (e) => {
+    preview.addEventListener('click', async (e) => {
       e.stopPropagation();
-      localStorage.removeItem(storageKey);
+      await StorageManager.removeOrderImage(orderNumber);
       droppedImage = null;
       
       if (isIndividual) {
         dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
-        updateOrderImageDisplay(null);
+        await updateOrderImageDisplay(null);
       } else {
         const defaultContentElement = document.getElementById('dropZoneDefaultContent');
         const defaultContent = defaultContentElement ? defaultContentElement.innerHTML : defaultMessage;
         dropZone.innerHTML = defaultContent;
         // グローバル画像がクリアされた場合も全ての注文明細を更新
-        updateAllOrderImages();
+        await updateAllOrderImages();
       }
     });
   }
 
   // 個別画像用の表示更新関数
-  function updateOrderImageDisplay(imageUrl) {
+  async function updateOrderImageDisplay(imageUrl) {
     // 注文画像表示機能が無効の場合は何もしない
-    const settings = StorageManager.getSettings();
+    const settings = await StorageManager.getSettingsAsync();
     if (!settings.orderImageEnable) {
       return;
     }
@@ -1639,10 +2467,7 @@ function createBaseImageDropZone(options = {}) {
   setupDragAndDropEvents(dropZone, updatePreview, isIndividual);
   setupClickEvent(dropZone, updatePreview, () => droppedImage);
 
-  return {
-    element: dropZone,
-    getImage: () => droppedImage
-  };
+  return dropZone;
 }
 
 // ドラッグ&ドロップイベントの共通設定
@@ -1675,8 +2500,8 @@ function setupDragAndDropEvents(dropZone, updatePreview, isIndividual) {
     const file = e.dataTransfer.files[0];
     if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        updatePreview(e.target.result);
+      reader.onload = async (e) => {
+        await updatePreview(e.target.result);
       };
       reader.readAsDataURL(file);
     }
@@ -1710,9 +2535,9 @@ function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
         
         if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
           const reader = new FileReader();
-          reader.onload = (e) => {
+          reader.onload = async (e) => {
             debugLog(`画像読み込み完了 - サイズ: ${e.target.result.length} bytes`);
-            updatePreview(e.target.result);
+            await updatePreview(e.target.result);
           };
           reader.readAsDataURL(file);
         } else if (file) {
@@ -1724,8 +2549,8 @@ function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
   });
 }
 
-function createOrderImageDropZone() {
-  return createBaseImageDropZone({
+async function createOrderImageDropZone() {
+  return await createBaseImageDropZone({
     storageKey: 'orderImage',
     isIndividual: false,
     containerClass: 'order-image-drop'
@@ -1733,8 +2558,8 @@ function createOrderImageDropZone() {
 }
 
 // 個別注文用の画像ドロップゾーンを作成する関数（リファクタリング済み）
-function createIndividualOrderImageDropZone(orderNumber) {
-  return createBaseImageDropZone({
+async function createIndividualOrderImageDropZone(orderNumber) {
+  return await createBaseImageDropZone({
     storageKey: `orderImage_${orderNumber}`,
     isIndividual: true,
     orderNumber: orderNumber,
@@ -2590,42 +3415,40 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
     // カスタムフォント選択オプション（IndexedDBベース）
     try {
       if (fontDB) {
-        const customFonts = await fontDB.getAllFonts();
-        if (Object.keys(customFonts).length > 0) {
-          // フォント用区切り線
-          const fontSeparator = document.createElement('div');
-          fontSeparator.style.cssText = `
-            height: 1px;
-            background-color: #ddd;
-            margin: 5px 0;
-          `;
-          menu.appendChild(fontSeparator);
+        // フォント用区切り線（常に表示）
+        const fontSeparator = document.createElement('div');
+        fontSeparator.style.cssText = `
+          height: 1px;
+          background-color: #ddd;
+          margin: 5px 0;
+        `;
+        menu.appendChild(fontSeparator);
 
-          // フォントファミリーオプション
-          const fontFamilyLabel = document.createElement('div');
-          fontFamilyLabel.textContent = 'フォント';
-          fontFamilyLabel.style.cssText = `
-            padding: 5px 15px;
-            font-size: 11px;
-            color: #666;
-            font-weight: bold;
-          `;
-          menu.appendChild(fontFamilyLabel);
+        // フォントファミリーオプション（常に表示）
+        const fontFamilyLabel = document.createElement('div');
+        fontFamilyLabel.textContent = 'フォント';
+        fontFamilyLabel.style.cssText = `
+          padding: 5px 15px;
+          font-size: 11px;
+          color: #666;
+          font-weight: bold;
+        `;
+        menu.appendChild(fontFamilyLabel);
 
-          // デフォルトフォント
-          const defaultFontItem = document.createElement('div');
-          defaultFontItem.textContent = 'デフォルトフォント（システムフォント）';
-          defaultFontItem.style.cssText = `
-            padding: 6px 20px;
-            cursor: pointer;
-            font-size: 11px;
-            transition: background-color 0.2s;
-            font-family: sans-serif;
-            border-bottom: 1px solid #eee;
-            font-weight: bold;
-            color: #333;
-          `;
-        
+        // デフォルトフォント（常に表示）
+        const defaultFontItem = document.createElement('div');
+        defaultFontItem.textContent = 'デフォルトフォント（システムフォント）';
+        defaultFontItem.style.cssText = `
+          padding: 6px 20px;
+          cursor: pointer;
+          font-size: 11px;
+          transition: background-color 0.2s;
+          font-family: sans-serif;
+          border-bottom: 1px solid #eee;
+          font-weight: bold;
+          color: #333;
+        `;
+      
         defaultFontItem.addEventListener('mouseenter', function() {
           this.style.backgroundColor = '#f0f0f0';
         });
@@ -2678,6 +3501,9 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
         });
         
         menu.appendChild(defaultFontItem);
+
+        // カスタムフォントを取得
+        const customFonts = await fontDB.getAllFonts();
 
         // システムフォント
         const systemFonts = [
@@ -2760,49 +3586,48 @@ async function createFontSizeMenu(x, y, editor, hasSelection = true) {
             border-bottom: 1px solid #eee;
           `;
           menu.appendChild(customFontLabel);
-        }
 
-        Object.keys(customFonts).forEach(fontName => {
-          const fontItem = document.createElement('div');
-          fontItem.textContent = fontName;
-          fontItem.style.cssText = `
-            padding: 6px 20px;
-            cursor: pointer;
-            font-size: 11px;
-            transition: background-color 0.2s;
-            font-family: "${fontName}", sans-serif;
-          `;
-          
-          fontItem.addEventListener('mouseenter', function() {
-            this.style.backgroundColor = '#f0f0f0';
-          });
-          
-          fontItem.addEventListener('mouseleave', function() {
-            this.style.backgroundColor = 'transparent';
-          });
-          
-          fontItem.addEventListener('mousedown', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-          });
-          
-          fontItem.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
+          Object.keys(customFonts).forEach(fontName => {
+            const fontItem = document.createElement('div');
+            fontItem.textContent = fontName;
+            fontItem.style.cssText = `
+              padding: 6px 20px;
+              cursor: pointer;
+              font-size: 11px;
+              transition: background-color 0.2s;
+              font-family: "${fontName}", sans-serif;
+            `;
             
-            setTimeout(() => {
-              applyFontFamilyToSelection(fontName, editor);
+            fontItem.addEventListener('mouseenter', function() {
+              this.style.backgroundColor = '#f0f0f0';
+            });
+            
+            fontItem.addEventListener('mouseleave', function() {
+              this.style.backgroundColor = 'transparent';
+            });
+            
+            fontItem.addEventListener('mousedown', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            
+            fontItem.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
               
-              if (menu.parentNode) {
-                menu.parentNode.removeChild(menu);
-              }
-              
-              saveCustomLabels();
-            }, 10);
+              setTimeout(() => {
+                applyFontFamilyToSelection(fontName, editor);
+                
+                if (menu.parentNode) {
+                  menu.parentNode.removeChild(menu);
+                }
+                
+                saveCustomLabels();
+              }, 10);
+            });
+            
+            menu.appendChild(fontItem);
           });
-          
-          menu.appendChild(fontItem);
-        });
         }
       }
     } catch (error) {
@@ -3752,7 +4577,163 @@ function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = fa
 // フォントファミリーを選択範囲に適用（統合された関数を使用）
 function applyFontFamilyToSelection(fontFamily, editor) {
   const isDefault = !fontFamily || fontFamily === '';
-  applyStyleToSelection('font-family', fontFamily, editor, isDefault);
+  
+  if (isDefault) {
+    // デフォルトフォントの場合は特別な処理
+    applyDefaultFontToSelection(editor);
+  } else {
+    applyStyleToSelection('font-family', fontFamily, editor, false);
+  }
+}
+
+// デフォルトフォントに戻す専用関数
+function applyDefaultFontToSelection(editor) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || selection.isCollapsed) {
+    return;
+  }
+  
+  try {
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString();
+    
+    if (!selectedText) {
+      return;
+    }
+    
+    console.log(`デフォルトフォントに戻す: "${selectedText}"`);
+    
+    // 選択範囲に含まれるspan要素を直接検索
+    const commonAncestor = range.commonAncestorContainer;
+    let targetSpan = null;
+    
+    // 選択範囲が単一のspan要素内にある場合を検出
+    if (commonAncestor.nodeType === Node.TEXT_NODE) {
+      const parentElement = commonAncestor.parentElement;
+      if (parentElement && parentElement.tagName === 'SPAN' && 
+          parentElement.style.fontFamily) {
+        targetSpan = parentElement;
+      }
+    } else if (commonAncestor.tagName === 'SPAN' && 
+               commonAncestor.style.fontFamily) {
+      targetSpan = commonAncestor;
+    }
+    
+    if (targetSpan) {
+      console.log('対象span要素を発見:', targetSpan.outerHTML);
+      
+      // font-family以外のスタイルを保持
+      const currentStyle = targetSpan.getAttribute('style') || '';
+      const cleanStyle = currentStyle.split(';')
+        .filter(rule => {
+          const property = rule.trim().split(':')[0].trim().toLowerCase();
+          return property && property !== 'font-family';
+        })
+        .join('; ');
+      
+      if (cleanStyle.trim()) {
+        // 他のスタイルがある場合は、font-familyのみ削除
+        targetSpan.setAttribute('style', cleanStyle);
+        console.log('font-familyスタイルを削除:', cleanStyle);
+      } else {
+        // スタイルがfont-familyのみの場合は、span要素を完全に削除
+        const parent = targetSpan.parentNode;
+        const textContent = targetSpan.textContent;
+        
+        if (parent) {
+          const textNode = document.createTextNode(textContent);
+          parent.replaceChild(textNode, targetSpan);
+          console.log('span要素を削除し、テキストノードに置換');
+          
+          // 新しいテキストノードを選択
+          range.selectNode(textNode);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    } else {
+      console.log('対象のspan要素が見つからないため、通常処理を実行');
+      // フォールバック: 元のapplyStyleToSelection関数を使用
+      applyStyleToSelection('font-family', '', editor, true);
+    }
+    
+    console.log('デフォルトフォントに戻しました');
+    console.log('処理後のエディタHTML:', editor.innerHTML);
+    
+    // エディタ全体の空のspan要素を掃除
+    cleanupEmptySpans(editor);
+    
+  } catch (error) {
+    console.warn('デフォルトフォント適用エラー:', error);
+    // フォールバック: シンプルな方法で処理
+    applyStyleToSelection('font-family', '', editor, true);
+  }
+  
+  // エディタにフォーカスを戻す
+  editor.focus();
+}
+
+// 空のspan要素やfont-family以外にスタイルを持たないspan要素を掃除
+function cleanupEmptySpans(editor) {
+  console.log('cleanupEmptySpans開始');
+  let removedCount = 0;
+  
+  try {
+    // 複数回実行して、ネストしたspan要素も処理
+    for (let i = 0; i < 3; i++) {
+      const spans = editor.querySelectorAll('span');
+      let currentRoundRemoved = 0;
+      
+      spans.forEach(span => {
+        const style = span.getAttribute('style') || '';
+        const trimmedStyle = style.trim();
+        
+        // スタイルが空の場合
+        if (!trimmedStyle) {
+          const parent = span.parentNode;
+          if (parent) {
+            // span要素の内容を親要素に直接移動
+            while (span.firstChild) {
+              parent.insertBefore(span.firstChild, span);
+            }
+            parent.removeChild(span);
+            currentRoundRemoved++;
+          }
+        } else {
+          // font-familyのみで他にスタイルがないかチェック
+          const styleRules = trimmedStyle.split(';')
+            .map(rule => rule.trim())
+            .filter(rule => rule.length > 0);
+          
+          const hasOnlyFontFamily = styleRules.length === 1 && 
+            styleRules[0].toLowerCase().startsWith('font-family');
+          
+          if (hasOnlyFontFamily) {
+            const parent = span.parentNode;
+            if (parent) {
+              // span要素の内容を親要素に直接移動
+              while (span.firstChild) {
+                parent.insertBefore(span.firstChild, span);
+              }
+              parent.removeChild(span);
+              currentRoundRemoved++;
+            }
+          }
+        }
+      });
+      
+      removedCount += currentRoundRemoved;
+      
+      // この回で削除がなければ終了
+      if (currentRoundRemoved === 0) {
+        break;
+      }
+    }
+    
+    console.log(`cleanupEmptySpans完了: ${removedCount}個のspanを削除`);
+  } catch (error) {
+    console.warn('span要素掃除エラー:', error);
+  }
 }
 
 // フォントサイズを選択範囲に適用（統合された関数を使用）
@@ -3801,7 +4782,7 @@ function cleanupEmptySpans(editor) {
 // ===========================================
 
 // フォントセクションの折りたたみ機能
-function toggleFontSection() {
+async function toggleFontSection() {
   const content = document.getElementById('fontSectionContent');
   const arrow = document.getElementById('fontSectionArrow');
   
@@ -3809,23 +4790,23 @@ function toggleFontSection() {
     // 折りたたむ
     content.style.maxHeight = '0px';
     arrow.style.transform = 'rotate(-90deg)';
-    localStorage.setItem('fontSectionCollapsed', 'true');
+    await StorageManager.setFontSectionCollapsed(true);
   } else {
     // 展開する
     content.style.maxHeight = content.scrollHeight + 'px';
     arrow.style.transform = 'rotate(0deg)';
-    localStorage.setItem('fontSectionCollapsed', 'false');
+    await StorageManager.setFontSectionCollapsed(false);
   }
 }
 
 // フォントセクションの初期状態を設定
-function initializeFontSection() {
+async function initializeFontSection() {
   const content = document.getElementById('fontSectionContent');
   const arrow = document.getElementById('fontSectionArrow');
-  const isCollapsed = localStorage.getItem('fontSectionCollapsed');
+  const isCollapsed = await StorageManager.getFontSectionCollapsed();
   
   // 初期状態は折りたたみ（明示的に展開が設定されている場合のみ展開）
-  if (isCollapsed === 'false') {
+  if (!isCollapsed) {
     // 展開状態
     setTimeout(() => {
       content.style.maxHeight = content.scrollHeight + 'px';
@@ -3850,7 +4831,7 @@ function adjustFontSectionHeight() {
 document.addEventListener('DOMContentLoaded', async function() {
   try {
     // フォントセクションの初期化
-    initializeFontSection();
+    await initializeFontSection();
     
     // FontDatabaseインスタンスを作成して初期化
     fontDB = new FontDatabase();
