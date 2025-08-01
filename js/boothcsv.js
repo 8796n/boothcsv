@@ -1486,17 +1486,20 @@ window.addEventListener("load", async function(){
     };
   }
 
-   // チェックボックスの状態が変更されたときにStorageManagerに保存
+   // チェックボックスの状態が変更されたときにStorageManagerに保存 + 自動再処理
    document.getElementById("labelyn").addEventListener("change", async function() {
      await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
+     await autoProcessCSV(); // 設定変更時に自動再処理
    });
 
    document.getElementById("labelskipnum").addEventListener("change", async function() {
      await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
+     await autoProcessCSV(); // 設定変更時に自動再処理
    });
 
    document.getElementById("sortByPaymentDate").addEventListener("change", async function() {
      await StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
+     await autoProcessCSV(); // 設定変更時に自動再処理
    });
 
    // 注文画像表示機能のイベントリスナー
@@ -1506,6 +1509,9 @@ window.addEventListener("load", async function(){
      
      // 画像表示をリアルタイムで更新
      await updateAllOrderImagesVisibility(this.checked);
+     
+     // 設定変更時に自動再処理
+     await autoProcessCSV();
    });
 
   // カスタムラベル機能のイベントリスナー（遅延実行）
@@ -1573,10 +1579,75 @@ async function executeCustomLabelsOnly() {
   await processCustomLabelsOnly(config);
 }
 
+// 自動処理関数（ファイル選択時や設定変更時に呼ばれる）
+async function autoProcessCSV() {
+  try {
+    const fileInput = document.getElementById("file");
+    if (!fileInput.files || fileInput.files.length === 0) {
+      console.log('ファイルが選択されていません。自動処理をスキップします。');
+      clearPrintCountDisplay(); // ファイルが未選択の場合は印刷枚数をクリア
+      return;
+    }
+
+    // カスタムラベルのバリデーション（エラー表示なし）
+    if (!validateCustomLabelsQuiet()) {
+      console.log('カスタムラベルにエラーがあります。手動実行が必要です。');
+      return;
+    }
+    
+    console.log('自動CSV処理を開始します...');
+    clearPreviousResults();
+    const config = await getConfigFromUI();
+    
+    Papa.parse(config.file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async function(results) {
+        await processCSVResults(results, config);
+        console.log('自動CSV処理が完了しました。');
+      }
+    });
+  } catch (error) {
+    console.error('自動処理中にエラーが発生しました:', error);
+  }
+}
+
+// 静かなバリデーション関数（アラート表示なし）
+function validateCustomLabelsQuiet() {
+  const customLabelEnable = document.getElementById('customLabelEnable').checked;
+  
+  if (!customLabelEnable) {
+    return true; // カスタムラベルが無効なら常にOK
+  }
+
+  const customLabels = getCustomLabelsFromUI();
+  const enabledLabels = customLabels.filter(label => label.enabled);
+  
+  // 有効なラベルがあるかチェック
+  if (enabledLabels.length === 0) {
+    return false;
+  }
+
+  // 各ラベルの内容をチェック
+  for (const label of enabledLabels) {
+    if (!label.text || label.text.trim() === '') {
+      return false;
+    }
+    if (!label.count || label.count <= 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function clearPreviousResults() {
   for (let sheet of document.querySelectorAll('section')) {
     sheet.parentNode.removeChild(sheet);
   }
+  
+  // 印刷枚数表示もクリア
+  clearPrintCountDisplay();
 }
 
 async function getConfigFromUI() {
@@ -1662,7 +1733,10 @@ async function processCSVResults(results, config) {
   }
   
   // 印刷枚数の表示（複数シート対応）
-  showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
+  // showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
+  
+  // ヘッダーの印刷枚数表示を更新
+  updatePrintCountDisplay(csvRowCount, requiredSheets, totalCustomLabelCount);
   
   // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
   await updateCustomLabelsSummary();
@@ -1741,10 +1815,45 @@ async function processCustomLabelsOnly(config) {
   }
   
   // 印刷枚数の表示（複数シート対応）
-  showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, labelskipNum, sheetsInfo);
+  // showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, labelskipNum, sheetsInfo);
+  
+  // ヘッダーの印刷枚数表示を更新（カスタムラベルのみ）
+  updatePrintCountDisplay(0, sheetsInfo.length, totalCustomLabelCount);
   
   // ボタンの状態を更新
   updateButtonStates();
+}
+
+// ヘッダーの印刷枚数表示を更新する関数
+function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, customLabelCount = 0) {
+  const displayElement = document.getElementById('printCountDisplay');
+  const orderCountElement = document.getElementById('orderSheetCount');
+  const labelCountElement = document.getElementById('labelSheetCount');
+  const customLabelCountElement = document.getElementById('customLabelCount');
+  const customLabelItem = document.getElementById('customLabelCountItem');
+  
+  if (!displayElement) return;
+  
+  // 値を更新
+  if (orderCountElement) orderCountElement.textContent = orderSheetCount;
+  if (labelCountElement) labelCountElement.textContent = labelSheetCount;
+  if (customLabelCountElement) customLabelCountElement.textContent = customLabelCount;
+  
+  // カスタムラベルの表示/非表示を制御
+  if (customLabelItem) {
+    customLabelItem.style.display = customLabelCount > 0 ? 'flex' : 'none';
+  }
+  
+  // 全体の表示/非表示を制御
+  const hasAnyCount = orderSheetCount > 0 || labelSheetCount > 0 || customLabelCount > 0;
+  displayElement.style.display = hasAnyCount ? 'flex' : 'none';
+  
+  console.log(`印刷枚数更新: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
+}
+
+// 印刷枚数をクリアする関数
+function clearPrintCountDisplay() {
+  updatePrintCountDisplay(0, 0, 0);
 }
 
 async function generateOrderDetails(data, labelarr) {
@@ -1953,47 +2062,12 @@ async function generateLabels(labelarr) {
   document.body.insertBefore(cL44, tL44);
 }
 
-function showPrintSummary() {
-  const labelTable = document.querySelectorAll(".label44");
-  const pageDiv = document.querySelectorAll(".page");
-  
-  if (labelTable.length > 0 && pageDiv.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚\n注文明細: ${pageDiv.length}枚`);
-  } else if (labelTable.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
-  } else if (pageDiv.length > 0) {
-    alert(`印刷準備完了\n注文明細: ${pageDiv.length}枚`);
-  }
-}
+// 以下の関数は廃止されました（印刷枚数は固定ヘッダーにリアルタイム表示）
+// function showPrintSummary() { ... }
+// function showCustomLabelPrintSummary() { ... }
+// function showMultiSheetCustomLabelPrintSummary() { ... }
+// function showCSVWithCustomLabelPrintSummary() { ... }
 
-function showCustomLabelPrintSummary(customLabelCount, skipCount) {
-  const labelTable = document.querySelectorAll(".label44");
-  
-  if (labelTable.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
-  }
-}
-
-function showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, skipCount, sheetsInfo) {
-  const labelTable = document.querySelectorAll(".label44");
-  
-  if (labelTable.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
-  }
-}
-
-function showCSVWithCustomLabelPrintSummary(csvRowCount, customLabelCount, skipCount, requiredSheets) {
-  const labelTable = document.querySelectorAll(".label44");
-  const pageDiv = document.querySelectorAll(".page");
-  
-  if (labelTable.length > 0 && pageDiv.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚\n注文明細: ${pageDiv.length}枚`);
-  } else if (labelTable.length > 0) {
-    alert(`印刷準備完了\nラベルシート: ${labelTable.length}枚`);
-  } else if (pageDiv.length > 0) {
-    alert(`印刷準備完了\n注文明細: ${pageDiv.length}枚`);
-  }
-}
 function addP(div, text){
   const p = document.createElement("p");
   p.innerText = text;
@@ -2652,20 +2726,24 @@ document.getElementById("file").addEventListener("change", async function() {
       const shortName = fileName.length > 15 ? fileName.substring(0, 12) + '...' : fileName;
       fileSelectedInfoCompact.textContent = shortName;
       fileSelectedInfoCompact.classList.add('has-file');
+      
+      // CSVファイルが選択されたら自動的に処理を実行
+      console.log('CSVファイルが選択されました。自動処理を開始します:', fileName);
+      await autoProcessCSV();
     } else {
       fileSelectedInfoCompact.textContent = '未選択';
       fileSelectedInfoCompact.classList.remove('has-file');
+      
+      // ファイルがクリアされた場合は結果もクリア
+      clearPreviousResults();
     }
   }
 });
 
-// ページロード時に説明を表示し、ユーザーにファイル選択を促す
+// ページロード時にボタン状態を設定
 window.addEventListener("load", function() {
   // 初期状態でボタンを設定
   updateButtonStates();
-
-  // ファイル選択を促すメッセージを表示
-  alert("CSVファイルを選択するか、カスタムラベル機能を使用してください。");
 });
 
 // グローバルエラーハンドリング
@@ -2888,6 +2966,9 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
       saveCustomLabels();
       updateButtonStates();
       await updateCustomLabelsSummary();
+      
+      // テキスト変更時に自動再処理
+      await autoProcessCSV();
     });
   } else {
     console.error('editorElement要素が見つかりません');
@@ -2900,6 +2981,9 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
     enabledCheckbox.addEventListener('change', async function() {
       saveCustomLabels();
       await updateCustomLabelsSummary();
+      
+      // チェックボックス変更時に自動再処理
+      await autoProcessCSV();
     });
   }
   
@@ -2911,6 +2995,9 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
       saveCustomLabels();
       updateButtonStates();
       await updateCustomLabelsSummary();
+      
+      // 枚数変更時に自動再処理
+      await autoProcessCSV();
     });
   } else {
     console.error('countInput要素が見つかりません');
@@ -2940,6 +3027,9 @@ function removeCustomLabelItem(index) {
   saveCustomLabels();
   updateCustomLabelsSummary().catch(console.error);
   updateButtonStates();
+  
+  // 項目削除時に自動再処理
+  autoProcessCSV().catch(console.error);
 }
 
 // UIからカスタムラベルデータを取得
@@ -3084,21 +3174,27 @@ function setupCustomLabelEvents() {
   // カスタムラベル有効化チェックボックス
   const customLabelEnable = document.getElementById('customLabelEnable');
   if (customLabelEnable) {
-    customLabelEnable.addEventListener('change', function() {
+    customLabelEnable.addEventListener('change', async function() {
       toggleCustomLabelRow(this.checked);
-      StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, this.checked);
+      await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, this.checked);
       updateButtonStates();
+      
+      // 設定変更時に自動再処理
+      await autoProcessCSV();
     });
   }
 
   // カスタムラベル追加ボタン
   const addButton = document.getElementById('addCustomLabelBtn');
   if (addButton) {
-    addButton.addEventListener('click', function() {
+    addButton.addEventListener('click', async function() {
       debugLog('ラベル追加ボタンがクリックされました'); // デバッグ用
       addCustomLabelItem('', 1, null, true);
       saveCustomLabels();
       updateButtonStates();
+      
+      // ラベル追加時に自動再処理
+      await autoProcessCSV();
     });
   } else {
     console.error('addCustomLabelBtn要素が見つかりません');
@@ -3111,6 +3207,9 @@ function setupCustomLabelEvents() {
       debugLog('ラベル全削除ボタンがクリックされました'); // デバッグ用
       if (confirm('本当に全てのカスタムラベルを削除しますか？')) {
         await clearAllCustomLabels();
+        
+        // ラベル削除時に自動再処理
+        await autoProcessCSV();
       }
     });
   } else {
@@ -4137,6 +4236,7 @@ function setupTextOnlyEditor(editor) {
 document.addEventListener('DOMContentLoaded', function() {
   const printButton = document.getElementById('printButton');
   const printButtonCompact = document.getElementById('printButtonCompact');
+  const printBtn = document.getElementById('print-btn'); // 新しい印刷ボタン
   
   // 既存の印刷ボタンがある場合
   if (printButton) {
@@ -4161,6 +4261,22 @@ document.addEventListener('DOMContentLoaded', function() {
   // 固定ヘッダーの印刷ボタンがある場合
   if (printButtonCompact) {
     printButtonCompact.onclick = function() {
+      // まず印刷を実行
+      window.print();
+      
+      // 印刷ダイアログが閉じた後に実行される
+      setTimeout(() => {
+        // 印刷完了の確認
+        if (confirm('印刷が完了しましたか？完了した場合、次回のスキップ枚数を更新します。')) {
+          updateSkipCount();
+        }
+      }, 1000);
+    };
+  }
+  
+  // 新しい印刷ボタン（print-btn）の処理
+  if (printBtn) {
+    printBtn.onclick = function() {
       // まず印刷を実行
       window.print();
       

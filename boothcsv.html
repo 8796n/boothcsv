@@ -25,11 +25,29 @@
         <input type="file" id="file" name="csvfile" accept=".csv" style="display: none;">
         <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
       </div>
+      <!-- 印刷枚数表示 -->
+      <div class="print-count-display" id="printCountDisplay" style="display: none;">
+        <div class="print-count-item">
+          <span class="print-count-label">ラベル:</span>
+          <span class="print-count-value" id="labelSheetCount">0</span>
+          <span class="print-count-unit">枚</span>
+        </div>
+        <div class="print-count-item">
+          <span class="print-count-label">普通紙:</span>
+          <span class="print-count-value" id="orderSheetCount">0</span>
+          <span class="print-count-unit">枚</span>
+        </div>
+        <div class="print-count-item" id="customLabelCountItem" style="display: none;">
+          <span class="print-count-label">カスタム:</span>
+          <span class="print-count-value" id="customLabelCount">0</span>
+          <span class="print-count-unit">面</span>
+        </div>
+      </div>
       <!-- 主要アクションボタン -->
       <div class="main-action-buttons">
-        <button type="button" class="btn-compact btn-primary" onClick="clickstart();" id="executeButtonCompact" disabled>CSV処理実行</button>
-        <button type="button" class="btn-compact btn-success" onClick="executeCustomLabelsOnly();" id="customLabelOnlyButtonCompact" disabled>カスタムラベル実行</button>
-              <button id="print-btn" type="button" title="印刷">🖨️</button>
+        <button type="button" class="btn-compact btn-primary" onClick="clickstart();" id="executeButtonCompact" disabled>手動実行</button>
+        <button type="button" class="btn-compact btn-success" onClick="executeCustomLabelsOnly();" id="customLabelOnlyButtonCompact" disabled>カスタムラベルのみ</button>
+              <button id="print-btn" type="button" title="印刷">印刷</button>
       </div>
     </div>
   </div>
