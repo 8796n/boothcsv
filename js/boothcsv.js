@@ -28,6 +28,10 @@ const DEBUG_MODE = (() => {
   return urlParams.get('debug') === '1';
 })();
 
+// リアルタイム更新制御フラグ
+let isEditingCustomLabel = false;
+let pendingUpdateTimer = null;
+
 // デバッグログ用関数
 function debugLog(...args) {
   if (DEBUG_MODE) {
@@ -1550,6 +1554,11 @@ window.addEventListener("load", async function(){
     updateButtonStates();
   });
 
+  // 初期カスタムラベルプレビューの更新（遅延実行）
+  setTimeout(async function() {
+    await updateCustomLabelsPreview();
+  }, 200);
+
 }, false);
 
 async function clickstart() {
@@ -1570,6 +1579,7 @@ async function clickstart() {
   });
 }
 
+// カスタムラベル専用実行関数（リアルタイムプレビューにより将来的に削除予定）
 async function executeCustomLabelsOnly() {
   // カスタムラベルのバリデーション
   if (!validateAndPromptCustomLabels()) {
@@ -1609,6 +1619,9 @@ async function autoProcessCSV() {
     if (!fileInput.files || fileInput.files.length === 0) {
       console.log('ファイルが選択されていません。自動処理をスキップします。');
       clearPrintCountDisplay(); // ファイルが未選択の場合は印刷枚数をクリア
+      
+      // ファイルが選択されていない場合でもカスタムラベルのプレビューを更新
+      await updateCustomLabelsPreview();
       return;
     }
 
@@ -1633,6 +1646,58 @@ async function autoProcessCSV() {
   } catch (error) {
     console.error('自動処理中にエラーが発生しました:', error);
   }
+}
+
+// カスタムラベルのリアルタイムプレビュー更新
+async function updateCustomLabelsPreview() {
+  // 編集中は更新をスキップ
+  if (isEditingCustomLabel) {
+    debugLog('カスタムラベル編集中のため、プレビュー更新をスキップ');
+    return;
+  }
+
+  try {
+    const config = await getConfigFromUI();
+    
+    // ラベル印刷が無効またはカスタムラベルが無効な場合
+    if (!config.labelyn || !config.customLabelEnable) {
+      clearPreviousResults();
+      return;
+    }
+
+    // 有効なカスタムラベルがある場合のみプレビューを生成
+    if (config.customLabels && config.customLabels.length > 0) {
+      const enabledLabels = config.customLabels.filter(label => label.enabled && label.text.trim() !== '');
+      
+      if (enabledLabels.length > 0) {
+        // 既存の結果をクリアしてからプレビューを生成
+        clearPreviousResults();
+        // カスタムラベルのみの処理を実行（プレビュー用）
+        await processCustomLabelsOnly(config, true); // 第2引数でプレビューモードを指定
+      } else {
+        clearPreviousResults();
+      }
+    } else {
+      clearPreviousResults();
+    }
+  } catch (error) {
+    console.error('カスタムラベルプレビュー更新エラー:', error);
+  }
+}
+
+// 遅延更新を実行する関数
+function scheduleDelayedPreviewUpdate(delay = 500) {
+  // 既存のタイマーをクリア
+  if (pendingUpdateTimer) {
+    clearTimeout(pendingUpdateTimer);
+  }
+  
+  // 新しいタイマーを設定
+  pendingUpdateTimer = setTimeout(async () => {
+    debugLog('遅延プレビュー更新を実行');
+    await updateCustomLabelsPreview();
+    pendingUpdateTimer = null;
+  }, delay);
 }
 
 // 静かなバリデーション関数（アラート表示なし）
@@ -1768,7 +1833,7 @@ async function processCSVResults(results, config) {
   updateButtonStates();
 }
 
-async function processCustomLabelsOnly(config) {
+async function processCustomLabelsOnly(config, isPreviewMode = false) {
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   const labelskipNum = parseInt(config.labelskip, 10) || 0;
@@ -1776,12 +1841,16 @@ async function processCustomLabelsOnly(config) {
   // 有効なカスタムラベルがあるかチェック
   const validLabels = config.customLabels.filter(label => label.text.trim() !== '');
   if (validLabels.length === 0) {
-    alert('印刷する文字列を入力してください。');
+    if (!isPreviewMode) {
+      alert('印刷する文字列を入力してください。');
+    }
     return;
   }
   
   if (totalCustomLabelCount === 0) {
-    alert('印刷する面数を1以上に設定してください。');
+    if (!isPreviewMode) {
+      alert('印刷する面数を1以上に設定してください。');
+    }
     return;
   }
   
@@ -1841,7 +1910,12 @@ async function processCustomLabelsOnly(config) {
   // showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, labelskipNum, sheetsInfo);
   
   // ヘッダーの印刷枚数表示を更新（カスタムラベルのみ）
-  updatePrintCountDisplay(0, sheetsInfo.length, totalCustomLabelCount);
+  if (!isPreviewMode) {
+    updatePrintCountDisplay(0, sheetsInfo.length, totalCustomLabelCount);
+  } else {
+    // プレビューモードでも表示を更新
+    updatePrintCountDisplay(0, sheetsInfo.length, totalCustomLabelCount);
+  }
   
   // ボタンの状態を更新
   updateButtonStates();
@@ -1855,12 +1929,31 @@ function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, custo
   const customLabelCountElement = document.getElementById('customLabelCount');
   const customLabelItem = document.getElementById('customLabelCountItem');
   
-  if (!displayElement) return;
+  console.log(`updatePrintCountDisplay呼び出し: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
+  
+  if (!displayElement) {
+    console.error('printCountDisplay要素が見つかりません');
+    return;
+  }
   
   // 値を更新
-  if (orderCountElement) orderCountElement.textContent = orderSheetCount;
-  if (labelCountElement) labelCountElement.textContent = labelSheetCount;
-  if (customLabelCountElement) customLabelCountElement.textContent = customLabelCount;
+  if (orderCountElement) {
+    orderCountElement.textContent = orderSheetCount;
+  } else {
+    console.error('orderSheetCount要素が見つかりません');
+  }
+  
+  if (labelCountElement) {
+    labelCountElement.textContent = labelSheetCount;
+  } else {
+    console.error('labelSheetCount要素が見つかりません');
+  }
+  
+  if (customLabelCountElement) {
+    customLabelCountElement.textContent = customLabelCount;
+  } else {
+    console.error('customLabelCount要素が見つかりません');
+  }
   
   // カスタムラベルの表示/非表示を制御
   if (customLabelItem) {
@@ -1871,7 +1964,7 @@ function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, custo
   const hasAnyCount = orderSheetCount > 0 || labelSheetCount > 0 || customLabelCount > 0;
   displayElement.style.display = hasAnyCount ? 'flex' : 'none';
   
-  console.log(`印刷枚数更新: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
+  console.log(`印刷枚数更新完了: 表示=${hasAnyCount ? '表示' : '非表示'}`);
 }
 
 // 印刷枚数をクリアする関数
@@ -2979,6 +3072,21 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
     setupRichTextFormatting(editorElement);
     setupTextOnlyEditor(editorElement);
     
+    // 編集開始時のイベント
+    editorElement.addEventListener('focus', function() {
+      debugLog('カスタムラベル編集開始');
+      isEditingCustomLabel = true;
+    });
+    
+    // 編集終了時のイベント
+    editorElement.addEventListener('blur', async function() {
+      debugLog('カスタムラベル編集終了');
+      isEditingCustomLabel = false;
+      
+      // 編集終了後に遅延更新を実行
+      scheduleDelayedPreviewUpdate(300);
+    });
+    
     editorElement.addEventListener('input', async function() {
       // 文字列が入力されたら強調表示をクリア
       const item = editorElement.closest('.custom-label-item');
@@ -2990,8 +3098,12 @@ function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) 
       updateButtonStates();
       await updateCustomLabelsSummary();
       
-      // テキスト変更時に自動再処理
-      await autoProcessCSV();
+      // 編集中は即座の自動再処理をスキップし、遅延更新をスケジュール
+      if (!isEditingCustomLabel) {
+        await autoProcessCSV();
+      } else {
+        scheduleDelayedPreviewUpdate(1000); // 編集中は1秒の遅延
+      }
     });
   } else {
     console.error('editorElement要素が見つかりません');
@@ -3194,6 +3306,25 @@ async function adjustCustomLabelsForTotal(customLabels, maxTotalLabels) {
 }
 
 function setupCustomLabelEvents() {
+  // 初期カスタムラベルエディターのイベントリスナー設定
+  const initialEditor = document.getElementById('initialCustomLabelEditor');
+  if (initialEditor) {
+    // 編集開始時のイベント
+    initialEditor.addEventListener('focus', function() {
+      debugLog('初期カスタムラベル編集開始');
+      isEditingCustomLabel = true;
+    });
+    
+    // 編集終了時のイベント
+    initialEditor.addEventListener('blur', async function() {
+      debugLog('初期カスタムラベル編集終了');
+      isEditingCustomLabel = false;
+      
+      // 編集終了後に遅延更新を実行
+      scheduleDelayedPreviewUpdate(300);
+    });
+  }
+
   // カスタムラベル有効化チェックボックス
   const customLabelEnable = document.getElementById('customLabelEnable');
   if (customLabelEnable) {
@@ -3265,7 +3396,6 @@ async function updateButtonStates() {
   
   // 固定ヘッダーのボタン要素も取得
   const executeButtonCompact = document.getElementById("executeButtonCompact");
-  const customLabelOnlyButtonCompact = document.getElementById("customLabelOnlyButtonCompact");
   const printButtonCompact = document.getElementById("printButtonCompact");
   
   const customLabelEnable = document.getElementById("customLabelEnable");
@@ -3275,10 +3405,9 @@ async function updateButtonStates() {
   if (executeButton) executeButton.disabled = executeDisabled;
   if (executeButtonCompact) executeButtonCompact.disabled = executeDisabled;
 
-  // カスタムラベル専用実行ボタンの状態
+// カスタムラベル専用実行ボタンの状態（将来的に削除予定 - リアルタイムプレビューにより不要）
   const hasValidCustomLabels = customLabelEnable.checked && hasCustomLabelsWithContent();
   if (customLabelOnlyButton) customLabelOnlyButton.disabled = !hasValidCustomLabels;
-  if (customLabelOnlyButtonCompact) customLabelOnlyButtonCompact.disabled = !hasValidCustomLabels;
 
   // 印刷ボタンの状態（何らかのコンテンツが生成されている場合に有効）
   const hasSheets = document.querySelectorAll('.sheet').length > 0;
@@ -3449,13 +3578,8 @@ function setupRichTextFormatting(editor) {
         const br = document.createElement('br');
         range.insertNode(br);
         
-        // さらにもう一つのbrを挿入してカーソル位置を確保
-        const br2 = document.createElement('br');
+        // カーソルを改行の後に配置
         range.setStartAfter(br);
-        range.insertNode(br2);
-        
-        // カーソルを2番目のbrの前に配置
-        range.setStartBefore(br2);
         range.collapse(true);
         selection.removeAllRanges();
         selection.addRange(range);

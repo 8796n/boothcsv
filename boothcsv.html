@@ -46,8 +46,7 @@
       <!-- 主要アクションボタン -->
       <div class="main-action-buttons">
         <button type="button" class="btn-compact btn-primary" onClick="clickstart();" id="executeButtonCompact" disabled>手動実行</button>
-        <button type="button" class="btn-compact btn-success" onClick="executeCustomLabelsOnly();" id="customLabelOnlyButtonCompact" disabled>カスタムラベルのみ</button>
-              <button id="print-btn" type="button" title="印刷">印刷</button>
+        <button id="print-btn" type="button" title="印刷">印刷</button>
       </div>
     </div>
   </div>
@@ -156,6 +155,7 @@
     <div class="custom-label-input-group">
       <div class="custom-label-editor-row">
         <div class="rich-text-editor" contenteditable="true" 
+             id="initialCustomLabelEditor"
              placeholder="印刷したい文字列を入力してください..."
              style="font-size: 12pt;"></div>
         <div class="custom-label-count-group">
