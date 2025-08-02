@@ -25,6 +25,7 @@ if (!(Get-Module -ListAvailable -Name Selenium)) {
 
 Import-Module Selenium
 
+
 # 事前準備
 $OutputDir = Resolve-Path $OutputDir -ErrorAction SilentlyContinue
 if (!$OutputDir) {
@@ -45,6 +46,100 @@ if (!$HtmlFile) {
 if (!(Test-Path $HtmlFile)) {
     Write-Host "❌ HTMLファイルが見つかりません: $HtmlFile" -ForegroundColor Red
     exit 1
+}
+
+# ChromeDriverの自動取得・更新
+$chromeDriverDir = Get-Location
+$chromeDriverExe = Join-Path $chromeDriverDir "chromedriver.exe"
+
+function Get-ChromeVersion {
+    $chromePaths = @(
+        "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
+        "$env:ProgramFiles(x86)\\Google\\Chrome\\Application\\chrome.exe",
+        "$env:LocalAppData\\Google\\Chrome\\Application\\chrome.exe"
+    )
+    foreach ($path in $chromePaths) {
+        if (Test-Path $path) {
+            $ver = (Get-Item $path).VersionInfo.ProductVersion
+            if ($ver) { return $ver }
+        }
+    }
+    return $null
+}
+
+function Get-ChromeDriverVersion {
+    param($exePath)
+    if (!(Test-Path $exePath)) { return $null }
+    try {
+        $output = & $exePath --version 2>$null
+        if ($output -match 'ChromeDriver ([\d.]+)') {
+            return $matches[1]
+        }
+    } catch {}
+    return $null
+}
+
+function Download-ChromeDriver {
+    param($version, $destPath)
+    $major = $version.Split('.')[0]
+    $url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$version/win64/chromedriver-win64.zip"
+    $guid = [guid]::NewGuid().ToString()
+    $tmpZip = Join-Path $env:TEMP ("chromedriver_" + $guid + ".zip")
+    $tmpExtract = Join-Path $env:TEMP ("chromedriver_extract_" + $guid)
+    Write-Host "🌐 ChromeDriver $version をダウンロード中..." -ForegroundColor Yellow
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $tmpZip -UseBasicParsing
+        if (Test-Path $tmpExtract) { Remove-Item $tmpExtract -Recurse -Force }
+        Expand-Archive -Path $tmpZip -DestinationPath $tmpExtract -Force
+        $driverPath = Get-ChildItem -Path $tmpExtract -Recurse -Filter "chromedriver.exe" | Select-Object -First 1
+        if ($driverPath) {
+            Copy-Item $driverPath.FullName -Destination $destPath -Force
+            Write-Host "✅ ChromeDriver $version を取得しました: $destPath" -ForegroundColor Green
+        } else {
+            Write-Host "❌ chromedriver.exe がzip内に見つかりません" -ForegroundColor Red
+            exit 1
+        }
+        Remove-Item $tmpZip -Force
+        Remove-Item $tmpExtract -Recurse -Force
+    } catch {
+        Write-Host "❌ ChromeDriverのダウンロードに失敗: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Chrome/ChromeDriverバージョンチェック
+$chromeVer = Get-ChromeVersion
+if (-not $chromeVer) {
+    Write-Host "❌ Google Chromeが見つかりません。Chromeをインストールしてください。" -ForegroundColor Red
+    exit 1
+}
+$chromeMajor = $chromeVer.Split('.')[0]
+
+$driverVer = Get-ChromeDriverVersion $chromeDriverExe
+$needDownload = $false
+if (-not $driverVer) {
+    $needDownload = $true
+    Write-Host "⚠️  ChromeDriverが見つかりません。自動取得します。" -ForegroundColor Yellow
+} elseif ($driverVer.Split('.')[0] -ne $chromeMajor) {
+    $needDownload = $true
+    Write-Host "⚠️  ChromeDriverバージョン($driverVer)とChrome($chromeVer)が一致しません。自動更新します。" -ForegroundColor Yellow
+}
+if ($needDownload) {
+    # Chrome for Testing APIで最新バージョンを取得
+    $verApi = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+    try {
+        $json = Invoke-RestMethod -Uri $verApi -UseBasicParsing
+        $ver = $json.channels.Stable.version
+        if ($ver.Split('.')[0] -eq $chromeMajor) {
+            Download-ChromeDriver -version $ver -destPath $chromeDriverExe
+        } else {
+            Write-Host "❌ Chromeのメジャーバージョン($chromeMajor)に対応するChromeDriverが見つかりません。" -ForegroundColor Red
+            exit 1
+        }
+    } catch {
+        Write-Host "❌ ChromeDriverバージョン情報の取得に失敗: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
 }
 
 Write-Host "🎯 BOOTH CSV 自動スクリーンショット撮影開始" -ForegroundColor Green
@@ -236,22 +331,20 @@ try {
                 const labelynElement = document.getElementById('labelyn');
                 const customLabelElement = document.getElementById('customLabelEnable');
                 const orderImageElement = document.getElementById('orderImageEnable');
-                
+                window.scrollCompleted = false;
                 if (!labelynElement || !customLabelElement || !orderImageElement) {
                     console.error('❌ 必要なDOM要素が見つかりません');
+                    window.scrollCompleted = true;
                     return;
                 }
-                
                 // カスタムラベル機能のみON
                 labelynElement.checked = true;
                 customLabelElement.checked = true;
                 orderImageElement.checked = false;
-                
                 // 各要素のchangeイベントを発火
                 labelynElement.dispatchEvent(new Event('change'));
                 customLabelElement.dispatchEvent(new Event('change'));
                 orderImageElement.dispatchEvent(new Event('change'));
-                
                 // 印刷面数を5に設定
                 const printCountInput = document.querySelector('.custom-label-count-group input');
                 if (printCountInput) {
@@ -259,33 +352,27 @@ try {
                     printCountInput.dispatchEvent(new Event('input'));
                     console.log('✅ 印刷面数を5に設定');
                 }
-                
-                // 「残りラベルに任意文字列を印刷」までスクロール
-                setTimeout(() => {
-                    const customLabelRow = document.getElementById('customLabelRow');
-                    if (customLabelRow) {
-                        // 「残りラベルに任意文字列を印刷」のラベル部分を探す
-                        const customLabelLabel = document.querySelector('label[for="customLabelEnable"]');
-                        if (customLabelLabel) {
-                            customLabelLabel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            // 固定ヘッダー分を考慮して調整
-                            setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
-                                console.log('✅ 「残りラベルに任意文字列を印刷」までスクロール完了');
-                            }, 1000);
-                        } else {
-                            // フォールバック: customLabelRowにスクロール
-                            customLabelRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
-                                console.log('✅ カスタムラベル設定エリアにスクロール完了（フォールバック）');
-                            }, 1000);
-                        }
+                // 「残りラベルに任意文字列を印刷」まで即時スクロール
+                const customLabelRow = document.getElementById('customLabelRow');
+                if (customLabelRow) {
+                    // 「残りラベルに任意文字列を印刷」のラベル部分を探す
+                    const customLabelLabel = document.querySelector('label[for="customLabelEnable"]');
+                    if (customLabelLabel) {
+                        customLabelLabel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                        console.log('✅ 「残りラベルに任意文字列を印刷」までスクロール完了');
+                        window.scrollCompleted = true;
                     } else {
-                        console.log('⚠️ カスタムラベル設定エリアが見つかりません');
+                        // フォールバック: customLabelRowにスクロール
+                        customLabelRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                        console.log('✅ カスタムラベル設定エリアにスクロール完了（フォールバック）');
+                        window.scrollCompleted = true;
                     }
-                }, 1000);
-                
+                } else {
+                    console.log('⚠️ カスタムラベル設定エリアが見つかりません');
+                    window.scrollCompleted = true;
+                }
                 console.log('✅ カスタムラベル設定完了');
 "@
             PostScript = @"
@@ -296,7 +383,7 @@ try {
                         editors[0].innerHTML = '<div><b>【サンプル商品】</b></div><div>アクリルキーホルダー</div><div style=\"color: #666;\">商品コード: AKH-001</div>';
                         editors[0].dispatchEvent(new Event('input'));
                         console.log('✅ サンプルテキスト入力完了');
-                        
+
                         // カスタムフォント設定セクションを展開
                         setTimeout(() => {
                             // フォントセクションが折りたたまれている場合は展開
@@ -312,12 +399,12 @@ try {
                                 console.log('✅ カスタムフォント設定セクションは既に展開済み');
                             }
                         }, 500);
-                        
+
                         // 「【サンプル商品】」テキストを選択
                         setTimeout(() => {
                             const range = document.createRange();
                             const selection = window.getSelection();
-                            
+
                             // <b>タグ内のテキストノードを探す
                             const boldElement = editors[0].querySelector('b');
                             if (boldElement && boldElement.firstChild) {
@@ -325,7 +412,11 @@ try {
                                 selection.removeAllRanges();
                                 selection.addRange(range);
                                 console.log('✅ 「【サンプル商品】」テキスト選択完了');
-                                
+
+                                // 右クリック前に200px下にスクロール
+                                window.scrollBy(0, 200);
+                                console.log('✅ 右クリック前に200px下にスクロールしました');
+
                                 // 右クリックイベントを発生させる
                                 setTimeout(() => {
                                     const contextMenuEvent = new MouseEvent('contextmenu', {
@@ -342,7 +433,7 @@ try {
                             }
                         }, 1000);
                     }
-                    
+
                     // カスタムラベル設定エリアにスクロール
                     const customRow = document.getElementById('customLabelRow');
                     if (customRow) {
@@ -405,7 +496,7 @@ try {
 "@
                 }
             )
-            Wait = 5
+            Wait = 2
         },
         @{
             Name = "image-function.png"
@@ -780,13 +871,11 @@ try {
             # ポストスクリプトがあれば実行
             if ($shot.PostScript) {
                 $driver.ExecuteScript($shot.PostScript)
-                # csv-labels.pngの場合は追加で待機（スクロール処理完了を待つ）
-                if ($shot.Name -eq "csv-labels.png") {
-                    # スクロール完了を確認
+                # スクロール完了を確認（csv-labels.png, custom-labels.png）
+                if ($shot.Name -eq "csv-labels.png" -or $shot.Name -eq "custom-labels.png") {
                     $scrollCompleted = $false
                     $scrollRetries = 0
                     $maxScrollRetries = 30  # 最大30秒待機
-                    
                     Write-Host "⏳ スクロール完了を待機中..." -ForegroundColor Yellow
                     while (-not $scrollCompleted -and $scrollRetries -lt $maxScrollRetries) {
                         Start-Sleep 1
@@ -801,7 +890,6 @@ try {
                             # スクロール状態取得エラーは無視
                         }
                     }
-                    
                     if (-not $scrollCompleted) {
                         Write-Host "⚠️ スクロール完了タイムアウト" -ForegroundColor Yellow
                     }
