@@ -1446,6 +1446,9 @@ window.addEventListener("load", async function(){
   // 複数のカスタムラベルを初期化
   initializeCustomLabels(settings.customLabels);
 
+  // 固定ヘッダーを初期表示（0枚でも表示）
+  updatePrintCountDisplay(0, 0, 0);
+
    // 画像ドロップゾーンの初期化
   const imageDropZoneElement = document.getElementById('imageDropZone');
   const imageDropZone = await createOrderImageDropZone();
@@ -1567,17 +1570,18 @@ async function autoProcessCSV() {
     const fileInput = document.getElementById("file");
     if (!fileInput.files || fileInput.files.length === 0) {
       console.log('ファイルが選択されていません。自動処理をスキップします。');
-      clearPrintCountDisplay(); // ファイルが未選択の場合は印刷枚数をクリア
       
       // ファイルが選択されていない場合でもカスタムラベルのプレビューを更新
+      // (updateCustomLabelsPreview内で固定ヘッダーの更新も行われる)
       await updateCustomLabelsPreview();
       return;
     }
 
     // カスタムラベルのバリデーション（エラー表示なし）
-    if (!validateCustomLabelsQuiet()) {
-      console.log('カスタムラベルにエラーがあります。設定を確認してください。');
-      return;
+    // バリデーションエラーがあってもCSV処理は継続する
+    const hasValidCustomLabels = validateCustomLabelsQuiet();
+    if (!hasValidCustomLabels) {
+      console.log('カスタムラベルにエラーがありますが、CSV処理は継続します。');
     }
     
     console.log('自動CSV処理を開始します...');
@@ -1624,10 +1628,14 @@ async function updateCustomLabelsPreview() {
         // カスタムラベルのみの処理を実行（プレビュー用）
         await processCustomLabelsOnly(config, true); // 第2引数でプレビューモードを指定
       } else {
+        // 有効なカスタムラベルがない場合は結果をクリアし、固定ヘッダーも更新
         clearPreviousResults();
+        updatePrintCountDisplay(0, 0, 0); // カスタム面数を0にリセット
       }
     } else {
+      // カスタムラベルが存在しない場合も結果をクリアし、固定ヘッダーを更新
       clearPreviousResults();
+      updatePrintCountDisplay(0, 0, 0); // カスタム面数を0にリセット
     }
   } catch (error) {
     console.error('カスタムラベルプレビュー更新エラー:', error);
@@ -1909,11 +1917,10 @@ function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, custo
     customLabelItem.style.display = customLabelCount > 0 ? 'flex' : 'none';
   }
   
-  // 全体の表示/非表示を制御
-  const hasAnyCount = orderSheetCount > 0 || labelSheetCount > 0 || customLabelCount > 0;
-  displayElement.style.display = hasAnyCount ? 'flex' : 'none';
+  // 全体を常に表示（0枚でも表示）
+  displayElement.style.display = 'flex';
   
-  console.log(`印刷枚数更新完了: 表示=${hasAnyCount ? '表示' : '非表示'}`);
+  console.log(`印刷枚数更新完了: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
 }
 
 // 印刷枚数をクリアする関数
@@ -4302,7 +4309,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 新しい処理を設定
     printButton.onclick = function() {
-      // まず印刷を実行
+      // 印刷前の確認
+      if (!confirmPrint()) {
+        return; // キャンセルされた場合は印刷しない
+      }
+      
+      // 印刷を実行
       window.print();
       
       // 印刷ダイアログが閉じた後に実行される
@@ -4318,7 +4330,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // 固定ヘッダーの印刷ボタンがある場合
   if (printButtonCompact) {
     printButtonCompact.onclick = function() {
-      // まず印刷を実行
+      // 印刷前の確認
+      if (!confirmPrint()) {
+        return; // キャンセルされた場合は印刷しない
+      }
+      
+      // 印刷を実行
       window.print();
       
       // 印刷ダイアログが閉じた後に実行される
@@ -4334,7 +4351,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // 新しい印刷ボタン（print-btn）の処理
   if (printBtn) {
     printBtn.onclick = function() {
-      // まず印刷を実行
+      // 印刷前の確認
+      if (!confirmPrint()) {
+        return; // キャンセルされた場合は印刷しない
+      }
+      
+      // 印刷を実行
       window.print();
       
       // 印刷ダイアログが閉じた後に実行される
@@ -4348,43 +4370,143 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+// 現在の印刷枚数を取得する関数
+function getCurrentPrintCounts() {
+  const orderCountElement = document.getElementById('orderSheetCount');
+  const labelCountElement = document.getElementById('labelSheetCount');
+  const customLabelCountElement = document.getElementById('customLabelCount');
+  
+  const orderSheets = orderCountElement ? parseInt(orderCountElement.textContent, 10) || 0 : 0;
+  const labelSheets = labelCountElement ? parseInt(labelCountElement.textContent, 10) || 0 : 0;
+  const customLabels = customLabelCountElement ? parseInt(customLabelCountElement.textContent, 10) || 0 : 0;
+  
+  return {
+    orderSheets,
+    labelSheets,
+    customLabels
+  };
+}
+
+// 印刷前の確認を行う関数
+function confirmPrint() {
+  const counts = getCurrentPrintCounts();
+  
+  let message = '印刷を開始します。プリンターに以下の用紙をセットしてください：\n\n';
+  
+  // 印刷順序に合わせて表示: ラベルシート→普通紙
+  if (counts.labelSheets > 0) {
+    message += `🏷️ A4ラベルシート(44面): ${counts.labelSheets}枚\n`;
+    if (counts.customLabels > 0) {
+      message += `   (うちカスタムラベル: ${counts.customLabels}面)\n`;
+    }
+  }
+  
+  if (counts.orderSheets > 0) {
+    message += `📄 A4普通紙: ${counts.orderSheets}枚\n`;
+  }
+  
+  if (counts.orderSheets === 0 && counts.labelSheets === 0) {
+    message += '印刷するものがありません。\n';
+    alert(message);
+    return false;
+  }
+  
+  message += '\n用紙の準備ができましたら「OK」を押してください。';
+  
+  return confirm(message);
+}
+
 // スキップ枚数を更新する関数
 async function updateSkipCount() {
-  // 現在のスキップ枚数を取得
-  const currentSkip = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
-  
-  // 使用したラベル枚数を計算
-  let usedLabels = 0;
-  
-  // CSV処理による注文ラベル数を取得
-  const orderPages = document.querySelectorAll(".page");
-  if (orderPages.length > 0) {
-    // 注文ページの数 = CSV行数
-    usedLabels = orderPages.length;
+  try {
+    // 現在のスキップ枚数を取得
+    const currentSkip = parseInt(document.getElementById("labelskipnum").value, 10) || 0;
+    
+    // 固定ヘッダーから実際に印刷された枚数を取得
+    const counts = getCurrentPrintCounts();
+    
+    // ラベルシートが印刷されていない場合は何もしない
+    if (counts.labelSheets === 0) {
+      alert('ラベルシートが印刷されていないため、スキップ枚数の更新はありません。');
+      return;
+    }
+    
+    // 実際に使用したラベル面数を計算
+    let totalUsedLabels = 0;
+    
+    // CSV行数を取得（注文明細の数）
+    const orderPages = document.querySelectorAll(".page");
+    const csvRowCount = orderPages.length;
+    totalUsedLabels += csvRowCount;
+    
+    // 有効なカスタムラベル面数を取得
+    if (document.getElementById("customLabelEnable").checked) {
+      const customLabels = getCustomLabelsFromUI();
+      const enabledCustomLabels = customLabels.filter(label => label.enabled);
+      const totalCustomCount = enabledCustomLabels.reduce((sum, label) => sum + label.count, 0);
+      totalUsedLabels += totalCustomCount;
+    }
+    
+    // 全体の使用面数を計算（現在のスキップ + 新たに使用した面数）
+    const totalUsedWithSkip = currentSkip + totalUsedLabels;
+    
+    // 44面シートでの余り面数を計算
+    const newSkipValue = totalUsedWithSkip % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
+    
+    console.log(`スキップ枚数更新計算:
+      現在のスキップ: ${currentSkip}面
+      CSV行数: ${csvRowCount}面
+      カスタムラベル: ${totalUsedLabels - csvRowCount}面
+      合計使用面数: ${totalUsedLabels}面
+      総使用面数(スキップ含む): ${totalUsedWithSkip}面
+      新しいスキップ値: ${newSkipValue}面`);
+    
+    // 新しいスキップ枚数を設定
+    document.getElementById("labelskipnum").value = newSkipValue;
+    await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, newSkipValue);
+    
+    // カスタムラベルの上限も更新（エラーハンドリング付き）
+    try {
+      await updateCustomLabelsSummary();
+      console.log('✅ カスタムラベルサマリー更新完了');
+    } catch (summaryError) {
+      console.error('⚠️ カスタムラベルサマリー更新エラー:', summaryError);
+      // サマリー更新エラーは致命的ではないので、処理を継続
+    }
+    
+    // 印刷枚数表示を再更新
+    updatePrintCountDisplay();
+    console.log('✅ スキップ枚数更新後の印刷枚数表示を更新しました');
+    
+    // カスタムラベルプレビューも再更新
+    try {
+      await updateCustomLabelsPreview();
+      console.log('✅ スキップ枚数更新後のカスタムラベルプレビューを更新しました');
+    } catch (previewError) {
+      console.error('⚠️ カスタムラベルプレビュー更新エラー:', previewError);
+      // プレビュー更新エラーは致命的ではないので、処理を継続
+    }
+    
+    // CSVファイルが読み込まれている場合は、CSV印刷プレビューも再生成
+    const fileInput = document.getElementById("file");
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      try {
+        console.log('📄 CSVファイルが読み込まれているため、印刷プレビューを再生成します...');
+        await autoProcessCSV();
+        console.log('✅ スキップ枚数更新後のCSV印刷プレビューを更新しました');
+      } catch (csvError) {
+        console.error('⚠️ CSV印刷プレビュー更新エラー:', csvError);
+        // CSV更新エラーは致命的ではないので、処理を継続
+      }
+    }
+    
+    // 更新完了メッセージ
+    alert(`次回のスキップ枚数を ${newSkipValue} 面に更新しました。\n\n詳細:\n・印刷前スキップ: ${currentSkip}面\n・今回使用: ${totalUsedLabels}面\n・合計: ${totalUsedWithSkip}面\n・次回スキップ: ${newSkipValue}面`);
+    
+  } catch (error) {
+    console.error('スキップ枚数更新エラー:', error);
+    alert(`スキップ枚数の更新中にエラーが発生しました。\n\nエラー詳細: ${error.message || error}`);
   }
-  
-  // カスタムラベルが有効な場合、その枚数を追加
-  if (document.getElementById("customLabelEnable").checked) {
-    const customLabels = getCustomLabelsFromUI();
-    const totalCustomCount = customLabels.reduce((sum, label) => sum + label.count, 0);
-    usedLabels += totalCustomCount;
-  }
-  
-  // 合計使用枚数を計算
-  const totalUsed = currentSkip + usedLabels;
-  
-  // 44枚のシートサイズに合わせて余りを計算
-  const newSkipValue = totalUsed % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
-  
-  // 新しいスキップ枚数を設定
-  document.getElementById("labelskipnum").value = newSkipValue;
-  StorageManager.set(StorageManager.KEYS.LABEL_SKIP, newSkipValue);
-  
-  // 更新完了メッセージ
-  alert(`次回のスキップ枚数を ${newSkipValue} 枚に更新しました。`);
-  
-  // カスタムラベルの上限も更新
-  await updateCustomLabelsSummary();
 }
 
 // カスタムフォント管理機能
