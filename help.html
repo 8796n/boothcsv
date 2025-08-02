@@ -151,6 +151,7 @@
         <li><a href="#ラベルシール印刷">ラベルシール印刷</a></li>
         <li><a href="#画像機能について">画像機能について</a></li>
         <li><a href="#カスタムラベル機能について">カスタムラベル機能について</a></li>
+        <li><a href="#CSV処理結果について">CSV処理結果について</a></li>
         <li><a href="#デバッグ機能">デバッグ機能</a></li>
         <li><a href="#サンプルで試す">サンプルで試す</a></li>
       </ul>
@@ -204,7 +205,7 @@
     </div>
 
     <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>
-    
+    <img src="docs/images/csv-labels.png" alt="ラベルシール印刷画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
     <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
 
     <div class="step-list">
@@ -213,21 +214,7 @@
         <li>ラベルシールも印刷するにチェックを入れます。</li>
         <li>途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。</li>
         <li><strong>📥 CSVをダウンロード</strong>ボタンでBOOTHにアクセスしてCSVをダウンロードし、<strong>📁 CSVファイルを選択</strong>ボタンでファイルを選択すると、ラベル用紙の枚数も自動的に表示されます。</li>
-      </ol>
-    </div>
-    
-    <img src="docs/images/label-sheets.png" alt="ラベルシール印刷画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
-    
-    <div class="step-list">
-      <ol start="5">
         <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
-      </ol>
-    </div>
-    
-    <img src="docs/images/qr-code-result.png" alt="QRコード貼り付け後の画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
-    
-    <div class="step-list">
-      <ol start="6">
         <li>なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。</li>
         <li>印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。</li>
       </ol>
@@ -239,10 +226,11 @@
 
     <p>注文明細に画像を追加できる機能があります。</p>
 
+    <h3>画像のアップロード状態</h3>
+    
+    <img src="docs/images/image-dropzone.png" alt="画像アップロード後の状態" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+
     <h3>基本的な使い方</h3>
-    
-    <img src="docs/images/usage-guide.png" alt="基本的な使い方" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
-    
     <div class="step-list">
       <ol>
         <li><strong>画像表示の有効化</strong>: まず「注文明細に画像を表示」にチェックを入れてください。</li>
@@ -264,7 +252,7 @@
 
     <p>個別画像はグローバル画像より優先されます。つまり個別画像を設定した注文はその画像が、設定しなかった注文はグローバル画像が表示されます。</p>
 
-    <p>画像は全部localStorageに保存されるので、ページを再読み込みしても残ってます。不要になったらクリアボタンで削除できます：</p>
+    <p>画像は全部ブラウザのIndexedDBに保存されるので、ページを再読み込みしても残ってます。不要になったらクリアボタンで削除できます：</p>
     <ul>
       <li><strong>全てのQR画像をクリア</strong>: QRコード関連の画像だけ削除</li>
       <li><strong>全ての注文画像をクリア</strong>: グローバル画像と全ての個別画像を削除</li>
@@ -278,6 +266,14 @@
     
     <p>余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。</p>
 
+    <h3>カスタムラベルのシート表示</h3>
+    
+    <img src="docs/images/custom-labels-sheet.png" alt="カスタムラベルシート表示" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+
+    <h3>設定方法</h3>
+
+    <h3>設定方法</h3>
+
     <ul>
       <li><strong>有効化</strong>: 「残りラベルに任意文字列を印刷」のチェックボックスをオンにします。</li>
       <li><strong>文字列入力</strong>: ラベルに印刷したい文字列を入力します。商品名、品番、管理コードなど任意のテキストが可能です。太字や斜体、フォントサイズの変更もできます。</li>
@@ -288,7 +284,7 @@
 
     <h3>文字列の編集方法</h3>
     
-    <img src="docs/images/text-editing.png" alt="文字列編集方法" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/custom-labels.png" alt="文字列編集とカスタムフォント設定" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
     
     <ul>
       <li>テキストエリア内で普通に文字を入力</li>
@@ -312,6 +308,8 @@
     <h3>🎨 カスタムフォント機能</h3>
     
     <p>カスタムラベルでは独自のフォントファイルをアップロードして使用できます。</p>
+
+    <img src="docs/images/custom-fonts.png" alt="カスタムフォント設定" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
     
     <h4>フォントファイルのアップロード</h4>
     <ul>
@@ -345,7 +343,17 @@
       </ul>
     </div>
 
-    <p>設定した内容はブラウザに保存されるので、ページを再読み込みしても残ります。</p>
+    <p>設定した内容はブラウザのIndexedDBに保存されるので、ページを再読み込みしても残ります。</p>
+
+    <h2 id="CSV処理結果について">CSV処理結果について</h2>
+    
+    <p>CSVファイルを読み込むと、自動的に以下の印刷用データが生成されます：</p>
+
+    <h3>注文明細印刷プレビュー</h3>
+    
+    <img src="docs/images/csv-orders.png" alt="注文明細印刷プレビュー" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    
+    <p>各注文の詳細情報が印刷に適したフォーマットで表示されます。画像機能を有効にしている場合は、設定した画像も表示されます。</p>
 
     <h2 id="デバッグ機能">デバッグ機能</h2>
     
@@ -377,7 +385,7 @@
       <li>こだわりの素JavaScriptでHTML5のtemplateタグを使ってます。最近はquerySelectorのおかげでjQueryなしでも要素の選択が割と簡単にできるようになったみたいです。</li>
       <li>Paper CSS強い。templateと合わせると通常の業務で使う帳票はだいたい表現できるぞ！サーバーでPDF作ってダウンロードさせて印刷とかしなくてもいいし、Chrome上での見た目がいきなり印刷プレビュー風で謎の安心感があります。</li>
       <li>BOOTHからダウンロードするCSVのヘッダが日本語なので、classとかも全力で日本語です。可読性高い！</li>
-      <li>localStorageに画像とかQRコードの情報を保存してるので、ブラウザ閉じても設定が残って便利です。でもlocalStorageの容量制限があるので画像をバンバン保存しすぎると容量オーバーになるかもしれません。そうなったらクリアボタンで削除してください。</li>
+      <li>IndexedDBに画像とかQRコードの情報を保存してるので、ブラウザ閉じても設定が残って便利です。IndexedDBは大容量のデータも効率的に保存できるので、画像をたくさん保存しても安心です。不要になったらクリアボタンで削除してください。</li>
     </ul>
 
     <div style="text-align: center; margin: 40px 0; padding: 20px; background-color: #f6f8fa; border-radius: 6px;">
