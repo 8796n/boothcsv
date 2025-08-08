@@ -254,7 +254,7 @@ function extractMimeType(dataUrl) {
 class UnifiedDatabase {
   constructor() {
     this.dbName = 'BoothCSVStorage';
-    this.version = 3; // バージョンアップ（破壊的変更）
+    this.version = 4; // ordersストア追加に伴いバージョンアップ
     this.fontStoreName = 'fonts';
     this.settingsStoreName = 'settings';
     this.imagesStoreName = 'images';
@@ -295,33 +295,99 @@ class UnifiedDatabase {
 
   // オブジェクトストア作成
   createObjectStores(db) {
-    // 既存のストアを削除（破壊的変更）
-    const existingStores = Array.from(db.objectStoreNames);
-    existingStores.forEach(storeName => {
-      db.deleteObjectStore(storeName);
-      console.log(`🗑️ 既存ストア削除: ${storeName}`);
+    // 必要なストア一覧
+    const requiredStores = [
+      { name: this.fontStoreName, options: { keyPath: 'name' }, indexes: [
+        { name: 'createdAt', key: 'createdAt' },
+        { name: 'size', key: 'size' }
+      ] },
+      { name: this.settingsStoreName, options: { keyPath: 'key' }, indexes: [] },
+      { name: this.imagesStoreName, options: { keyPath: 'key' }, indexes: [
+        { name: 'type', key: 'type' },
+        { name: 'orderNumber', key: 'orderNumber' },
+        { name: 'createdAt', key: 'createdAt' }
+      ] },
+      { name: this.qrDataStoreName, options: { keyPath: 'orderNumber' }, indexes: [
+        { name: 'qrhash', key: 'qrhash' },
+        { name: 'createdAt', key: 'createdAt' }
+      ] },
+      { name: 'orders', options: { keyPath: 'orderNumber' }, indexes: [
+        { name: 'printedAt', key: 'printedAt' },
+        { name: 'createdAt', key: 'createdAt' }
+      ] }
+    ];
+
+    // 不足ストアのみ追加
+    requiredStores.forEach(store => {
+      if (!db.objectStoreNames.contains(store.name)) {
+        const objStore = db.createObjectStore(store.name, store.options);
+        store.indexes.forEach(idx => {
+          objStore.createIndex(idx.name, idx.key, { unique: false });
+        });
+        console.log(`🆕 ストア追加: ${store.name}`);
+      }
     });
 
-    // フォントストアを作成
-    const fontStore = db.createObjectStore(this.fontStoreName, { keyPath: 'name' });
-    fontStore.createIndex('createdAt', 'createdAt', { unique: false });
-    fontStore.createIndex('size', 'size', { unique: false });
+    console.log('🆕 データベース差分アップデート完了');
+  }
+  // 注文データ保存
+  async saveOrder(order) {
+    if (!this.db) await this.init();
+    if (order && order.orderNumber) {
+      order.orderNumber = String(order.orderNumber);
+    }
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['orders'], 'readwrite');
+      const store = tx.objectStore('orders');
+      const req = store.put(order);
+      req.onsuccess = () => {
+        resolve(true);
+      };
+      req.onerror = () => {
+        reject(req.error);
+      };
+    });
+  }
 
-    // 設定ストアを作成
-    const settingsStore = db.createObjectStore(this.settingsStoreName, { keyPath: 'key' });
+  // 注文データ取得（全件）
+  async getAllOrders() {
+    if (!this.db) await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['orders'], 'readonly');
+      const store = tx.objectStore('orders');
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
 
-    // 画像ストアを作成（バイナリ対応）
-    const imagesStore = db.createObjectStore(this.imagesStoreName, { keyPath: 'key' });
-    imagesStore.createIndex('type', 'type', { unique: false });
-    imagesStore.createIndex('orderNumber', 'orderNumber', { unique: false });
-    imagesStore.createIndex('createdAt', 'createdAt', { unique: false });
+  // 注文データ取得（注文番号指定）
+  async getOrder(orderNumber) {
+    if (!this.db) await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['orders'], 'readonly');
+      const store = tx.objectStore('orders');
+      const req = store.get(orderNumber);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
 
-    // QRデータストアを作成（バイナリ対応）
-    const qrStore = db.createObjectStore(this.qrDataStoreName, { keyPath: 'orderNumber' });
-    qrStore.createIndex('qrhash', 'qrhash', { unique: false });
-    qrStore.createIndex('createdAt', 'createdAt', { unique: false });
+  // 注文データの印刷日時を更新
+  async setPrintedAt(orderNumber, printedAt) {
+    const order = await this.getOrder(orderNumber);
+    if (!order) {
+      return false;
+    }
+    order.printedAt = printedAt;
+    const result = await this.saveOrder(order);
+    return result;
+  }
 
-    console.log('🆕 新しいデータストアを作成しました');
+  // 印刷済み注文番号リスト取得
+  async getPrintedOrderNumbers() {
+    const all = await this.getAllOrders();
+    return all.filter(o => !!o.printedAt).map(o => o.orderNumber);
   }
 
   // 破壊的移行処理
@@ -1731,12 +1797,43 @@ async function getConfigFromUI() {
 }
 
 async function processCSVResults(results, config) {
-  // CSV行数を取得
-  const csvRowCount = results.data.length;
-  
+
+  // IndexedDB注文データ保存＆印刷済み注文除外（既存注文は保持・新規のみ追加）
+  const db = new UnifiedDatabase();
+  await db.init();
+  // 既存注文をMapで取得
+  const existingOrdersArr = await db.getAllOrders();
+  const existingOrders = new Map();
+  for (const o of existingOrdersArr) {
+    if (o && o.orderNumber) existingOrders.set(String(o.orderNumber), o);
+  }
+  const filteredData = [];
+  for (const row of results.data) {
+    const orderNumber = OrderNumberManager.getFromCSVRow(row);
+    if (!orderNumber) continue;
+    const key = String(orderNumber);
+    let printedAt = null;
+    let createdAt = new Date().toISOString();
+    // 既存注文があればprintedAt等を引き継ぐ
+    if (existingOrders.has(key)) {
+      const old = existingOrders.get(key);
+      printedAt = old.printedAt || null;
+      createdAt = old.createdAt || createdAt;
+    }
+    await db.saveOrder({
+      orderNumber: key,
+      row,
+      printedAt,
+      createdAt
+    });
+    // 未印刷注文のみfilteredDataに追加
+    if (!printedAt) {
+      filteredData.push(row);
+    }
+  }
+  const csvRowCount = filteredData.length;
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
-  
   // 複数シート対応：1シートの制限を撤廃
   // CSVデータとカスタムラベルの合計で必要なシート数を計算
   const skipCount = parseInt(config.labelskip, 10) || 0;
@@ -1745,7 +1842,7 @@ async function processCSVResults(results, config) {
 
   // データの並び替え
   if (config.sortByPaymentDate) {
-    results.data.sort((a, b) => {
+    filteredData.sort((a, b) => {
       const timeA = a[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
       const timeB = b[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
       return timeA.localeCompare(timeB);
@@ -1753,39 +1850,39 @@ async function processCSVResults(results, config) {
   }
 
   // 注文明細の生成
-  await generateOrderDetails(results.data, config.labelarr);
-  
+  await generateOrderDetails(filteredData, config.labelarr);
+
   // ラベル生成（注文分＋カスタムラベル）- 複数シート対応
   if (config.labelyn) {
     let totalLabelArray = [...config.labelarr];
-    
+
     // カスタムラベルが有効な場合は追加
     if (config.customLabelEnable && config.customLabels.length > 0) {
       for (const customLabel of config.customLabels) {
         for (let i = 0; i < customLabel.count; i++) {
-          totalLabelArray.push({ 
-            type: 'custom', 
+          totalLabelArray.push({
+            type: 'custom',
             content: customLabel.html || customLabel.text,
             fontSize: customLabel.fontSize || '10pt'
           });
         }
       }
     }
-    
+
     if (totalLabelArray.length > 0) {
       await generateLabels(totalLabelArray);
     }
   }
-  
+
   // 印刷枚数の表示（複数シート対応）
   // showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
-  
+
   // ヘッダーの印刷枚数表示を更新
   updatePrintCountDisplay(csvRowCount, requiredSheets, totalCustomLabelCount);
-  
+
   // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
   await updateCustomLabelsSummary();
-  
+
   // ボタンの状態を更新
   updateButtonStates();
 }
@@ -4472,6 +4569,22 @@ async function updateSkipCount() {
     } catch (summaryError) {
       console.error('⚠️ カスタムラベルサマリー更新エラー:', summaryError);
       // サマリー更新エラーは致命的ではないので、処理を継続
+    }
+
+    // 印刷済み注文番号の印刷日時をIndexedDBに記録
+    try {
+      const db = new UnifiedDatabase();
+      const now = new Date().toISOString();
+      const orderPages = document.querySelectorAll('.page');
+      for (const page of orderPages) {
+        const orderNumber = OrderNumberManager.getFromOrderSection(page);
+        if (orderNumber) {
+          await db.setPrintedAt(orderNumber, now);
+        }
+      }
+      console.log('✅ 印刷済み注文番号の印刷日時を保存しました');
+    } catch (e) {
+      console.error('❌ 印刷済み注文番号の保存エラー:', e);
     }
     
     // 印刷枚数表示を再更新
