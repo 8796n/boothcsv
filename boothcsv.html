@@ -18,7 +18,7 @@
     <h1 class="fixed-title">BOOTH宛名印刷用CSV帳票化</h1>
     <div class="main-actions">
       <!-- 印刷枚数表示 -->
-      <div class="print-count-display" id="printCountDisplay" style="display: none;">
+  <div class="print-count-display" id="printCountDisplay">
         <div class="print-count-item">
           <span class="print-count-label">ラベル:</span>
           <span class="print-count-value" id="labelSheetCount">0</span>
@@ -29,7 +29,7 @@
           <span class="print-count-value" id="orderSheetCount">0</span>
           <span class="print-count-unit">枚</span>
         </div>
-        <div class="print-count-item" id="customLabelCountItem" style="display: none;">
+  <div class="print-count-item" id="customLabelCountItem">
           <span class="print-count-label">カスタム:</span>
           <span class="print-count-value" id="customLabelCount">0</span>
           <span class="print-count-unit">面</span>
@@ -43,10 +43,10 @@
       </div>
       <!-- ファイル選択 -->
       <div class="file-input-wrapper-compact">
-        <button type="button" class="file-input-button-compact" onclick="document.getElementById('file').click()">
+  <button type="button" class="file-input-button-compact" onclick="document.getElementById('file').click()">
           📁 CSVファイルを選択
         </button>
-        <input type="file" id="file" name="csvfile" accept=".csv" style="display: none;">
+  <input type="file" id="file" name="csvfile" accept=".csv" class="hidden" aria-label="CSVファイル選択">
         <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
       </div>
       <!-- 主要アクションボタン -->
@@ -59,13 +59,14 @@
 
 <!-- メインコンテンツ（既存の内容） -->
 <div class="main-content">
-<div class="no_print" style="text-align: center;">
+<div class="no_print text-center">
   <form method="POST" enctype="multipart/form-data" id="form">
-    <table class="form-table" style="margin: 0 auto;">
+  <table class="form-table">
       <tr>
         <td><label for="labelyn">ラベルシールも印刷する：</label></td>
         <td><input type="checkbox" id="labelyn" name="labelprint" checked></td>
       </tr>
+  <!-- showAllOrders 廃止 -->
       <tr>
         <td><label for="sortByPaymentDate">支払い日時で並び替え：</label></td>
         <td><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"></td>
@@ -78,7 +79,7 @@
         <td><label for="customLabelEnable">残りラベルに任意文字列を印刷：</label></td>
         <td><input type="checkbox" id="customLabelEnable" name="customLabelEnable"></td>
       </tr>
-      <tr id="customLabelRow" style="display: none;">
+      <tr id="customLabelRow">
         <td colspan="2">
           <div class="multiple-custom-labels-config">
             <div class="custom-labels-header">
@@ -95,21 +96,21 @@
               <div id="customLabelsSummary" class="custom-labels-summary">※残りラベル数に応じて上限が自動調整されます</div>
             </div>
             <!-- カスタムフォント設定セクション -->
-            <div class="custom-font-section" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
-              <h4 style="margin: 0 0 10px 0; color: #666; cursor: pointer; user-select: none; display: flex; align-items: center;" onclick="toggleFontSection()" id="fontSectionHeader">
-                <span id="fontSectionArrow" style="margin-right: 8px; transition: transform 0.3s;">▼</span>
+            <div class="custom-font-section">
+              <h4 onclick="toggleFontSection()" id="fontSectionHeader">
+                <span id="fontSectionArrow">▼</span>
                 カスタムフォント設定
               </h4>
-              <div id="fontSectionContent" style="transition: max-height 0.3s ease-out; overflow: hidden;">
-                <div id="fontDropZone" style="margin-bottom: 10px;"></div>
+              <div id="fontSectionContent">
+                <div id="fontDropZone"></div>
                 <div id="fontManagement">
-                  <div style="margin: 10px 0;">
-                    <h5 style="margin: 5px 0; color: #666;">アップロード済みフォント</h5>
-                    <div id="fontList" style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: white;">
-                      <div style="color: #999; text-align: center;">フォントファイルをアップロードしてください</div>
+                  <div class="my-10">
+                    <h5 class="subtle-title">アップロード済みフォント</h5>
+                    <div id="fontList" class="font-list">
+                      <div class="font-list-placeholder text-center">フォントファイルをアップロードしてください</div>
                     </div>
-                    <div style="margin-top: 10px; text-align: center;">
-                      <button id="clearAllFontsButton" class="btn-base btn-danger btn-clear" style="font-size: 12px; padding: 6px 12px;">全てのカスタムフォントをクリア</button>
+                    <div class="text-center mt-10">
+                      <button id="clearAllFontsButton" class="btn-base btn-danger btn-clear btn-small">全てのカスタムフォントをクリア</button>
                     </div>
                   </div>
                 </div>
@@ -122,21 +123,21 @@
         <td><label for="orderImageEnable">注文明細に画像を表示：</label></td>
         <td><input type="checkbox" id="orderImageEnable" name="orderImageEnable"></td>
       </tr>
-      <tr id="orderImageRow" style="display: none;">
+      <tr id="orderImageRow">
         <td colspan="2">
-          <div id="imageDropZone" class="dropzone-container" style="text-align: center;"></div>
+          <div id="imageDropZone" class="dropzone-container text-center"></div>
         </td>
       </tr>
     </table>
   </form>
-  <p style="text-align: center;">ローカルストレージに保存された画像を全削除：
+  <p class="text-center">ローカルストレージに保存された画像を全削除：
     <button id="clearAllButton" class="btn-base btn-danger btn-clear">全てのQR画像をクリア</button>
     <button id="clearAllOrderImagesButton" class="btn-base btn-danger btn-clear">全ての注文画像をクリア</button>
   </p>
-  <div style="text-align: center; margin: 15px 0;">
-    <a href="help.html" target="_blank" style="background-color: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">📚 使い方ガイド</a>
-    <a href="help.html#画像機能について" target="_blank" style="background-color: #17a2b8; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">🖼️ 画像機能の説明</a>
-    <a href="help.html#カスタムラベル機能について" target="_blank" style="background-color: #fd7e14; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; margin: 0 5px;">🏷️ カスタムラベル機能</a>
+  <div class="text-center my-15">
+    <a href="help.html" target="_blank" class="btn-base btn-success btn-small btn-margin">📚 使い方ガイド</a>
+    <a href="help.html#画像機能について" target="_blank" class="btn-base btn-info btn-small btn-margin">🖼️ 画像機能の説明</a>
+    <a href="help.html#カスタムラベル機能について" target="_blank" class="btn-base btn-warning btn-small btn-margin">🏷️ カスタムラベル機能</a>
   </div>
   <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
 </div>
@@ -158,10 +159,9 @@
     </div>
     <div class="custom-label-input-group">
       <div class="custom-label-editor-row">
-        <div class="rich-text-editor" contenteditable="true" 
-             id="initialCustomLabelEditor"
-             placeholder="印刷したい文字列を入力してください..."
-             style="font-size: 12pt;"></div>
+  <div class="rich-text-editor" contenteditable="true" 
+       id="initialCustomLabelEditor"
+       placeholder="印刷したい文字列を入力してください..."></div>
         <div class="custom-label-count-group">
           <label>印刷面数：</label>
           <input type="number" min="1" value="1">
@@ -172,6 +172,12 @@
 </template>
 <template id="注文明細">
   <section class="sheet">
+    <!-- 各注文明細の非印刷パネル（印刷日時の表示と更新/クリア） -->
+    <div class="order-print-info no_print">
+      <span>印刷日時: <span class="printed-at">未印刷</span></span>
+  <button type="button" class="btn-base btn-success btn-small mark-printed">印刷済みにする</button>
+  <button type="button" class="btn-base btn-danger btn-small clear-printed-at">未印刷にする</button>
+    </div>
     <div class="page">
       <div class="header">
         <p class="title">注文明細</p>
@@ -229,7 +235,7 @@
         </tr>
       </table>
       <!-- 個別注文画像ドロップゾーン -->
-      <div class="individual-order-image-zone" style="margin: 10px 0; text-align: center; border: 2px dashed #ccc; padding: 10px;">
+  <div class="individual-order-image-zone">
         <small>この注文専用の画像（グローバル画像より優先されます）</small>
         <div class="individual-image-dropzone"></div>
       </div>
@@ -238,7 +244,7 @@
     </div>
   </section>
 </template>
-<div id="dropZoneDefaultContent" style="display: none;">
+<div id="dropZoneDefaultContent">
   <p>注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
 </div>
 <script src="./js/jsQR.js"></script>

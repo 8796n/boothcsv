@@ -1173,7 +1173,7 @@ class StorageManager {
     ORDER_IMAGE_PREFIX: 'orderImage_',
     GLOBAL_ORDER_IMAGE: 'orderImage',
     LABEL_SETTING: 'labelyn',
-    LABEL_SKIP: 'labelskip',
+  LABEL_SKIP: 'labelskip',
     SORT_BY_PAYMENT: 'sortByPaymentDate',
     CUSTOM_LABEL_ENABLE: 'customLabelEnable',
     CUSTOM_LABEL_TEXT: 'customLabelText',
@@ -1480,6 +1480,7 @@ window.addEventListener("load", async function(){
     
     document.getElementById("labelyn").checked = settings.labelyn;
     document.getElementById("labelskipnum").value = settings.labelskip;
+  // showAllOrders 廃止
     document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
     document.getElementById("customLabelEnable").checked = settings.customLabelEnable;
     document.getElementById("orderImageEnable").checked = settings.orderImageEnable;
@@ -1501,6 +1502,7 @@ window.addEventListener("load", async function(){
     
     document.getElementById("labelyn").checked = settings.labelyn;
     document.getElementById("labelskipnum").value = settings.labelskip;
+  // showAllOrders 廃止
     document.getElementById("sortByPaymentDate").checked = settings.sortByPaymentDate;
     document.getElementById("customLabelEnable").checked = settings.customLabelEnable;
     document.getElementById("orderImageEnable").checked = settings.orderImageEnable;
@@ -1583,20 +1585,28 @@ window.addEventListener("load", async function(){
   }
 
    // チェックボックスの状態が変更されたときにStorageManagerに保存 + 自動再処理
-   document.getElementById("labelyn").addEventListener("change", async function() {
-     await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
-     await autoProcessCSV(); // 設定変更時に自動再処理
-   });
+  document.getElementById("labelyn").addEventListener("change", async function() {
+    const restoreScroll = captureAndRestoreScrollPosition();
+    await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, this.checked);
+    await autoProcessCSV(); // 設定変更時に自動再処理
+    restoreScroll();
+  });
 
-   document.getElementById("labelskipnum").addEventListener("change", async function() {
-     await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
-     await autoProcessCSV(); // 設定変更時に自動再処理
-   });
+  document.getElementById("labelskipnum").addEventListener("change", async function() {
+    const restoreScroll = captureAndRestoreScrollPosition();
+    await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, parseInt(this.value, 10) || 0);
+    await autoProcessCSV(); // 設定変更時に自動再処理
+    restoreScroll();
+  });
 
-   document.getElementById("sortByPaymentDate").addEventListener("change", async function() {
-     await StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
-     await autoProcessCSV(); // 設定変更時に自動再処理
-   });
+  document.getElementById("sortByPaymentDate").addEventListener("change", async function() {
+    const restoreScroll = captureAndRestoreScrollPosition();
+    await StorageManager.set(StorageManager.KEYS.SORT_BY_PAYMENT, this.checked);
+    await autoProcessCSV(); // 設定変更時に自動再処理
+    restoreScroll();
+  });
+
+  // showAllOrders 廃止
 
    // 注文画像表示機能のイベントリスナー
    document.getElementById("orderImageEnable").addEventListener("change", async function() {
@@ -1632,39 +1642,50 @@ window.addEventListener("load", async function(){
 
 // 自動処理関数（ファイル選択時や設定変更時に呼ばれる）
 async function autoProcessCSV() {
-  try {
-    const fileInput = document.getElementById("file");
-    if (!fileInput.files || fileInput.files.length === 0) {
-      console.log('ファイルが選択されていません。自動処理をスキップします。');
-      
-      // ファイルが選択されていない場合でもカスタムラベルのプレビューを更新
-      // (updateCustomLabelsPreview内で固定ヘッダーの更新も行われる)
-      await updateCustomLabelsPreview();
-      return;
-    }
-
-    // カスタムラベルのバリデーション（エラー表示なし）
-    // バリデーションエラーがあってもCSV処理は継続する
-    const hasValidCustomLabels = validateCustomLabelsQuiet();
-    if (!hasValidCustomLabels) {
-      console.log('カスタムラベルにエラーがありますが、CSV処理は継続します。');
-    }
-    
-    console.log('自動CSV処理を開始します...');
-    clearPreviousResults();
-    const config = await getConfigFromUI();
-    
-    Papa.parse(config.file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async function(results) {
-        await processCSVResults(results, config);
-        console.log('自動CSV処理が完了しました。');
+  return new Promise(async (resolve, reject) => {
+    try {
+      const fileInput = document.getElementById("file");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        console.log('ファイルが選択されていません。自動処理をスキップします。');
+        try {
+          await updateCustomLabelsPreview();
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+        return;
       }
-    });
-  } catch (error) {
-    console.error('自動処理中にエラーが発生しました:', error);
-  }
+
+      // カスタムラベルのバリデーション（エラー表示なし）
+      // バリデーションエラーがあってもCSV処理は継続する
+      const hasValidCustomLabels = validateCustomLabelsQuiet();
+      if (!hasValidCustomLabels) {
+        console.log('カスタムラベルにエラーがありますが、CSV処理は継続します。');
+      }
+      
+      console.log('自動CSV処理を開始します...');
+      clearPreviousResults();
+      const config = await getConfigFromUI();
+      
+      Papa.parse(config.file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async function(results) {
+          try {
+            await processCSVResults(results, config);
+            console.log('自動CSV処理が完了しました。');
+            // ペイント後に解決してスクロール処理が安定するようにする
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          } catch (e) {
+            reject(e);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('自動処理中にエラーが発生しました:', error);
+      reject(error);
+    }
+  });
 }
 
 // カスタムラベルのリアルタイムプレビュー更新
@@ -1774,6 +1795,7 @@ async function getConfigFromUI() {
   
   await StorageManager.set(StorageManager.KEYS.LABEL_SETTING, labelyn);
   await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, labelskip);
+  // showAllOrders 廃止
   await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE, customLabelEnable);
   await StorageManager.setCustomLabels(allCustomLabels); // 全てのラベルを保存（有効/無効問わず）
   
@@ -1808,6 +1830,7 @@ async function processCSVResults(results, config) {
     if (o && o.orderNumber) existingOrders.set(String(o.orderNumber), o);
   }
   const filteredData = [];
+  const allData = [];
   for (const row of results.data) {
     const orderNumber = OrderNumberManager.getFromCSVRow(row);
     if (!orderNumber) continue;
@@ -1826,18 +1849,20 @@ async function processCSVResults(results, config) {
       printedAt,
       createdAt
     });
-    // 未印刷注文のみfilteredDataに追加
-    if (!printedAt) {
-      filteredData.push(row);
-    }
+  // 未印刷は印刷対象、全件は画面表示用
+  if (!printedAt) filteredData.push(row);
+  allData.push(row);
   }
-  const csvRowCount = filteredData.length;
+  // 画面は常に全件表示、印刷（ラベル含む）は未印刷のみ
+  const detailRows = allData;
+  const labelRows = filteredData;
+  const csvRowCountForLabels = labelRows.length;
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
   // 複数シート対応：1シートの制限を撤廃
   // CSVデータとカスタムラベルの合計で必要なシート数を計算
   const skipCount = parseInt(config.labelskip, 10) || 0;
-  const totalLabelsNeeded = skipCount + csvRowCount + totalCustomLabelCount;
+  const totalLabelsNeeded = skipCount + csvRowCountForLabels + totalCustomLabelCount;
   const requiredSheets = Math.ceil(totalLabelsNeeded / CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET);
 
   // データの並び替え
@@ -1847,14 +1872,28 @@ async function processCSVResults(results, config) {
       const timeB = b[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
       return timeA.localeCompare(timeB);
     });
+    allData.sort((a, b) => {
+      const timeA = a[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
+      const timeB = b[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
+      return timeA.localeCompare(timeB);
+    });
   }
 
   // 注文明細の生成
-  await generateOrderDetails(filteredData, config.labelarr);
+  // ラベル対象の注文番号セットを作成
+  const labelSet = new Set(labelRows.map(r => String(OrderNumberManager.getFromCSVRow(r)).trim()));
+  await generateOrderDetails(detailRows, config.labelarr, labelSet);
+
+  // 各注文明細パネルはgenerateOrderDetails内で個別に更新済み
 
   // ラベル生成（注文分＋カスタムラベル）- 複数シート対応
   if (config.labelyn) {
     let totalLabelArray = [...config.labelarr];
+
+    // 明細の並び順に合わせて未印刷のみの注文番号を追加
+    const visibleUnprintedSections = Array.from(document.querySelectorAll('template#注文明細 ~ section.sheet:not(.is-printed)'));
+    const numbersInOrder = visibleUnprintedSections.map(sec => sec.dataset.orderNumber).filter(Boolean);
+    totalLabelArray.push(...numbersInOrder);
 
     // カスタムラベルが有効な場合は追加
     if (config.customLabelEnable && config.customLabels.length > 0) {
@@ -1877,8 +1916,8 @@ async function processCSVResults(results, config) {
   // 印刷枚数の表示（複数シート対応）
   // showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
 
-  // ヘッダーの印刷枚数表示を更新
-  updatePrintCountDisplay(csvRowCount, requiredSheets, totalCustomLabelCount);
+  // ヘッダーの印刷枚数表示を更新（普通紙は未印刷のみ）
+  updatePrintCountDisplay(filteredData.length, requiredSheets, totalCustomLabelCount);
 
   // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
   await updateCustomLabelsSummary();
@@ -2025,7 +2064,7 @@ function clearPrintCountDisplay() {
   updatePrintCountDisplay(0, 0, 0);
 }
 
-async function generateOrderDetails(data, labelarr) {
+async function generateOrderDetails(data, labelarr, labelSet = null, printedAtMap = null) {
   const tOrder = document.querySelector('#注文明細');
   
   for (let row of data) {
@@ -2033,7 +2072,15 @@ async function generateOrderDetails(data, labelarr) {
     let orderNumber = '';
     
     // 注文情報の設定
-    orderNumber = setOrderInfo(cOrder, row, labelarr);
+    orderNumber = setOrderInfo(cOrder, row, labelarr, labelSet);
+
+    // 注文明細ごとの非印刷パネル（印刷日時）のセットアップ
+    try {
+      await setupOrderPrintedAtPanel(cOrder, orderNumber);
+    } catch (e) {
+      console.warn('印刷日時パネル設定エラー:', e);
+    }
+    
     
     // 個別画像ドロップゾーンの作成
     await createIndividualImageDropZone(cOrder, orderNumber);
@@ -2044,11 +2091,234 @@ async function generateOrderDetails(data, labelarr) {
     // 画像表示の処理
     await displayOrderImage(cOrder, orderNumber);
     
+    // 追加前にルートsectionを特定
+    const rootSection = cOrder.querySelector('section.sheet');
+    // まずDOMに追加
     document.body.appendChild(cOrder);
+    // 印刷状態でクラスを付与
+    try {
+      const normalized = OrderNumberManager.normalize(orderNumber);
+      if (rootSection && normalized) {
+        if (!unifiedDB) await StorageManager.ensureDatabase();
+        const o = await unifiedDB.getOrder(normalized);
+        if (o?.printedAt) rootSection.classList.add('is-printed');
+        else rootSection.classList.remove('is-printed');
+      }
+    } catch {}
   }
 }
 
-function setOrderInfo(cOrder, row, labelarr) {
+// 各注文明細の非印刷パネルをセットアップ（印刷日時表示とクリア機能）
+async function setupOrderPrintedAtPanel(cOrder, orderNumber) {
+  const panel = cOrder.querySelector('.order-print-info');
+  if (!panel) return;
+  const dateEl = panel.querySelector('.printed-at');
+  const markPrintedBtn = panel.querySelector('.mark-printed');
+  const clearBtn = panel.querySelector('.clear-printed-at');
+  const normalized = OrderNumberManager.normalize(orderNumber);
+  if (!normalized) {
+    if (dateEl) dateEl.textContent = '未印刷';
+    if (markPrintedBtn) { markPrintedBtn.style.display = ''; markPrintedBtn.disabled = false; }
+    if (clearBtn) { clearBtn.style.display = 'none'; clearBtn.disabled = true; }
+    return;
+  }
+
+  if (!unifiedDB) await StorageManager.ensureDatabase();
+  const order = await unifiedDB.getOrder(normalized);
+  const printedAt = order?.printedAt || null;
+  if (dateEl) {
+    dateEl.textContent = printedAt ? new Date(printedAt).toLocaleString() : '未印刷';
+  }
+  // ボタン表示の切り替え
+  if (printedAt) {
+    if (markPrintedBtn) markPrintedBtn.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    if (markPrintedBtn) markPrintedBtn.style.display = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+
+  // 「印刷済みにする」
+  if (markPrintedBtn) {
+    markPrintedBtn.disabled = !!printedAt;
+    markPrintedBtn.onclick = async () => {
+      try {
+        const now = new Date().toISOString();
+        const anchorOrder = normalized;
+        const doc = document.scrollingElement || document.documentElement;
+        debugLog('🟢 [mark] click', { order: anchorOrder, beforeScrollY: window.scrollY, beforeScrollH: doc.scrollHeight, sections: document.querySelectorAll('section.sheet').length });
+        await unifiedDB.setPrintedAt(normalized, now);
+
+  // 部分更新：UI更新＋該当セクションをグレーアウト、ラベル/枚数再計算
+  if (dateEl) dateEl.textContent = new Date(now).toLocaleString();
+  if (markPrintedBtn) { markPrintedBtn.style.display = 'none'; }
+  if (clearBtn) { clearBtn.style.display = ''; clearBtn.disabled = false; }
+  const sectionEl = panel.closest('section.sheet');
+  if (sectionEl) sectionEl.classList.add('is-printed');
+  await regenerateLabelsFromDB();
+  recalcAndUpdateCounts();
+      } catch (e) {
+        alert('印刷済みへの更新中にエラーが発生しました');
+        console.error(e);
+      }
+    };
+  }
+
+  // 「印刷日時をクリア」
+  if (clearBtn) {
+    clearBtn.disabled = !printedAt;
+    clearBtn.onclick = async () => {
+      const ok = confirm(`注文 ${normalized} の印刷日時をクリアしますか？`);
+      if (!ok) return;
+      try {
+        const anchorOrder = normalized;
+        const doc = document.scrollingElement || document.documentElement;
+        debugLog('🟠 [clear] click', { order: anchorOrder, beforeScrollY: window.scrollY, beforeScrollH: doc.scrollHeight, sections: document.querySelectorAll('section.sheet').length });
+        await unifiedDB.setPrintedAt(normalized, null);
+
+  // 部分更新：UI更新＋グレーアウト解除、ラベル/枚数再計算
+  if (dateEl) dateEl.textContent = '未印刷';
+  if (markPrintedBtn) { markPrintedBtn.style.display = ''; markPrintedBtn.disabled = false; }
+  if (clearBtn) { clearBtn.style.display = 'none'; }
+  const sectionEl = panel.closest('section.sheet');
+  if (sectionEl) sectionEl.classList.remove('is-printed');
+  await regenerateLabelsFromDB();
+  recalcAndUpdateCounts();
+      } catch (e) {
+        alert('印刷日時のクリア中にエラーが発生しました');
+        console.error(e);
+      }
+    };
+  }
+}
+
+// スクロール位置を保持・復元する（再描画でDOMが差し替わってもUXを維持）
+function captureAndRestoreScrollPosition() {
+  const doc = document.scrollingElement || document.documentElement;
+  const x = window.scrollX || doc.scrollLeft || 0;
+  const y = window.scrollY || doc.scrollTop || 0;
+  const prevScrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
+  const viewportH = window.innerHeight || doc.clientHeight || 0;
+  const prevScrollable = (prevScrollHeight - viewportH) > 2; // 実質スクロール可能か
+  debugLog('📌 captureScroll', { x, y, prevScrollHeight, viewportH, prevScrollable });
+
+  return function restore() {
+    const docNow = document.scrollingElement || document.documentElement;
+    const newScrollHeight = docNow.scrollHeight || document.body.scrollHeight || 0;
+    const newViewportH = window.innerHeight || docNow.clientHeight || 0;
+    const newScrollable = (newScrollHeight - newViewportH) > 2;
+
+    // どちらも実質スクロール不可なら復元不要
+    if (!prevScrollable && !newScrollable) {
+      debugLog('↩️ restoreScroll skip: not scrollable');
+      return;
+    }
+
+    const maxPrev = Math.max(prevScrollHeight - viewportH, 1);
+    const ratio = Math.min(Math.max(y / maxPrev, 0), 1);
+    const maxNew = Math.max(newScrollHeight - newViewportH, 0);
+    const targetY = Math.min(Math.max(Math.round(ratio * maxNew), 0), maxNew);
+
+    const doScroll = () => {
+      const currentY = window.scrollY || docNow.scrollTop || 0;
+      const currentX = window.scrollX || docNow.scrollLeft || 0;
+      // ほぼ同位置ならスキップ
+      if (Math.abs(currentY - targetY) < 2 && Math.abs(currentX - x) < 2) {
+        debugLog('↩️ restoreScroll skip: no-op', { targetY, currentY });
+        return;
+      }
+      debugLog('↩️ restoreScroll', { ratio, targetY, maxNew, newScrollHeight });
+      try {
+        window.scrollTo({ left: x, top: targetY, behavior: 'auto' });
+      } catch {
+        window.scrollTo(x, targetY);
+      }
+    };
+
+    // レイアウト確定後に1回だけ復元（二重RAF）
+    requestAnimationFrame(() => requestAnimationFrame(doScroll));
+  };
+}
+
+// 注文番号のセクションにスクロール（固定ヘッダー分オフセット考慮）
+function scrollToOrderSection(normalizedOrder) {
+  if (!normalizedOrder) return;
+  debugLog('🎯 scrollToOrderSection request', { normalizedOrder });
+  const target = document.querySelector(`section.sheet[data-order-number="${CSS.escape(normalizedOrder)}"]`);
+  if (!target) {
+    debugLog('🎯 target not found', { normalizedOrder });
+    return false;
+  }
+  const header = document.querySelector('.fixed-header');
+  const headerHeight = header && getComputedStyle(header).display !== 'none' ? header.offsetHeight : 0;
+  const rect = target.getBoundingClientRect();
+  const y = window.scrollY + rect.top - Math.max(headerHeight + 8, 0);
+  debugLog('🎯 scrolling', { headerHeight, rectTop: rect.top, to: y });
+  try {
+    window.scrollTo({ top: Math.max(y, 0), behavior: 'auto' });
+  } catch {
+    window.scrollTo(0, Math.max(y, 0));
+  }
+  return true;
+}
+
+// 現在の「読み込んだファイル全て表示」のON/OFFを返す
+// showAllOrders 廃止
+
+// 既存のDOMからラベル部分だけ再生成（CSVデータはDBから復元）
+async function regenerateLabelsFromDB() {
+  try {
+    // 既存のラベルセクションを削除（テンプレート位置に依存せず、専用クラスで判別）
+    document.querySelectorAll('section.sheet.label-sheet').forEach(sec => sec.remove());
+  } catch {}
+
+  // 現在の画面上の未印刷注文明細の並び順をそのままラベルに反映
+  const orderSections = Array.from(document.querySelectorAll('template#注文明細 ~ section.sheet:not(.is-printed)'));
+  const orderNumbers = orderSections
+    .map(sec => sec.dataset.orderNumber)
+    .filter(Boolean);
+
+  // 設定取得
+  const settings = await StorageManager.getSettingsAsync();
+  // ラベル印刷が無効ならここで終了（既存は削除済み）
+  if (!settings.labelyn) {
+    return;
+  }
+
+  // ラベル配列の再構築（スキップ数 + 未印刷の注文明細順。カスタムラベルは設定から）
+  const skip = parseInt(settings.labelskip || '0', 10) || 0;
+  const labelarr = new Array(skip).fill("");
+  for (const num of orderNumbers) {
+    labelarr.push(num);
+  }
+  // カスタムラベル（ON のとき）
+  if (settings.labelyn && settings.customLabelEnable && settings.customLabels?.length) {
+    for (const cl of settings.customLabels.filter(l => l.enabled)) {
+      for (let i = 0; i < cl.count; i++) {
+        labelarr.push({ type: 'custom', content: cl.html || cl.text, fontSize: cl.fontSize || '10pt' });
+      }
+    }
+  }
+
+  if (labelarr.length > 0) {
+    await generateLabels(labelarr);
+  }
+}
+
+// 画面上の枚数表示（固定ヘッダー）を再計算して更新
+function recalcAndUpdateCounts() {
+  const orderSheetCount = document.querySelectorAll('template#注文明細 ~ section.sheet:not(.is-printed)').length;
+  const labelSheetCount = document.querySelectorAll('section.sheet.label-sheet').length;
+  // カスタム面数を設定から再計算
+  StorageManager.getSettingsAsync().then(settings => {
+    const customCount = (settings.customLabelEnable && Array.isArray(settings.customLabels))
+      ? settings.customLabels.filter(l => l.enabled).reduce((s, l) => s + (parseInt(l.count, 10) || 0), 0)
+      : 0;
+    updatePrintCountDisplay(orderSheetCount, labelSheetCount, customCount);
+  });
+}
+
+function setOrderInfo(cOrder, row, labelarr, labelSet = null) {
   let orderNumber = '';
   
   for (let c of Object.keys(row).filter(key => key != CONSTANTS.CSV.PRODUCT_COLUMN)) {
@@ -2058,12 +2328,22 @@ function setOrderInfo(cOrder, row, labelarr) {
         orderNumber = OrderNumberManager.getFromCSVRow(row);
         const displayFormat = OrderNumberManager.createDisplayFormat(orderNumber);
         divc.textContent = displayFormat;
-        labelarr.push(orderNumber);
+  // 以前はここで labelarr に未印刷の注文番号を追加していたが、
+  // 現在は DOM 上の未印刷セクションの並びから再収集して重複を避けるため追加しない
       } else if (row[c]) {
         divc.textContent = row[c];
       }
     }
   }
+  // セクションに注文アンカーを付与
+  try {
+    const sectionEl = cOrder.querySelector('section.sheet');
+    if (sectionEl && orderNumber) {
+      const normalized = OrderNumberManager.normalize(String(orderNumber));
+      sectionEl.dataset.orderNumber = normalized;
+      // sectionEl.id = `order-${normalized}`; // 必要ならidも付与
+    }
+  } catch {}
   
   return orderNumber;
 }
@@ -2199,15 +2479,22 @@ async function displayOrderImage(cOrder, orderNumber) {
   }
 }
 
+// 旧: グローバル印刷日時パネルは廃止（各注文明細内に移行）
+
 async function generateLabels(labelarr) {
+  // シートをちょうど埋めるために不足分だけ空ラベルを追加
   if (labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET) {
-    for (let i = 0; i < labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET; i++) {
+    const remainder = labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
+    const toFill = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - remainder;
+    for (let i = 0; i < toFill; i++) {
       labelarr.push("");
     }
   }
   
   const tL44 = document.querySelector('#L44');
   let cL44 = document.importNode(tL44.content, true);
+  // 生成するラベルシートに識別クラスを付与
+  cL44.querySelector('section.sheet')?.classList.add('label-sheet');
   let tableL44 = cL44.querySelector("table");
   let tr = document.createElement("tr");
   let i = 0;
@@ -2218,6 +2505,7 @@ async function generateLabels(labelarr) {
       tr = document.createElement("tr");
       document.body.insertBefore(cL44, tL44);
       cL44 = document.importNode(tL44.content, true);
+      cL44.querySelector('section.sheet')?.classList.add('label-sheet');
       tableL44 = cL44.querySelector("table");
       tr = document.createElement("tr");
     } else if (i > 0 && i % CONSTANTS.LABEL.LABELS_PER_ROW == 0) {

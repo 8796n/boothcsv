@@ -1,3 +1,33 @@
+/* 印刷済み注文明細の視覚的グレーアウト（画面のみ）
+   注文明細全体は薄くするが、左上の操作パネル(.order-print-info)は減光しないよう
+   親にopacity/filterを直接掛けず、擬似要素のオーバーレイで表現する */
+@media screen {
+  section.sheet.is-printed {
+  position: relative;
+  z-index: 0; /* 固定ヘッダー(z-index:1000)より下のスタッキングコンテキストを作成 */
+    transition: opacity 0.15s ease;
+  }
+  section.sheet.is-printed::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.45); /* 軽く白を被せて減光 */
+    pointer-events: none; /* クリックは下の要素に通す */
+  z-index: 1; /* セクション内で本文より上・パネルより下 */
+  }
+  /* 操作パネルは常に通常表示（明瞭） */
+  section.sheet.is-printed .order-print-info {
+    opacity: 1 !important;
+    filter: none !important;
+  z-index: 2; /* セクション内で最前面（固定ヘッダーより下） */
+  }
+  section.sheet.is-printed .order-print-info button,
+  section.sheet.is-printed .order-print-info a,
+  section.sheet.is-printed .order-print-info .btn {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+}
 @page {
     size: A4;
     margin: 0;
@@ -9,6 +39,10 @@
     }
     .dropzone {
     display: none !important;
+    }
+    /* 印刷済みの注文明細は印刷対象から除外 */
+    section.sheet.is-printed {
+      display: none !important;
     }
     table.label44 td {
     border: none !important;
@@ -79,6 +113,33 @@ table.items td.spacerow {
     position: absolute;
     top: 0mm;
     right: 0mm;
+}
+
+/* 各注文明細の非印刷・印刷日時パネル */
+.sheet { position: relative; }
+.order-print-info {
+  position: absolute;
+  /* まずは画面で確実に見える位置に固定（シートの内側左上） */
+  top: 0.5mm;
+  left: 0.5mm;
+  background: rgba(255,255,255,0.95);
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  z-index: 3000;
+}
+
+/* .no_print の幅制御を本パネルでは無効化 */
+.order-print-info.no_print {
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  width: auto !important;
+}
+
+@media print {
+  .order-print-info { display: none !important; }
 }
 
 .orderdetail {
@@ -402,6 +463,7 @@ table.label44 td {
   background: rgba(255,255,255,0.1);
   padding: 6px 12px;
   border-radius: 6px;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.2);
 }
@@ -446,6 +508,7 @@ table.label44 td {
   background: rgba(255,255,255,0.1);
   padding: 6px 12px;
   border-radius: 6px;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -541,6 +604,14 @@ table.label44 td {
   margin-top: 80px; /* 固定ヘッダーの高さ分の余白 */
 }
 
+/* ユーティリティ */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.mt-10 { margin-top: 10px; }
+.my-10 { margin: 10px 0; }
+.my-15 { margin: 15px 0; }
+.btn-margin { margin: 0 5px; }
+
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   .fixed-header-content {
@@ -600,6 +671,56 @@ table.label44 td {
   }
 }
 
+/* カスタムフォント設定セクション */
+.custom-font-section {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+}
+.custom-font-section h4 {
+  margin: 0 0 10px 0;
+  color: #666;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+.custom-font-section #fontSectionArrow {
+  margin-right: 8px;
+  transition: transform 0.3s;
+}
+.custom-font-section #fontSectionContent {
+  transition: max-height 0.3s ease-out;
+  overflow: hidden;
+}
+.custom-font-section #fontDropZone { margin-bottom: 10px; }
+.subtle-title { margin: 5px 0; color: #666; }
+.font-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  padding: 10px;
+  background: white;
+}
+.font-list-placeholder { color: #999; }
+
+/* 注文明細の個別画像ゾーン */
+.individual-order-image-zone {
+  margin: 10px 0;
+  text-align: center;
+  border: 2px dashed #ccc;
+  padding: 10px;
+}
+
+/* 注文明細パネルのボタン左右マージン */
+.order-print-info .btn-base { margin-left: 6px; }
+
+/* 非表示ブロックの初期状態（JSで切替） */
+#customLabelRow,
+#orderImageRow,
+#dropZoneDefaultContent { display: none; }
+
 .file-input-button {
   display: inline-block;
   padding: 8px 20px;
@@ -612,6 +733,7 @@ table.label44 td {
   cursor: pointer;
   text-align: center;
   transition: background-color 0.3s ease, transform 0.2s ease;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -729,6 +851,12 @@ table.label44 td {
   margin: 0 5px;
 }
 
+/* 追加のカラーバリエーション（リンク風ボタンで利用） */
+.btn-info { background-color: #17a2b8; color: #fff; }
+.btn-info:hover:not(:disabled) { background-color: #138496; }
+.btn-warning { background-color: #fd7e14; color: #fff; }
+.btn-warning:hover:not(:disabled) { background-color: #e36f0c; }
+
 /* 複数カスタムラベル設定エリア */
 .multiple-custom-labels-config {
   padding: 15px;
@@ -826,6 +954,7 @@ label[for="orderImageEnable"] {
   font-weight: 500;
   color: #333;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -980,7 +1109,10 @@ label[for="orderImageEnable"]:hover {
 
 .rich-text-editor {
   -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+}
+@supports (-moz-appearance: none) {
+  /* Firefox のときだけ適用 */
+  .rich-text-editor { scrollbar-width: none; }
 }
 
 /* カスタムラベルエラー状態のスタイル */
