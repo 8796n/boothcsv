@@ -3,22 +3,30 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="BOOTH宛名CSVをラベル/注文明細として印刷用に整形するローカル実行ツール">
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/paper-css/0.4.1/paper.css">
 
   <link rel="stylesheet" href="./css/boothcsv.css">
 
   <title>BOOTH宛名印刷用CSV帳票化</title>
+  <style>
+    /* Skip link (視覚的には通常非表示/フォーカス時表示) */
+    .skip-link{position:absolute;left:-999px;top:auto;width:1px;height:1px;overflow:hidden;}
+    .skip-link:focus{left:8px;top:8px;width:auto;height:auto;padding:8px 12px;background:#000;color:#fff;z-index:10000;border-radius:4px;text-decoration:none;}
+  </style>
 </head>
 
 <body class="A4">
+<a href="#mainContent" class="skip-link">メインコンテンツへスキップ</a>
 <!-- 固定ヘッダー -->
 <div class="fixed-header">
   <div class="fixed-header-content">
     <h1 class="fixed-title">BOOTH宛名印刷用CSV帳票化</h1>
     <div class="main-actions">
       <!-- 印刷枚数表示 -->
-  <div class="print-count-display" id="printCountDisplay">
+  <div class="print-count-display" id="printCountDisplay" aria-live="polite">
         <div class="print-count-item">
           <span class="print-count-label">ラベル:</span>
           <span class="print-count-value" id="labelSheetCount">0</span>
@@ -58,7 +66,7 @@
 </div>
 
 <!-- メインコンテンツ（既存の内容） -->
-<div class="main-content">
+<main class="main-content" id="mainContent">
 <div class="no_print text-center">
   <form method="POST" enctype="multipart/form-data" id="form">
   <table class="form-table">
@@ -72,7 +80,7 @@
         <td><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"></td>
       </tr>
       <tr>
-        <td><label for="labelskip">ラベルをスキップする面数：</label></td>
+  <td><label for="labelskipnum">ラベルをスキップする面数：</label></td>
         <td><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0"></td>
       </tr>
       <tr>
@@ -110,7 +118,7 @@
                       <div class="font-list-placeholder text-center">フォントファイルをアップロードしてください</div>
                     </div>
                     <div class="text-center mt-10">
-                      <button id="clearAllFontsButton" class="btn-base btn-danger btn-clear btn-small">全てのカスタムフォントをクリア</button>
+                      <button type="button" id="clearAllFontsButton" class="btn-base btn-danger btn-clear btn-small">全てのカスタムフォントをクリア</button>
                     </div>
                   </div>
                 </div>
@@ -131,17 +139,17 @@
     </table>
   </form>
   <p class="text-center">ローカルストレージに保存された画像を全削除：
-    <button id="clearAllButton" class="btn-base btn-danger btn-clear">全てのQR画像をクリア</button>
-    <button id="clearAllOrderImagesButton" class="btn-base btn-danger btn-clear">全ての注文画像をクリア</button>
+    <button type="button" id="clearAllButton" class="btn-base btn-danger btn-clear">全てのQR画像をクリア</button>
+    <button type="button" id="clearAllOrderImagesButton" class="btn-base btn-danger btn-clear">全ての注文画像をクリア</button>
   </p>
   <div class="text-center my-15">
-    <a href="help.html" target="_blank" class="btn-base btn-success btn-small btn-margin">📚 使い方ガイド</a>
-    <a href="help.html#画像機能について" target="_blank" class="btn-base btn-info btn-small btn-margin">🖼️ 画像機能の説明</a>
-    <a href="help.html#カスタムラベル機能について" target="_blank" class="btn-base btn-warning btn-small btn-margin">🏷️ カスタムラベル機能</a>
+    <a href="help.html" target="_blank" rel="noopener" class="btn-base btn-success btn-small btn-margin">📚 使い方ガイド</a>
+    <a href="help.html#画像機能について" target="_blank" rel="noopener" class="btn-base btn-info btn-small btn-margin">🖼️ 画像機能の説明</a>
+    <a href="help.html#カスタムラベル機能について" target="_blank" rel="noopener" class="btn-base btn-warning btn-small btn-margin">🏷️ カスタムラベル機能</a>
   </div>
-  <p><a href="https://github.com/8796n/boothcsv" target="_blank">このツールの公開場所</a></p>
+  <p><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener noreferrer">このツールの公開場所</a></p>
 </div>
-</div> <!-- main-content 終了 -->
+</main> <!-- main-content 終了 -->
 <template id="L44">
   <section class="sheet">
       <table class="label44">
