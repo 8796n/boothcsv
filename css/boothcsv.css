@@ -1,3 +1,50 @@
+/* スキップ面の視覚表示（画面のみ） */
+.qrlabel.skip-face {
+  position: relative;
+  background: repeating-linear-gradient(45deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 6px, rgba(0,0,0,0.12) 6px, rgba(0,0,0,0.12) 12px);
+  outline: 2px dashed rgba(0,0,0,0.25);
+}
+.qrlabel.skip-face .skip-indicator {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 18px;
+  pointer-events: none;
+}
+.qrlabel.skip-face::after {
+  content: 'スキップ面';
+  position: absolute;
+  left: 4px;
+  bottom: 2px;
+  font-size: 10px;
+  color: rgba(0,0,0,0.55);
+  background: rgba(255,255,255,0.85);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+/* 印刷時は数字バッジとラベルを完全非表示（罫線も消す） */
+@media print {
+  .qrlabel.skip-face {
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  .qrlabel.skip-face .skip-indicator {
+    display: none !important;
+    border: none !important;
+    background: none !important;
+  }
+  .qrlabel.skip-face::after {
+    content: none !important;
+  }
+}
 /* 印刷済み注文明細の視覚的グレーアウト（画面のみ）
    注文明細全体は薄くするが、左上の操作パネル(.order-print-info)は減光しないよう
    親にopacity/filterを直接掛けず、擬似要素のオーバーレイで表現する */

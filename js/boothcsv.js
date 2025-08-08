@@ -1909,15 +1909,19 @@ async function processCSVResults(results, config) {
     }
 
     if (totalLabelArray.length > 0) {
-      await generateLabels(totalLabelArray);
+  await generateLabels(totalLabelArray, { skipOnFirstSheet: skipCount });
     }
   }
 
   // 印刷枚数の表示（複数シート対応）
   // showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
 
-  // ヘッダーの印刷枚数表示を更新（普通紙は未印刷のみ）
-  updatePrintCountDisplay(filteredData.length, requiredSheets, totalCustomLabelCount);
+  // ヘッダーの印刷枚数表示を更新
+  // ラベル印刷がオフの場合はラベル枚数・カスタム面数ともに0を表示する
+  const labelSheetsForDisplay = config.labelyn ? requiredSheets : 0;
+  const customFacesForDisplay = (config.labelyn && config.customLabelEnable) ? totalCustomLabelCount : 0;
+  // 普通紙（注文明細）は未印刷のみ
+  updatePrintCountDisplay(filteredData.length, labelSheetsForDisplay, customFacesForDisplay);
 
   // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
   await updateCustomLabelsSummary();
@@ -1991,7 +1995,7 @@ async function processCustomLabelsOnly(config, isPreviewMode = false) {
     
     // このシートのラベルを生成
     if (labelarr.length > 0) {
-      await generateLabels(labelarr);
+      await generateLabels(labelarr, { skipOnFirstSheet: labelskipNum });
     }
     
     // 使い切ったラベルを削除
@@ -2301,7 +2305,7 @@ async function regenerateLabelsFromDB() {
   }
 
   if (labelarr.length > 0) {
-    await generateLabels(labelarr);
+    await generateLabels(labelarr, { skipOnFirstSheet: skip });
   }
 }
 
@@ -2311,10 +2315,12 @@ function recalcAndUpdateCounts() {
   const labelSheetCount = document.querySelectorAll('section.sheet.label-sheet').length;
   // カスタム面数を設定から再計算
   StorageManager.getSettingsAsync().then(settings => {
-    const customCount = (settings.customLabelEnable && Array.isArray(settings.customLabels))
+    // ラベル印刷がOFFの場合はラベル/カスタムとも0表示にする
+    const labelSheetsForDisplay = settings.labelyn ? labelSheetCount : 0;
+    const customCountForDisplay = (settings.labelyn && settings.customLabelEnable && Array.isArray(settings.customLabels))
       ? settings.customLabels.filter(l => l.enabled).reduce((s, l) => s + (parseInt(l.count, 10) || 0), 0)
       : 0;
-    updatePrintCountDisplay(orderSheetCount, labelSheetCount, customCount);
+    updatePrintCountDisplay(orderSheetCount, labelSheetsForDisplay, customCountForDisplay);
   });
 }
 
@@ -2481,7 +2487,11 @@ async function displayOrderImage(cOrder, orderNumber) {
 
 // 旧: グローバル印刷日時パネルは廃止（各注文明細内に移行）
 
-async function generateLabels(labelarr) {
+async function generateLabels(labelarr, options = {}) {
+  const opts = {
+    skipOnFirstSheet: 0,
+    ...options
+  };
   // シートをちょうど埋めるために不足分だけ空ラベルを追加
   if (labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET) {
     const remainder = labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
@@ -2497,7 +2507,9 @@ async function generateLabels(labelarr) {
   cL44.querySelector('section.sheet')?.classList.add('label-sheet');
   let tableL44 = cL44.querySelector("table");
   let tr = document.createElement("tr");
-  let i = 0;
+  let i = 0; // 全体インデックス
+  let sheetIndex = 0;
+  let posInSheet = 0; // 0..43
   
   for (let label of labelarr) {
     if (i > 0 && i % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET == 0) {
@@ -2508,11 +2520,24 @@ async function generateLabels(labelarr) {
       cL44.querySelector('section.sheet')?.classList.add('label-sheet');
       tableL44 = cL44.querySelector("table");
       tr = document.createElement("tr");
+      sheetIndex++;
+      posInSheet = 0;
     } else if (i > 0 && i % CONSTANTS.LABEL.LABELS_PER_ROW == 0) {
       tableL44.appendChild(tr);
       tr = document.createElement("tr");
     }
-    tr.appendChild(await createLabel(label));
+    const td = await createLabel(label);
+    // スキップ面の視覚表示（初回シートの先頭skip数のみ）
+    if (sheetIndex === 0 && posInSheet < (opts.skipOnFirstSheet || 0)) {
+      td.classList.add('skip-face');
+      td.setAttribute('data-label-index', String(posInSheet + 1));
+      const indicator = document.createElement('div');
+      indicator.className = 'skip-indicator';
+      indicator.textContent = String(posInSheet + 1);
+      td.appendChild(indicator);
+    }
+    tr.appendChild(td);
+    posInSheet++;
     i++;
   }
   tableL44.appendChild(tr);
@@ -3854,30 +3879,97 @@ function setupRichTextFormatting(editor) {
     console.error('setupRichTextFormatting: editor要素がnullです');
     return;
   }
+
+  // 日本語入力（IME）中のEnterは改行処理を抑止するためのフラグ
+  let isComposing = false;
+  editor.addEventListener('compositionstart', () => { 
+    isComposing = true; 
+    debugLog('[editor] compositionstart');
+  });
+  editor.addEventListener('compositionend', () => { 
+    isComposing = false; 
+    debugLog('[editor] compositionend');
+  });
+
+  // 共通の改行挿入ヘルパー
+  const insertLineBreak = (source = 'unknown') => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const beforeHTML = editor.innerHTML;
+
+    // 末尾かどうかを判定（テキストベース）
+    let atEnd = false;
+    try {
+      const tail = document.createRange();
+      tail.selectNodeContents(editor);
+      tail.setStart(range.endContainer, range.endOffset);
+      const remainingText = tail.toString();
+      atEnd = remainingText.length === 0;
+    } catch {}
+
+    // 選択範囲がある場合は削除
+    range.deleteContents();
+    // 改行を挿入
+    const br = document.createElement('br');
+    range.insertNode(br);
+
+    if (atEnd) {
+      // 末尾では <br> の直後にゼロ幅スペースを1つだけ入れて視覚的な改行を保証
+      const zwsp = document.createTextNode('\u200B');
+      if (br.parentNode) {
+        if (br.nextSibling && br.nextSibling.nodeType === Node.TEXT_NODE && br.nextSibling.nodeValue.startsWith('\u200B')) {
+          // 既にゼロ幅スペースがある場合は重複挿入しない
+        } else {
+          br.parentNode.insertBefore(zwsp, br.nextSibling);
+          // キャレットをゼロ幅スペースの後ろに
+          range.setStartAfter(zwsp);
+        }
+      }
+    } else {
+      // キャレットを改行の直後へ
+      range.setStartAfter(br);
+    }
+
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const afterHTML = editor.innerHTML;
+    debugLog(`[editor] insertLineBreak via ${source}`, { beforeLen: beforeHTML.length, afterLen: afterHTML.length, atEnd });
+  };
+
+  // 近代ブラウザ: beforeinput で Enter(=insertParagraph) を横取りし <br> を1回だけ入れる
+  const supportsBeforeInput = 'onbeforeinput' in editor;
+  if (supportsBeforeInput) {
+    debugLog('[editor] supports beforeinput = true');
+    editor.addEventListener('beforeinput', function(e) {
+      if (e.inputType === 'insertParagraph') {
+        debugLog('[editor] beforeinput insertParagraph', { isComposing, evIsComposing: e.isComposing, cancelable: e.cancelable });
+        if (isComposing || e.isComposing) {
+          // IME確定Enterは改行処理しない
+          return;
+        }
+        e.preventDefault();
+        insertLineBreak('beforeinput');
+      }
+    });
+  }
+  else {
+    debugLog('[editor] supports beforeinput = false');
+  }
   
   // Enterキーでの改行処理を改善
   editor.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
-      // Enterキーの処理を改善 - 1回で改行
+      debugLog('[editor] keydown Enter', { supportsBeforeInput, isComposing, evIsComposing: e.isComposing, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey });
+      // beforeinputが使える環境ではそちらで一元処理する
+      if (supportsBeforeInput) return;
+      // IME入力中はブラウザに任せる（確定用Enterを奪わない）
+      if (isComposing || e.isComposing) return;
+      // フォールバック: ここで1回だけ<br>を入れる
       e.preventDefault();
-      
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        
-        // 選択範囲がある場合は削除
-        range.deleteContents();
-        
-        // 改行要素を作成
-        const br = document.createElement('br');
-        range.insertNode(br);
-        
-        // カーソルを改行の後に配置
-        range.setStartAfter(br);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
+      insertLineBreak('keydown');
     }
   });
 
@@ -5349,6 +5441,10 @@ function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = fa
     if (rangeInfo.isCompleteSpan) {
       debugLog('既存span要素を更新:', rangeInfo.targetSpan);
       updateSpanStyle(rangeInfo.targetSpan, styleProperty, styleValue, isDefault);
+      // 選択全体に統一適用する際、子孫spanに同一プロパティがあれば削除して親の指定を有効化
+      if ((styleProperty === 'font-size' || styleProperty === 'font-family')) {
+        removeStyleFromDescendants(rangeInfo.targetSpan, styleProperty);
+      }
       
     } else if (rangeInfo.isPartialSpan) {
       debugLog('部分選択でspan分割処理');
@@ -5357,11 +5453,16 @@ function applyStyleToSelection(styleProperty, styleValue, editor, isDefault = fa
     } else if (rangeInfo.isMultiSpan) {
       debugLog('複数span要素を統合処理:', rangeInfo.multiSpans.length + '個');
       handleMultiSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault);
+      // 各対象spanの子孫からも当該プロパティを除去
+      if ((styleProperty === 'font-size' || styleProperty === 'font-family')) {
+        rangeInfo.multiSpans.forEach(s => removeStyleFromDescendants(s, styleProperty));
+      }
       
     } else {
-      debugLog('新しいspan要素を作成');
-      createNewSpanForSelection(range, selectedText, styleProperty, styleValue, isDefault);
-    }
+        debugLog('新しいspan要素を作成（BR保持版）');
+        // BRや特殊ノードを壊さない安全な適用
+        applyStylePreservingBreaks(range, styleProperty, styleValue, isDefault);
+      }
     
     debugLog(`スタイル "${styleProperty}: ${styleValue}" を適用しました`);
     debugLog('処理後のエディタHTML:', editor.innerHTML);
@@ -5469,74 +5570,72 @@ function updateSpanStyle(span, styleProperty, styleValue, isDefault) {
 function handlePartialSpanSelection(range, rangeInfo, styleProperty, styleValue, isDefault) {
   const targetSpan = rangeInfo.targetSpan;
   const selectedText = range.toString();
-  
-  // 元のspan要素のスタイルを取得
-  const originalStyle = targetSpan.getAttribute('style') || '';
-  
-  // 選択範囲の前後でspan要素を分割
-  const beforeText = targetSpan.textContent.substring(0, targetSpan.textContent.indexOf(selectedText));
-  const afterText = targetSpan.textContent.substring(targetSpan.textContent.indexOf(selectedText) + selectedText.length);
-  
-  // 親要素を取得
-  const parent = targetSpan.parentNode;
-  const nextSibling = targetSpan.nextSibling;
-  
-  // 元のspan要素を削除
-  targetSpan.remove();
-  
-  // 新しい要素を作成（順番通りに）
-  const elements = [];
-  
-  // 1. 前の部分があれば元のスタイルで作成
-  if (beforeText) {
-    const beforeSpan = document.createElement('span');
-    beforeSpan.setAttribute('style', originalStyle);
-    beforeSpan.textContent = beforeText;
-    elements.push(beforeSpan);
-  }
-  
-  // 2. 選択部分に新しいスタイルを適用
-  const selectedSpan = document.createElement('span');
-  const styleMap = parseStyleString(originalStyle);
-  
-  if (isDefault) {
-    styleMap.delete(styleProperty);
-  } else {
-    const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
-    styleMap.set(styleProperty, styleValue + unit);
-  }
-  
-  if (styleMap.size > 0) {
-    const newStyle = Array.from(styleMap.entries())
-      .map(([prop, val]) => `${prop}: ${val}`)
-      .join('; ');
-    selectedSpan.setAttribute('style', newStyle);
-  }
-  selectedSpan.textContent = selectedText;
-  elements.push(selectedSpan);
-  
-  // 3. 後の部分があれば元のスタイルで作成
-  if (afterText) {
-    const afterSpan = document.createElement('span');
-    afterSpan.setAttribute('style', originalStyle);
-    afterSpan.textContent = afterText;
-    elements.push(afterSpan);
-  }
-  
-  // 正しい順序で全ての要素を挿入
-  elements.forEach(element => {
-    if (nextSibling) {
-      parent.insertBefore(element, nextSibling);
+
+  // Textノード内の部分選択ならsplitTextで安全に分割（BR等の子要素を保持）
+  if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = range.startContainer;
+    const start = range.startOffset;
+    const end = range.endOffset;
+
+    const fullText = textNode.nodeValue || '';
+    const beforeText = fullText.slice(0, start);
+    const midText = fullText.slice(start, end);
+    const afterText = fullText.slice(end);
+
+    // 既存Textノードを書き換え（before）
+    textNode.nodeValue = beforeText;
+
+    // 選択部分を新spanで挿入
+    const selectedSpan = document.createElement('span');
+    if (!isDefault) {
+      const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
+      try { selectedSpan.style.setProperty(styleProperty, (typeof styleValue === 'number' ? String(styleValue) : styleValue) + unit); } catch {}
     } else {
-      parent.appendChild(element);
+      // 既定化の場合は、親のスタイルを打ち消したいが、ここでは明示的な解除はせずそのままテキストを包む
+      // （フォントリセット処理は専用のフローに委ねる）
     }
-  });
-  
-  // 新しい選択範囲を設定
-  range.selectNodeContents(selectedSpan);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
+    selectedSpan.appendChild(document.createTextNode(midText));
+
+    // afterテキストノード
+    const afterNode = document.createTextNode(afterText);
+
+    // DOMに挿入: textNodeの直後にselectedSpan, その後にafterNode
+    const parent = textNode.parentNode;
+    if (textNode.nextSibling) {
+      parent.insertBefore(selectedSpan, textNode.nextSibling);
+      parent.insertBefore(afterNode, selectedSpan.nextSibling);
+    } else {
+      parent.appendChild(selectedSpan);
+      parent.appendChild(afterNode);
+    }
+
+    // 新しい選択範囲を設定
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(selectedSpan);
+    selection.addRange(newRange);
+    return;
+  }
+
+  // 上記以外（複雑なノード境界含む）はsurroundContentsで試み、失敗時はフォールバック
+  const overrideSpan = document.createElement('span');
+  if (!isDefault) {
+    const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
+    try { overrideSpan.style.setProperty(styleProperty, (typeof styleValue === 'number' ? String(styleValue) : styleValue) + unit); } catch {}
+  }
+  try {
+    range.surroundContents(overrideSpan);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(overrideSpan);
+    selection.addRange(newRange);
+  } catch (e) {
+    debugLog('handlePartialSpanSelection: surroundContents失敗、旧ロジックにフォールバック', e);
+    // 最低限のフォールバック: 旧ロジックはBRを失う可能性があるため、より安全なapplyStylePreservingBreaksを使用
+    applyStylePreservingBreaks(range, styleProperty, styleValue, isDefault);
+  }
 }
 
 // 複数span要素選択時の統合処理（改行保持版）
@@ -5565,26 +5664,148 @@ function handleMultiSpanSelection(range, rangeInfo, styleProperty, styleValue, i
 // 新しいspan要素を作成するヘルパー関数
 function createNewSpanForSelection(range, selectedText, styleProperty, styleValue, isDefault) {
   if (isDefault) return; // デフォルト値の場合は新しいspan要素を作成しない
-  
+
   const newSpan = document.createElement('span');
-  
+
   // スタイルを設定
   if (styleProperty === 'font-family') {
     newSpan.style.fontFamily = styleValue;
   } else if (styleProperty === 'font-size') {
     newSpan.style.fontSize = styleValue + (typeof styleValue === 'number' ? 'pt' : '');
+  } else {
+    // その他のプロパティにも対応
+    try { newSpan.style.setProperty(styleProperty, typeof styleValue === 'number' ? String(styleValue) : styleValue); } catch {}
   }
-  
-  // 選択範囲の内容を削除してspan要素を挿入
-  range.deleteContents();
-  newSpan.textContent = selectedText;
-  range.insertNode(newSpan);
-  
+
+  // surroundContentsで包める場合はそれを使う（構造を崩さない）
+  try {
+    range.surroundContents(newSpan);
+    debugLog('createNewSpanForSelection: surroundContentsで適用');
+    // ラップ直後に内側の同一プロパティを削除し、親の指定を有効化
+    if (styleProperty === 'font-size' || styleProperty === 'font-family') {
+      removeStyleFromDescendants(newSpan, styleProperty);
+    }
+  } catch (e) {
+    // 部分的なノード選択などでsurroundContentsが失敗した場合は、抽出→ラップでフォールバック
+    debugLog('createNewSpanForSelection: surroundContents失敗、フォールバック適用', e);
+    const frag = range.extractContents();
+    // 元の選択テキストだけでなく、抽出フラグメント全体をspanに入れることでBR等を保持
+    newSpan.appendChild(frag);
+    range.insertNode(newSpan);
+  }
+
   // 新しいspan要素を選択状態にする
-  range.selectNodeContents(newSpan);
   const selection = window.getSelection();
   selection.removeAllRanges();
-  selection.addRange(range);
+  const newRange = document.createRange();
+  newRange.selectNodeContents(newSpan);
+  selection.addRange(newRange);
+}
+
+// BRやゼロ幅スペースを保持しつつ、選択範囲内のテキストノードにだけスタイルを適用
+function applyStylePreservingBreaks(range, styleProperty, styleValue, isDefault) {
+  if (isDefault) {
+    // デフォルト化要求はここでは何もしない（削除系は既存の処理で対応）
+    debugLog('applyStylePreservingBreaks: isDefault=true のためスキップ');
+    return;
+  }
+
+  const unit = styleProperty === 'font-size' && typeof styleValue === 'number' ? 'pt' : '';
+  const valueStr = typeof styleValue === 'number' ? String(styleValue) + unit : String(styleValue);
+
+  try {
+    // まず試しにsurroundContentsを使う（選択が素直な場合はこれで十分、内部のBRも保持）
+    const testSpan = document.createElement('span');
+    try { testSpan.style.setProperty(styleProperty, valueStr); } catch {}
+    range.surroundContents(testSpan);
+    // 子孫spanにある同一プロパティは削除（親の指定を効かせる）
+    if (styleProperty === 'font-size' || styleProperty === 'font-family') {
+      removeStyleFromDescendants(testSpan, styleProperty);
+    }
+    debugLog('applyStylePreservingBreaks: surroundContents成功');
+    return;
+  } catch (_) {
+    // 続行してフォールバックへ
+  }
+
+  // 抽出してフラグメントを加工
+  const fragment = range.extractContents();
+
+  const processNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.nodeValue && node.nodeValue.length > 0) {
+        const span = document.createElement('span');
+        try { span.style.setProperty(styleProperty, valueStr); } catch {}
+        span.textContent = node.nodeValue;
+        return span;
+      }
+      return document.createTextNode('');
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node;
+      // BRはそのまま返す
+      if (el.tagName === 'BR') return el;
+
+      // 既存のSPANはスタイルを追記（上書き）しつつ子も処理
+      if (el.tagName === 'SPAN') {
+        // 子を先に処理してから自身のスタイルを更新
+        const newSpan = document.createElement('span');
+        // 既存スタイルを引き継ぎつつ、同一プロパティは削除（親で統一するため）
+        const current = el.getAttribute('style') || '';
+        if (current) {
+          const map = parseStyleString(current);
+          map.delete(styleProperty);
+          const cleaned = Array.from(map.entries()).map(([k,v]) => `${k}: ${v}`).join('; ');
+          if (cleaned) newSpan.setAttribute('style', cleaned);
+        }
+        try { newSpan.style.setProperty(styleProperty, valueStr); } catch {}
+        // 子を再構築
+        while (el.firstChild) {
+          const child = el.firstChild;
+          el.removeChild(child);
+          newSpan.appendChild(processNode(child));
+        }
+        return newSpan;
+      }
+
+      // その他の要素は中の子に対してのみ適用
+      const wrapper = document.createElement(el.tagName);
+      // 属性コピー
+      for (const attr of el.attributes) {
+        wrapper.setAttribute(attr.name, attr.value);
+      }
+      while (el.firstChild) {
+        const child = el.firstChild;
+        el.removeChild(child);
+        wrapper.appendChild(processNode(child));
+      }
+      return wrapper;
+    }
+    // それ以外のノードはそのまま
+    return node;
+  };
+
+  // fragment直下の子を処理して新しいフラグメントに詰める
+  const newFragment = document.createDocumentFragment();
+  Array.from(fragment.childNodes).forEach(child => {
+    newFragment.appendChild(processNode(child));
+  });
+
+  // 加工済みのフラグメントを挿入
+  range.insertNode(newFragment);
+
+  // 新しい選択範囲（適用部）をざっくり再選択（厳密なカーソル維持は後続操作で上書きされる）
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  const newRange = document.createRange();
+  // 直前に挿入した箇所を再選択するため、rangeのstartContainer付近を頼りにエディタ側での後処理に任せる
+  // ここでは安全側で親ノード全体を再選択
+  const anchor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentNode;
+  newRange.selectNodeContents(anchor);
+  selection.addRange(newRange);
+  debugLog('applyStylePreservingBreaks: フォールバック適用完了');
 }
 
 // フォントファミリーを選択範囲に適用（統合された関数を使用）
@@ -5949,6 +6170,28 @@ function parseStyleString(styleString) {
   });
   
   return styleMap;
+}
+
+// 指定した要素配下の全てのspanから、指定スタイルプロパティを取り除く
+function removeStyleFromDescendants(rootEl, styleProperty) {
+  if (!rootEl) return;
+  try {
+    const spans = rootEl.querySelectorAll('span[style]');
+    spans.forEach(s => {
+      const styleMap = parseStyleString(s.getAttribute('style') || '');
+      if (styleMap.has(styleProperty)) {
+        styleMap.delete(styleProperty);
+        const newStyle = Array.from(styleMap.entries()).map(([k,v]) => `${k}: ${v}`).join('; ');
+        if (newStyle) {
+          s.setAttribute('style', newStyle);
+        } else {
+          s.removeAttribute('style');
+        }
+      }
+    });
+  } catch (e) {
+    debugLog('removeStyleFromDescendantsエラー', e);
+  }
 }
 
 // フォントサイズを選択範囲に適用（統合された関数を使用）
