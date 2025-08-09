@@ -399,6 +399,11 @@ table.label44 td {
   }
 }
 
+/* 注文番号表示: JS は純粋な番号のみを埋め込み、ラベルは CSS で付与 */
+.注文番号::before {
+  content: '注文番号 : ';
+}
+
 .btn-action {
   display: inline-block;
   padding: 10px 40px;
