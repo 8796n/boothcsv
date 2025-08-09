@@ -295,13 +295,11 @@
           delReq.onerror = () => reject(delReq.error);
           return;
         }
+        // QR画像は ArrayBuffer のみをサポート（Base64文字列は非対応化）
         let optimizedQRImage = qrData.qrimage;
-        let isBinary = false;
-        if (qrData.qrimage && isBase64Like(qrData.qrimage)) {
-          const ab = toArrayBufferFromBase64(qrData.qrimage);
-          if (ab) { optimizedQRImage = ab; isBinary = true; }
-        } else if (qrData.qrimage instanceof ArrayBuffer) {
-          isBinary = true;
+        const isBinary = qrData.qrimage instanceof ArrayBuffer;
+        if (!isBinary && qrData.qrimage) {
+          console.warn('QR画像はArrayBufferのみ対応です (無視される可能性)', qrData.qrimage);
         }
         const obj = {
           orderNumber,
