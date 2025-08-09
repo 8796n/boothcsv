@@ -176,20 +176,12 @@
       return new Promise((resolve, reject) => {
         const tx = this.db.transaction(['images'], 'readwrite');
         const store = tx.objectStore('images');
-
-        let optimizedData = imageData;
-        // category は 'order' / 'global' などの区別。mimeType は実際のMIME。
-        const categoryValue = category;
-        let mimeType = null;
-        let isBinary = false;
-        if (isBase64Like(imageData)) {
-          const ab = toArrayBufferFromBase64(imageData);
-          if (ab) { optimizedData = ab; mimeType = getMimeFromDataUrl(imageData); isBinary = true; }
-        } else if (imageData instanceof ArrayBuffer) {
-          isBinary = true;
+        if (!(imageData instanceof ArrayBuffer)) {
+          console.warn('setImage: ArrayBuffer 以外は非推奨です (無視される可能性)');
         }
-
-        const imageObject = { key, data: optimizedData, mimeType, category: categoryValue, orderNumber, createdAt: Date.now(), isBinary };
+        const categoryValue = category;
+        const isBinary = imageData instanceof ArrayBuffer;
+        const imageObject = { key, data: imageData, mimeType: null, category: categoryValue, orderNumber, createdAt: Date.now(), isBinary };
         const req = store.put(imageObject);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
@@ -205,10 +197,16 @@
           const result = req.result;
           if (!result) return resolve(null);
           if (result.isBinary && result.data instanceof ArrayBuffer) {
-            const b64 = toBase64FromArrayBuffer(result.data);
-            resolve(b64 ? `data:${result.mimeType || result.type || 'image/png'};base64,${b64}` : result.data);
+            try {
+              const blob = new Blob([result.data], { type: result.mimeType || 'image/png' });
+              const url = URL.createObjectURL(blob);
+              resolve(url);
+            } catch (e) {
+              console.error('getImage: Blob URL 生成失敗', e);
+              resolve(null);
+            }
           } else {
-            resolve(result.data);
+            resolve(result.data || null);
           }
         };
         req.onerror = () => resolve(null);

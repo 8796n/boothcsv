@@ -1847,13 +1847,14 @@ async function createBaseImageDropZone(options = {}) {
     dropZone.style.cssText = 'min-height: 80px; border: 1px dashed #999; padding: 5px; background: #f9f9f9; cursor: pointer;';
   }
 
-  let droppedImage = null;
+  let droppedImage = null;           // 表示用URL (Blob URL)
+  let droppedImageBuffer = null;     // 保存用 ArrayBuffer
 
   // StorageManagerから保存された画像を読み込む
   const savedImage = await StorageManager.getOrderImage(orderNumber);
   if (savedImage) {
     debugLog(`保存された画像を復元: ${storageKey}`);
-    await updatePreview(savedImage);
+    await updatePreview(savedImage, null); // 既存はURLのみ（バッファ不明）
   } else {
     if (isIndividual) {
       const imgTpl = document.getElementById('orderImageDropDefault');
@@ -1937,8 +1938,15 @@ async function createBaseImageDropZone(options = {}) {
     }
   }
 
-  async function updatePreview(imageUrl) {
+  async function updatePreview(imageUrl, arrayBuffer) {
     droppedImage = imageUrl;
+    if (arrayBuffer instanceof ArrayBuffer) {
+      droppedImageBuffer = arrayBuffer;
+      // 保存 (非同期保存; 失敗はログのみ)
+      try { await StorageManager.setOrderImage(arrayBuffer, orderNumber); } catch(e){ console.error('画像保存失敗', e); }
+    } else if (arrayBuffer === null) {
+      // URLのみ（復元時）: 保存操作は不要
+    }
     dropZone.innerHTML = '';
     const preview = document.createElement('img');
     preview.src = imageUrl;
@@ -1951,7 +1959,7 @@ async function createBaseImageDropZone(options = {}) {
     
     preview.title = 'クリックでリセット';
     dropZone.appendChild(preview);
-    await StorageManager.setOrderImage(imageUrl, orderNumber);
+  // setOrderImage は上で ArrayBuffer の場合のみ呼んでいる
 
     // 個別画像の場合は即座に表示を更新
     if (isIndividual && orderNumber) {
@@ -2036,9 +2044,10 @@ async function createBaseImageDropZone(options = {}) {
   return {
     element: dropZone,
     getImage: () => droppedImage,
-    setImage: (imageData) => {
+    setImage: (imageData, buffer) => {
       droppedImage = imageData;
-      updatePreview(imageData);
+      if (buffer instanceof ArrayBuffer) droppedImageBuffer = buffer;
+      updatePreview(imageData, buffer || null);
     }
   };
 }
@@ -2073,10 +2082,15 @@ function setupDragAndDropEvents(dropZone, updatePreview, isIndividual) {
     const file = e.dataTransfer.files[0];
     if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
       const reader = new FileReader();
-      reader.onload = async (e) => {
-        await updatePreview(e.target.result);
+      reader.onload = async (ev) => {
+        const buf = ev.target.result;
+        try {
+          const blob = new Blob([buf], { type: file.type });
+          const url = URL.createObjectURL(blob);
+          await updatePreview(url, buf);
+        } catch(err){ console.error('ドロップ画像処理失敗', err); }
       };
-      reader.readAsDataURL(file);
+      reader.readAsArrayBuffer(file);
     }
   });
 }
@@ -2108,11 +2122,16 @@ function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
         
         if (file && file.type.match(/^image\/(jpeg|png|svg\+xml)$/)) {
           const reader = new FileReader();
-          reader.onload = async (e) => {
-            debugLog(`画像読み込み完了 - サイズ: ${e.target.result.length} bytes`);
-            await updatePreview(e.target.result);
+          reader.onload = async (ev) => {
+            const buf = ev.target.result;
+            debugLog(`画像読み込み完了 - サイズ: ${buf.byteLength} bytes`);
+            try {
+              const blob = new Blob([buf], { type: file.type });
+              const url = URL.createObjectURL(blob);
+              await updatePreview(url, buf);
+            } catch(err){ console.error('画像読込処理失敗', err); }
           };
-          reader.readAsDataURL(file);
+          reader.readAsArrayBuffer(file);
         } else if (file) {
           alert('JPEG、PNG、SVGファイルのみサポートしています。');
         }
