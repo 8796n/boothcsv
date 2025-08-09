@@ -4105,7 +4105,7 @@ async function handleFontFile(file) {
 
 // localStorage ベースの容量チェックは廃止 (IndexedDB 専用化に伴い削除済み)
 
-// ArrayBufferをBase64に変換する関数（スタックオーバーフローを避ける）
+// ArrayBufferをBase64に変換する関数
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 8192; // 8KB ずつ処理
@@ -4140,39 +4140,39 @@ async function loadCustomFontsCSS() {
       return;
     }
 
-    const supportsFontFace = typeof FontFace !== 'undefined';
-    if (supportsFontFace) {
-      // 旧style除去（FontFace API に移行）
-      const old = document.getElementById('custom-fonts-style');
-      if (old) old.remove();
-
-      const loadPromises = [];
-      for (const [fontName, fontData] of entries) {
-        if (!fontData || !fontData.data) {
-          console.warn(`フォント "${fontName}" のデータが不正です`, fontData);
-          continue;
-        }
-        try {
-          // 重複チェック (既に同名が存在する場合は skip か再登録)
-            // document.fonts.check は weight/style によって false を返す事があるため最低限ロードする
-          const face = new FontFace(fontName, fontData.data, { display: 'swap' });
-          const p = face.load().then(loaded => {
-            if (myToken !== _fontFaceLoadToken) return; // キャンセル
-            document.fonts.add(loaded);
-            console.log(`FontFaceロード完了: ${fontName}`);
-          }).catch(err => {
-            console.error(`FontFaceロード失敗 (${fontName})`, err);
-          });
-          loadPromises.push(p);
-        } catch (e) {
-          console.error(`FontFace初期化失敗 (${fontName})`, e);
-        }
-      }
-      await Promise.all(loadPromises);
-      if (myToken !== _fontFaceLoadToken) return; // 途中キャンセル
-      console.log(`${loadPromises.length}個のカスタムフォント(FontFace API)を読み込みました`);
+    if (typeof FontFace === 'undefined') {
+      console.error('このブラウザはFontFace APIをサポートしていません (フォールバック無効化方針)。');
       return;
     }
+
+    // 旧style除去（完全移行）
+    const old = document.getElementById('custom-fonts-style');
+    if (old) old.remove();
+
+    const loadPromises = [];
+    for (const [fontName, fontData] of entries) {
+      if (!fontData || !fontData.data) {
+        console.warn(`フォント "${fontName}" のデータが不正です`, fontData);
+        continue;
+      }
+      try {
+        const face = new FontFace(fontName, fontData.data, { display: 'swap' });
+        const p = face.load().then(loaded => {
+          if (myToken !== _fontFaceLoadToken) return; // キャンセル
+          document.fonts.add(loaded);
+          console.log(`FontFaceロード完了: ${fontName}`);
+        }).catch(err => {
+          console.error(`FontFaceロード失敗 (${fontName})`, err);
+        });
+        loadPromises.push(p);
+      } catch (e) {
+        console.error(`FontFace初期化失敗 (${fontName})`, e);
+      }
+    }
+    await Promise.all(loadPromises);
+    if (myToken !== _fontFaceLoadToken) return; // 途中キャンセル
+    console.log(`${loadPromises.length}個のカスタムフォント(FontFace API)を読み込みました`);
+    return;
 
     // --- フォールバック: FontFace 未対応ブラウザ向け 既存Base64 @font-face 方式 ---
     console.warn('FontFace API非対応のため Base64 @font-face フォールバックを使用');
