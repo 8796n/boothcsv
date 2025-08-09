@@ -750,7 +750,33 @@ table.label44 td {
   padding: 10px;
   background: white;
 }
-.font-list-placeholder { color: #999; }
+.font-list-placeholder { color: #999; text-align: center; padding: 10px; }
+/* フォントリスト共通メッセージ */
+.font-list-message { text-align: center; padding: 10px; font-size: 13px; }
+.font-list-error { color: #d32f2f; text-align: center; padding: 10px; }
+/* テンプレート化した QR / 画像 / ラベル説明 */
+.qr-drop-placeholder { margin: 5px; font-size: 12px; color: #666; text-align: center; }
+.order-image-default-msg { margin: 5px; font-size: 12px; color: #666; text-align: center; }
+.custom-labels-instructions { margin-bottom: 8px; }
+.custom-labels-instructions .instructions-content { font-size: 12px; line-height: 1.5; color: #444; background: #f5f7f9; padding: 6px 8px; border-radius: 4px; }
+/* フォント一覧（template 化後）の個別行 */
+.font-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  background: #f8f9fa;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.font-list-item:last-child { margin-bottom: 0; }
+.font-list-item .font-info { flex: 1; min-width: 0; }
+.font-list-item .font-name { font-weight: 500; color: #333; font-size: 14px; }
+.font-list-item .font-meta { font-size: 11px; color: #666; margin-top: 2px; }
+.font-list-item .font-meta span { color: #999; }
+.font-list-item .font-remove-btn { min-width: 50px; }
 
 /* 注文明細の個別画像ゾーン */
 .individual-order-image-zone {

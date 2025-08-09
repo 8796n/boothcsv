@@ -39,6 +39,17 @@ function debugLog(...args) {
   }
 }
 
+// HTMLエスケープ（フォントメタ表示用）
+function escapeHTML(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // 注文番号処理を統一管理するクラス
 class OrderNumberManager {
   // 注文番号の正規化（"注文番号 : 66463556" → "66463556"）
@@ -385,9 +396,8 @@ window.addEventListener("load", async function(){
   if (clearAllButton) {
     clearAllButton.onclick = async () => {
       if (confirm('本当に全てのQR画像をクリアしますか？')) {
-        await StorageManager.clearQRImages();
-        alert('全てのQR画像をクリアしました');
-        location.reload();
+  try { const count = await StorageManager.clearQRImages(); alert(`QR画像を削除しました: ${count}件`); } catch (e) { alert('QR画像クリア中にエラーが発生しました: ' + e.message); }
+  location.reload();
       }
     };
   }
@@ -397,10 +407,50 @@ window.addEventListener("load", async function(){
   if (clearAllOrderImagesButton) {
     clearAllOrderImagesButton.onclick = async () => {
       if (confirm('本当に全ての注文画像（グローバル画像と個別画像）をクリアしますか？')) {
-        await StorageManager.clearOrderImages();
-        alert('全ての注文画像をクリアしました');
-        location.reload();
+  try { const count = await StorageManager.clearOrderImages(); alert(`注文画像を削除しました: ${count}件`); } catch (e) { alert('注文画像クリア中にエラーが発生しました: ' + e.message); }
+  location.reload();
       }
+    };
+  }
+
+  // バックアップ & リストア
+  const backupBtn = document.getElementById('backupDBButton');
+  const restoreBtn = document.getElementById('restoreDBButton');
+  const restoreFile = document.getElementById('restoreDBFile');
+  if (backupBtn) {
+    backupBtn.onclick = async () => {
+      try {
+        const data = await StorageManager.exportAllData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g,'-');
+        a.download = `boothcsv-backup-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert('バックアップに失敗しました: ' + e.message);
+      }
+    };
+  }
+  if (restoreBtn && restoreFile) {
+    restoreBtn.onclick = () => restoreFile.click();
+    restoreFile.onchange = async () => {
+      if (!restoreFile.files || restoreFile.files.length === 0) return;
+      const file = restoreFile.files[0];
+      if (!confirm('バックアップをリストアすると現在の全データは上書きされます。続行しますか？')) { restoreFile.value=''; return; }
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        await StorageManager.importAllData(json, { clearExisting: true });
+        alert('リストアが完了しました。ページを再読み込みします。');
+        location.reload();
+      } catch (e) {
+        alert('リストアに失敗しました: ' + e.message);
+      } finally { restoreFile.value=''; }
     };
   }
 
@@ -1469,13 +1519,25 @@ function setupDropzoneEvents(dropzone) {
     }
     
     // 画像以外がペーストされたときのために、元に戻しておく
-    this.textContent = null;
-    this.innerHTML = "<p>Paste QR image here!</p>";
+    this.textContent = '';
+    const tpl = document.getElementById('qrDropPlaceholder');
+    if (tpl && tpl.content.firstElementChild) {
+      this.innerHTML = '';
+      this.appendChild(tpl.content.firstElementChild.cloneNode(true));
+    } else {
+      this.innerHTML = '<p>Paste QR image here!</p>';
+    }
   });
 }
 
 function createDropzone(div){
-  const divDrop = createDiv('dropzone', 'Paste QR image here!');
+  const divDrop = createDiv('dropzone');
+  const tpl = document.getElementById('qrDropPlaceholder');
+  if (tpl && tpl.content.firstElementChild) {
+    divDrop.appendChild(tpl.content.firstElementChild.cloneNode(true));
+  } else {
+    divDrop.textContent = 'Paste QR image here!';
+  }
   divDrop.setAttribute("contenteditable", "true");
   divDrop.setAttribute("effectAllowed", "move");
   
@@ -1778,11 +1840,29 @@ async function createBaseImageDropZone(options = {}) {
     await updatePreview(savedImage);
   } else {
     if (isIndividual) {
-      dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
+      const imgTpl = document.getElementById('orderImageDropDefault');
+      if (imgTpl && imgTpl.content.firstElementChild) {
+        dropZone.innerHTML = '';
+        const node = imgTpl.content.firstElementChild.cloneNode(true);
+        node.textContent = defaultMessage; // 個別はメッセージ差替
+        dropZone.appendChild(node);
+      } else {
+        dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
+      }
     } else {
       const defaultContentElement = document.getElementById('dropZoneDefaultContent');
-      const defaultContent = defaultContentElement ? defaultContentElement.innerHTML : defaultMessage;
-      dropZone.innerHTML = defaultContent;
+      if (defaultContentElement) {
+        dropZone.innerHTML = '';
+        // 既存の defaultContent を template へ移行していればそちら優先
+        const tpl = document.getElementById('orderImageDropDefault');
+        if (tpl && tpl.content.firstElementChild) {
+          dropZone.appendChild(tpl.content.firstElementChild.cloneNode(true));
+        } else {
+          dropZone.innerHTML = defaultContentElement.innerHTML;
+        }
+      } else {
+        dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
+      }
     }
     debugLog(`初期メッセージを設定: ${isIndividual ? defaultMessage : 'デフォルトコンテンツ'}`);
   }
@@ -1872,13 +1952,24 @@ async function createBaseImageDropZone(options = {}) {
       droppedImage = null;
       
       if (isIndividual) {
-        dropZone.innerHTML = `<p style="margin: 5px; font-size: 12px; color: #666;">${defaultMessage}</p>`;
+        const imgTpl = document.getElementById('orderImageDropDefault');
+        dropZone.innerHTML = '';
+        if (imgTpl && imgTpl.content.firstElementChild) {
+          const node = imgTpl.content.firstElementChild.cloneNode(true);
+          node.textContent = defaultMessage;
+          dropZone.appendChild(node);
+        } else {
+          dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
+        }
         await updateOrderImageDisplay(null);
       } else {
-        const defaultContentElement = document.getElementById('dropZoneDefaultContent');
-        const defaultContent = defaultContentElement ? defaultContentElement.innerHTML : defaultMessage;
-        dropZone.innerHTML = defaultContent;
-        // グローバル画像がクリアされた場合も全ての注文明細を更新
+        const tplGlobal = document.getElementById('orderImageDropDefault');
+        dropZone.innerHTML = '';
+        if (tplGlobal && tplGlobal.content.firstElementChild) {
+          dropZone.appendChild(tplGlobal.content.firstElementChild.cloneNode(true));
+        } else {
+          dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
+        }
         await updateAllOrderImages();
       }
     });
@@ -2173,18 +2264,10 @@ function initializeCustomLabels(customLabels) {
   container.innerHTML = '';
   
   // 説明文を一番上に追加
-  const instructionDiv = document.createElement('div');
-  instructionDiv.className = 'custom-labels-instructions';
-  instructionDiv.innerHTML = `
-    <div class="instructions-content">
-      <strong>カスタムラベル設定について：</strong><br>
-      • 実際のラベルサイズ: 48.3mm × 25.3mm<br>
-      • テキストのみ入力可能<br>
-      • 改行: Enterキー<br>
-      • 書式設定: 右クリックでコンテキストメニューを表示（太字、斜体、フォントサイズ変更、フォントの変更）
-    </div>
-  `;
-  container.appendChild(instructionDiv);
+  const instTpl = document.getElementById('customLabelsInstructionTemplate');
+  if (instTpl && instTpl.content.firstElementChild) {
+    container.appendChild(instTpl.content.firstElementChild.cloneNode(true));
+  }
   
   if (customLabels && customLabels.length > 0) {
     customLabels.forEach((label, index) => {
@@ -4020,30 +4103,7 @@ async function handleFontFile(file) {
   }
 }
 
-// ローカルストレージ容量チェック機能
-function checkStorageCapacity(requiredSize) {
-  try {
-    // 現在の使用量を計算
-    let currentSize = 0;
-    for (let key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
-        currentSize += localStorage[key].length + key.length;
-      }
-    }
-    
-    // 概算の残り容量（通常5-10MB程度）
-    const estimatedLimit = 10 * 1024 * 1024; // 10MB
-    const remainingSize = estimatedLimit - currentSize;
-    
-    console.log(`ストレージ使用量: ${Math.round(currentSize / 1024)}KB / 推定制限: ${Math.round(estimatedLimit / 1024)}KB`);
-    console.log(`必要サイズ: ${Math.round(requiredSize / 1024)}KB / 残り容量: ${Math.round(remainingSize / 1024)}KB`);
-    
-    return requiredSize < remainingSize;
-  } catch (error) {
-    console.warn('ストレージ容量チェックエラー:', error);
-    return true; // エラーの場合は続行
-  }
-}
+// localStorage ベースの容量チェックは廃止 (IndexedDB 専用化に伴い削除済み)
 
 // ArrayBufferをBase64に変換する関数（スタックオーバーフローを避ける）
 function arrayBufferToBase64(buffer) {
@@ -4168,52 +4228,96 @@ async function updateFontList() {
   if (!fontListElement) return;
 
   try {
-    // fontManagerが初期化されていない場合はメッセージを表示
     if (!fontManager) {
-      fontListElement.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">フォントマネージャーを初期化中...</div>';
-      return;
-    }
-    
-    const fonts = await fontManager.getAllFonts();
-    
-    if (Object.keys(fonts).length === 0) {
-      fontListElement.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">フォントファイルをアップロードしてください</div>';
+      fontListElement.innerHTML = '<div class="font-list-placeholder">フォントマネージャーを初期化中...</div>';
       return;
     }
 
-    fontListElement.innerHTML = Object.entries(fonts).map(([fontName, fontData]) => {
+    const fonts = await fontManager.getAllFonts();
+    const entries = Object.entries(fonts);
+
+    if (entries.length === 0) {
+      fontListElement.innerHTML = '<div class="font-list-placeholder">フォントファイルをアップロードしてください</div>';
+      return;
+    }
+
+    // 既存ノードとの差分適用（シンプル版: 全クリア → 再構築）
+    fontListElement.textContent = '';
+    const tpl = document.getElementById('fontListItemTemplate');
+    if (!tpl) {
+      console.warn('fontListItemTemplate が見つかりません');
+    }
+    entries.forEach(([fontName, fontData]) => {
       const metadata = fontData.metadata || {};
       const originalName = metadata.originalName || fontName;
       const createdAt = metadata.createdAt || Date.now();
       const sizeMB = (fontData.data.byteLength / 1024 / 1024).toFixed(2);
-      
-      return `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee; background: #f8f9fa; margin-bottom: 5px; border-radius: 4px;">
-          <div style="flex: 1;">
-            <div style="font-family: '${fontName}', sans-serif; font-size: 14px; font-weight: 500; color: #333;">${fontName}</div>
-            <div style="font-size: 11px; color: #666; margin-top: 2px;">
-              ${originalName} 
-              <span style="color: #999;">• ${new Date(createdAt).toLocaleDateString()} • ${sizeMB}MB</span>
-            </div>
-          </div>
-          <button onclick="removeFontFromList('${fontName}')" 
-                  style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 10px; min-width: 50px;"
-                  onmouseover="this.style.background='#c82333'" 
-                  onmouseout="this.style.background='#dc3545'"
-                  title="フォント '${fontName}' を削除">
-            削除
-          </button>
-        </div>
-      `;
-    }).join('');
+
+      const node = tpl ? tpl.content.firstElementChild.cloneNode(true) : document.createElement('div');
+      if (!tpl) node.className = 'font-list-item';
+      node.dataset.fontName = fontName;
+
+      const nameEl = node.querySelector('.font-name') || (() => { const d=document.createElement('div'); d.className='font-name'; node.appendChild(d); return d; })();
+      nameEl.textContent = fontName;
+      nameEl.style.fontFamily = `'${fontName}', sans-serif`;
+
+      const metaEl = node.querySelector('.font-meta') || (() => { const d=document.createElement('div'); d.className='font-meta'; node.appendChild(d); return d; })();
+      metaEl.innerHTML = `${escapeHTML(originalName)} <span>• ${new Date(createdAt).toLocaleDateString()} • ${sizeMB}MB</span>`;
+
+      const btn = node.querySelector('.font-remove-btn') || (() => { const b=document.createElement('button'); b.type='button'; b.textContent='削除'; b.className='btn-base btn-danger btn-small font-remove-btn'; node.appendChild(b); return b; })();
+      if (!btn._bound) {
+        btn.addEventListener('click', () => removeFontFromList(fontName));
+        btn._bound = true;
+      }
+
+      fontListElement.appendChild(node);
+    });
   } catch (error) {
     console.error('フォントリスト更新エラー:', error);
-    fontListElement.innerHTML = '<div style="color: #d32f2f; text-align: center; padding: 10px;">フォントリストの読み込みに失敗しました</div>';
+  fontListElement.innerHTML = '<div class="font-list-error">フォントリストの読み込みに失敗しました</div>';
   } finally {
-    // セクションの高さを調整
     setTimeout(adjustFontSectionHeight, 100);
   }
 }
+
+// --- 汎用入力 Enter 抑止 (フォーム内で Enter がフォント削除ボタン等にフォーカス飛ぶ副作用対策) ---
+function setupPreventEnterOnSimpleInputs() {
+  const selector = 'input[type="number"], input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], input[type="password"]';
+  document.querySelectorAll(selector).forEach(el => {
+    if (el.dataset.preventEnterBound) return;
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        // 明示的に確定処理が必要ならここで呼び出せる（現状なし）
+      }
+    });
+    el.dataset.preventEnterBound = '1';
+  });
+}
+
+// 初期化後に呼び出し
+setTimeout(setupPreventEnterOnSimpleInputs, 0);
+
+// 動的追加入力にも対応 (MutationObserver)
+const preventEnterObserver = new MutationObserver(() => {
+  setupPreventEnterOnSimpleInputs();
+});
+preventEnterObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+// ボタンで Enter を無効化（フォント削除等）。スペース / クリック操作のみ許可。
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const target = e.target;
+    if (target instanceof HTMLButtonElement) {
+      // type="button" のアクションボタンで Enter を無効化
+      if ((target.getAttribute('type') || 'button') === 'button') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  }
+}, true);
 
 async function removeFontFromList(fontName) {
   try {

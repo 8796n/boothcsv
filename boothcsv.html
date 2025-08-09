@@ -138,9 +138,12 @@
       </tr>
     </table>
   </form>
-  <p class="text-center">ローカルストレージに保存された画像を全削除：
+  <p class="text-center">保存データ操作：
     <button type="button" id="clearAllButton" class="btn-base btn-danger btn-clear">全てのQR画像をクリア</button>
     <button type="button" id="clearAllOrderImagesButton" class="btn-base btn-danger btn-clear">全ての注文画像をクリア</button>
+    <button type="button" id="backupDBButton" class="btn-base btn-info btn-clear">📥 データバックアップ</button>
+    <button type="button" id="restoreDBButton" class="btn-base btn-warning btn-clear">📤 データリストア</button>
+    <input type="file" id="restoreDBFile" accept="application/json" style="display:none" />
   </p>
   <div class="text-center my-15">
     <a href="help.html" target="_blank" rel="noopener" class="btn-base btn-success btn-small btn-margin">📚 使い方ガイド</a>
@@ -175,6 +178,34 @@
           <input type="number" min="1" value="1">
         </div>
       </div>
+    </div>
+  </div>
+</template>
+<!-- フォント一覧アイテム用テンプレート（JSで複製） -->
+<template id="fontListItemTemplate">
+  <div class="font-list-item" data-font-name="">
+    <div class="font-info">
+      <div class="font-name"></div>
+      <div class="font-meta"></div>
+    </div>
+    <button type="button" class="btn-base btn-danger btn-small font-remove-btn" title="このフォントを削除">削除</button>
+  </div>
+</template>
+<!-- QRコード・画像系／カスタムラベル説明テンプレート群 -->
+<template id="qrDropPlaceholder">
+  <p class="qr-drop-placeholder">Paste QR image here!</p>
+ </template>
+<template id="orderImageDropDefault">
+  <p class="order-image-default-msg">注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
+</template>
+<template id="customLabelsInstructionTemplate">
+  <div class="custom-labels-instructions">
+    <div class="instructions-content">
+      <strong>カスタムラベル設定について：</strong><br>
+      • 実際のラベルサイズ: 48.3mm × 25.3mm<br>
+      • テキストのみ入力可能<br>
+      • 改行: Enterキー<br>
+      • 書式設定: 右クリックでコンテキストメニューを表示（太字、斜体、フォントサイズ変更、フォントの変更）
     </div>
   </div>
 </template>
