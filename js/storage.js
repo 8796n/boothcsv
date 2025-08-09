@@ -569,11 +569,12 @@
         exportStore('qrData'),
         exportStore('orders')
       ]);
-      // ArrayBuffer を Base64 化
+      // ArrayBuffer を Uint8Array 数値配列へシリアライズ
       const encodeBuffer = (obj, fieldNames) => {
         fieldNames.forEach(f => {
           if (obj && obj[f] instanceof ArrayBuffer) {
-            obj[f] = { __type: 'base64', mime: obj.type || obj.qrimageType, data: toBase64FromArrayBuffer(obj[f]) };
+            const u8 = new Uint8Array(obj[f]);
+            obj[f] = { __type: 'u8', mime: obj.type || obj.qrimageType, data: Array.from(u8) };
           }
         });
       };
@@ -590,10 +591,16 @@
       if (!json || typeof json !== 'object') throw new Error('無効なバックアップデータ');
       const decodeBuffer = (obj, field) => {
         const v = obj[field];
-        if (v && typeof v === 'object' && v.__type === 'base64' && v.data) {
-          const ab = toArrayBufferFromBase64(v.data);
-          obj[field] = ab || null;
-          if (v.mime) obj[ field + 'Type' ] = v.mime;
+        if (v && typeof v === 'object') {
+          if (v.__type === 'u8' && Array.isArray(v.data)) {
+            const u8 = new Uint8Array(v.data);
+            obj[field] = u8.buffer;
+            if (v.mime) obj[field + 'Type'] = v.mime;
+          } else if (v.__type === 'base64' && v.data) { // 後方互換: 旧フォーマット
+            const ab = toArrayBufferFromBase64(v.data);
+            obj[field] = ab || null;
+            if (v.mime) obj[field + 'Type'] = v.mime;
+          }
         }
       };
       const { fonts = [], settings = [], images = [], qrData = [], orders = [] } = json;
