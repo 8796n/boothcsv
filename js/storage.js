@@ -103,3 +103,4 @@
 
   window.UnifiedDatabase=UnifiedDatabase; window.StorageManager=StorageManager; window.initializeUnifiedDatabase=initializeUnifiedDatabase; Object.defineProperty(window,'unifiedDB',{ get(){ return unifiedDB; }, set(v){ unifiedDB=v; } });
 })();
+// end of storage.js (metadata migration enhanced)
