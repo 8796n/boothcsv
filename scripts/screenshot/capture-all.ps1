@@ -1,4 +1,4 @@
-# BOOTH CSV 自動スクリーンショット撮影スクリプト（PowerShell 7対応版）
+﻿﻿# BOOTH CSV 自動スクリーンショット撮影スクリプト（PowerShell 7対応版）
 # 使用方法: scripts/screenshot フォルダから実行
 # 例: pwsh .\capture-all.ps1
 
@@ -550,48 +550,29 @@ try {
                         setTimeout(() => {
                             fetch('http://localhost:8080/sample/footersample.png')
                                 .then(response => response.blob())
-                                .then(blob => {
-                                    // File オブジェクトを作成
+                                .then(async blob => {
                                     const file = new File([blob], 'footersample.png', { type: 'image/png' });
-                                    
-                                    // グローバルイメージドロップゾーンが利用可能か確認
-                                    if (window.orderImageDropZone && window.orderImageDropZone.setImage) {
-                                        // setImageメソッドを使用して画像を設定
-                                        const reader = new FileReader();
-                                        reader.onload = function(e) {
-                                            window.orderImageDropZone.setImage(e.target.result);
-                                            console.log('グローバル画像を設定しました:', file.name);
-                                            
-                                            // ドロップゾーンエリアにスクロール
+                                    const arrayBuffer = await blob.arrayBuffer();
+                                    const blobUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: blob.type }));
+
+                                    // orderImageDropZone 初期化待ち（最大5秒リトライ）
+                                    const start = performance.now();
+                                    (function trySet(){
+                                        if (window.orderImageDropZone && window.orderImageDropZone.setImage) {
+                                            window.orderImageDropZone.setImage(blobUrl, arrayBuffer);
+                                            console.log('グローバル画像を設定しました(Blob URL + ArrayBuffer):', file.name);
+
                                             const imageRow = document.getElementById('orderImageRow');
                                             if (imageRow) {
                                                 imageRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                // 固定ヘッダー分を考慮して調整
-                                                setTimeout(() => {
-                                                    window.scrollBy(0, -80); // 固定ヘッダー分を調整
-                                                }, 1000);
+                                                setTimeout(() => { window.scrollBy(0, -80); }, 1000);
                                             }
-                                        };
-                                        reader.readAsDataURL(blob);
-                                    } else {
-                                        console.log('orderImageDropZoneが利用できません。直接LocalStorageに保存します。');
-                                        const reader = new FileReader();
-                                        reader.onload = function(e) {
-                                            localStorage.setItem('globalOrderImage', e.target.result);
-                                            
-                                            // ドロップゾーンに直接表示を追加
-                                            const dropZone = document.getElementById('imageDropZone');
-                                            if (dropZone) {
-                                                dropZone.innerHTML = '<div style=\"margin: 10px 0; text-align: center; padding: 20px; border: 2px dashed #28a745; background-color: #f0f8f0;\"><img src=\"' + e.target.result + '\" style=\"max-width: 250px; max-height: 120px; border: 2px solid #28a745; border-radius: 4px; box-shadow: 0 2px 8px rgba(40,167,69,0.3);\"><br><div style=\"margin-top: 15px; color: #28a745; font-weight: bold; font-size: 14px;\">✅ footersample.png アップロード完了</div><div style=\"color: #155724; font-size: 12px; margin-top: 5px;\">この画像が各注文明細の余白に表示されます</div></div>';
-                                                dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                // 固定ヘッダー分を考慮して調整
-                                                setTimeout(() => {
-                                                    window.scrollBy(0, -80); // 固定ヘッダー分を調整
-                                                }, 1000);
-                                            }
-                                        };
-                                        reader.readAsDataURL(blob);
-                                    }
+                                        } else if (performance.now() - start < 5000) {
+                                            setTimeout(trySet, 200);
+                                        } else {
+                                            console.warn('orderImageDropZoneが初期化されず画像設定を断念しました');
+                                        }
+                                    })();
                                 })
                                 .catch(error => console.log('画像読み込みエラー:', error));
                         }, 3000);
@@ -632,16 +613,20 @@ try {
                 // 2. 画像を設定
                 fetch('http://localhost:8080/sample/footersample.png')
                     .then(response => response.blob())
-                    .then(blob => {
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            localStorage.setItem('globalOrderImage', e.target.result);
+                    .then(async blob => {
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const blobUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: blob.type }));
+                        const start = performance.now();
+                        (function trySet(){
                             if (window.orderImageDropZone && window.orderImageDropZone.setImage) {
-                                window.orderImageDropZone.setImage(e.target.result);
+                                window.orderImageDropZone.setImage(blobUrl, arrayBuffer);
+                                console.log('✅ 画像設定完了 (Blob URL + ArrayBuffer)');
+                            } else if (performance.now() - start < 5000) {
+                                setTimeout(trySet, 200);
+                            } else {
+                                console.warn('画像設定失敗: orderImageDropZone未初期化');
                             }
-                            console.log('✅ 画像設定完了');
-                        };
-                        reader.readAsDataURL(blob);
+                        })();
                     });
                 
                 // 3. CSVファイルを読み込み（QRドロップゾーンより先に実行）
