@@ -1,41 +1,6 @@
 (function(){
   'use strict';
 
-  // ----- 内部ユーティリティ（モジュール内限定） -----
-  function toArrayBufferFromBase64(base64) {
-    try {
-      const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-      return bytes.buffer;
-    } catch {
-      return null;
-    }
-  }
-
-  function toBase64FromArrayBuffer(buffer) {
-    try {
-      const bytes = new Uint8Array(buffer);
-      const chunk = 8192;
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i += chunk) {
-        const slice = bytes.subarray(i, i + chunk);
-        binary += String.fromCharCode.apply(null, slice);
-      }
-      return btoa(binary);
-    } catch {
-      return null;
-    }
-  }
-
-  function isBase64Like(data) {
-    if (typeof data !== 'string') return false;
-    if (data.startsWith('data:')) return true;
-    const base64Regex = /^[A-Za-z0-9+/]+=*$/;
-    return base64Regex.test(data) && data.length % 4 === 0 && data.length > 20;
-  }
-
   function getMimeFromDataUrl(dataUrl) {
     if (!dataUrl.startsWith('data:')) return 'application/octet-stream';
     const m = dataUrl.match(/^data:([^;]+)/);
@@ -591,16 +556,10 @@
       if (!json || typeof json !== 'object') throw new Error('無効なバックアップデータ');
       const decodeBuffer = (obj, field) => {
         const v = obj[field];
-        if (v && typeof v === 'object') {
-          if (v.__type === 'u8' && Array.isArray(v.data)) {
-            const u8 = new Uint8Array(v.data);
-            obj[field] = u8.buffer;
-            if (v.mime) obj[field + 'Type'] = v.mime;
-          } else if (v.__type === 'base64' && v.data) { // 後方互換: 旧フォーマット
-            const ab = toArrayBufferFromBase64(v.data);
-            obj[field] = ab || null;
-            if (v.mime) obj[field + 'Type'] = v.mime;
-          }
+        if (v && typeof v === 'object' && v.__type === 'u8' && Array.isArray(v.data)) {
+          const u8 = new Uint8Array(v.data);
+          obj[field] = u8.buffer;
+          if (v.mime) obj[field + 'Type'] = v.mime;
         }
       };
       const { fonts = [], settings = [], images = [], qrData = [], orders = [] } = json;
