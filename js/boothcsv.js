@@ -4140,19 +4140,6 @@ async function handleFontFile(file) {
 
 // localStorage ベースの容量チェックは廃止 (IndexedDB 専用化に伴い削除済み)
 
-// ArrayBufferをBase64に変換する関数
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 8192; // 8KB ずつ処理
-  let binary = '';
-  
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.slice(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, chunk);
-  }
-  
-  return btoa(binary);
-}
 
 // (getFontMimeType / addFontToCSS / getFontFormat) は未使用のため削除済み
 
@@ -4206,28 +4193,8 @@ async function loadCustomFontsCSS() {
     }
     await Promise.all(loadPromises);
     if (myToken !== _fontFaceLoadToken) return; // 途中キャンセル
-    console.log(`${loadPromises.length}個のカスタムフォント(FontFace API)を読み込みました`);
-    return;
-
-    // --- フォールバック: FontFace 未対応ブラウザ向け 既存Base64 @font-face 方式 ---
-    console.warn('FontFace API非対応のため Base64 @font-face フォールバックを使用');
-    let styleElement = document.getElementById('custom-fonts-style');
-    if (styleElement) styleElement.remove();
-    styleElement = document.createElement('style');
-    styleElement.id = 'custom-fonts-style';
-    styleElement.type = 'text/css';
-    let css = '';
-    for (const [fontName, fontData] of entries) {
-      try {
-        const base64Data = arrayBufferToBase64(fontData.data);
-        css += `@font-face {\n  font-family: "${fontName}";\n  src: url(data:${(fontData.metadata && fontData.metadata.type) || 'font/ttf'};base64,${base64Data});\n  font-display: swap;\n}`;
-      } catch (e) {
-        console.error(`フォールバックCSS生成失敗 (${fontName})`, e);
-      }
-    }
-    styleElement.textContent = css;
-    document.head.appendChild(styleElement);
-    console.log(`${entries.length}個のカスタムフォント(Base64フォールバック)を読み込みました`);
+  console.log(`${loadPromises.length}個のカスタムフォント(FontFace API)を読み込みました`);
+  return;
   } catch (error) {
     console.error('カスタムフォント読み込みエラー:', error);
   }
