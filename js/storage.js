@@ -171,14 +171,16 @@
     }
 
     // Images
-    async setImage(key, imageData, type = 'unknown', orderNumber = null) {
+    async setImage(key, imageData, category = 'unknown', orderNumber = null) {
       if (!this.db) await this.init();
       return new Promise((resolve, reject) => {
         const tx = this.db.transaction(['images'], 'readwrite');
         const store = tx.objectStore('images');
 
         let optimizedData = imageData;
-        let mimeType = type;
+        // category は 'order' / 'global' などの区別。mimeType は実際のMIME。
+        const categoryValue = category;
+        let mimeType = null;
         let isBinary = false;
         if (isBase64Like(imageData)) {
           const ab = toArrayBufferFromBase64(imageData);
@@ -187,7 +189,7 @@
           isBinary = true;
         }
 
-        const imageObject = { key, data: optimizedData, type: mimeType, orderNumber, createdAt: Date.now(), isBinary };
+        const imageObject = { key, data: optimizedData, mimeType, category: categoryValue, orderNumber, createdAt: Date.now(), isBinary };
         const req = store.put(imageObject);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
@@ -204,12 +206,27 @@
           if (!result) return resolve(null);
           if (result.isBinary && result.data instanceof ArrayBuffer) {
             const b64 = toBase64FromArrayBuffer(result.data);
-            resolve(b64 ? `data:${result.type || 'image/png'};base64,${b64}` : result.data);
+            resolve(b64 ? `data:${result.mimeType || result.type || 'image/png'};base64,${b64}` : result.data);
           } else {
             resolve(result.data);
           }
         };
         req.onerror = () => resolve(null);
+      });
+    }
+    async clearAllOrderImages() {
+      if (!this.db) await this.init();
+      return new Promise((resolve, reject) => {
+        const tx = this.db.transaction(['images'], 'readwrite');
+        const store = tx.objectStore('images');
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+          const total = countReq.result || 0;
+          const clearReq = store.clear();
+          clearReq.onsuccess = () => resolve(total);
+          clearReq.onerror = () => reject(clearReq.error);
+        };
+        countReq.onerror = () => reject(countReq.error);
       });
     }
 
@@ -301,6 +318,30 @@
         req.onerror = () => reject(req.error);
       });
     }
+    async clearAllQRImages() {
+      if (!this.db) await this.init();
+      return new Promise((resolve, reject) => {
+        let deleted = 0;
+        const tx = this.db.transaction(['qrData'], 'readwrite');
+        const store = tx.objectStore('qrData');
+        const req = store.openCursor();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (cursor) {
+            const record = cursor.value;
+            if (record && record.qrimage) {
+              // 画像付きレコードを物理削除
+              cursor.delete();
+              deleted++;
+            }
+            cursor.continue();
+          } else {
+            resolve(deleted);
+          }
+        };
+        req.onerror = () => reject(req.error);
+      });
+    }
     async getQRData(orderNumber) {
       if (!this.db) await this.init();
       return new Promise((resolve) => {
@@ -345,109 +386,22 @@
       });
     }
 
-    // 破壊的移行
-    async performDestructiveMigration() {
-      try {
-        console.log('🚨 破壊的移行を開始します...');
-        const usage = this.analyzeLocalStorageUsage();
-        if (usage.totalItems > 0) {
-          console.log(`📊 削除対象: ${usage.totalItems}項目 (${usage.totalSizeMB}MB)`);
-          const userConfirm = confirm(
-            `🔄 システム移行のお知らせ\n\n` +
-            `より高速で安定したデータ保存システムに移行します。\n` +
-            `既存の設定・データ（${usage.totalItems}項目）は削除され、\n` +
-            `改めて設定が必要になります。\n\n` +
-            `移行を実行しますか？\n\n` +
-            `※この操作は取り消せません`
-          );
-          if (!userConfirm) return false;
-          await this.clearAllLocalStorage();
-          alert(
-            `✅ システム移行完了\n\n` +
-            `新しいデータ保存システムが有効になりました。\n` +
-            `設定・フォント・画像データを改めて登録してください。\n\n` +
-            `今後はより高速で大容量のデータ保存が可能です。`
-          );
-        }
-        console.log('✅ 破壊的移行が完了しました');
-        return true;
-      } catch (e) {
-        console.error('❌ 破壊的移行エラー:', e);
-        return false;
-      }
-    }
-    async clearAllLocalStorage() {
-      const appKeyPatterns = [
-        'labelyn','labelskip','sortByPaymentDate','customLabelEnable','customLabelText','customLabelCount','customLabels','orderImageEnable','fontSectionCollapsed','orderImage','orderImage_','customFont_','migrationCompleted'
-      ];
-      const itemsToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        let isAppKey = appKeyPatterns.some(p => p.endsWith('_') ? key.startsWith(p) : key === p);
-        if (!isAppKey) {
-          try {
-            const value = localStorage.getItem(key);
-            const parsed = JSON.parse(value);
-            if (parsed && parsed.qrhash) isAppKey = true;
-          } catch {}
-        }
-        if (isAppKey) itemsToRemove.push(key);
-      }
-      itemsToRemove.forEach(key => { localStorage.removeItem(key); console.log(`🗑️ アプリデータ削除: ${key}`); });
-      console.log(`🧹 アプリデータ削除完了: ${itemsToRemove.length}項目`);
-    }
-    analyzeLocalStorageUsage() {
-      let totalSize = 0, totalItems = 0;
-      const categories = { fonts: 0, settings: 0, images: 0, qrData: 0, other: 0 };
-      const appKeyPatterns = [
-        'labelyn','labelskip','sortByPaymentDate','customLabelEnable','customLabelText','customLabelCount','customLabels','orderImageEnable','fontSectionCollapsed','orderImage','orderImage_','customFont_','migrationCompleted'
-      ];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i); if (!key) continue;
-        let isAppKey = appKeyPatterns.some(p => p.endsWith('_') ? key.startsWith(p) : key === p);
-        if (!isAppKey) {
-          try { const value = localStorage.getItem(key); const parsed = JSON.parse(value); if (parsed && parsed.qrhash) isAppKey = true; } catch {}
-        }
-        if (isAppKey) {
-          const value = localStorage.getItem(key);
-          const size = new Blob([value || '']).size; totalSize += size; totalItems++;
-          if (key.startsWith('customFont_')) categories.fonts++; else if (['labelyn','labelskip','sortByPaymentDate','customLabelEnable','orderImageEnable'].includes(key)) categories.settings++;
-          else if (key.startsWith('orderImage')) categories.images++; else if (key.includes('qr') || key.includes('receipt')) categories.qrData++; else categories.other++;
-        }
-      }
-      return { totalItems, totalSizeKB: Math.round(totalSize/1024*100)/100, totalSizeMB: Math.round(totalSize/1024/1024*100)/100, categories };
-    }
+  // localStorage 移行コードは完全削除（IndexedDB 専用化）
   }
 
-  // 旧フォントDB掃除
-  async function cleanupOldFontDatabase() {
-    try {
-      await new Promise((resolve) => {
-        const del = indexedDB.deleteDatabase('BoothCSVFonts');
-        del.onerror = () => resolve();
-        del.onsuccess = () => resolve();
-        del.onblocked = () => resolve();
-      });
-      console.log('✅ 旧フォントDBクリーンアップ完了');
-    } catch (e) {
-      console.warn('旧フォントDBクリーンアップエラー:', e);
-    }
-  }
+  // 旧フォントDB掃除処理は不要になったため削除
 
   // グローバル共有インスタンス
   let unifiedDB = null;
   async function initializeUnifiedDatabase() {
     try {
-      console.log('🚀 統合データベースの初期化を開始します...');
+      console.log('🚀 IndexedDB 初期化...');
       unifiedDB = new UnifiedDatabase();
       await unifiedDB.init();
-      const migrated = await unifiedDB.performDestructiveMigration();
-      if (migrated) await cleanupOldFontDatabase();
       return unifiedDB;
     } catch (e) {
-      console.error('❌ 統合データベース初期化失敗:', e);
-      alert('データベースの初期化に失敗しました。ページを再読み込みしてください。');
+      console.error('❌ IndexedDB 初期化失敗:', e);
+      alert('お使いの環境では必要なデータベース機能(IndexedDB)を利用できません。\nブラウザ設定(プライベートモード/ストレージ無効化等)を確認してください。');
       return null;
     }
   }
@@ -508,12 +462,13 @@
 
     static async set(key, value) {
       const db = await StorageManager.ensureDatabase();
-      if (db) await db.setSetting(key, value); else localStorage.setItem(key, value);
+      if (!db) throw new Error('IndexedDB 未初期化のため設定を保存できません');
+      await db.setSetting(key, value);
     }
     static async get(key, defaultValue = null) {
       const db = await StorageManager.ensureDatabase();
-      if (db) { const v = await db.getSetting(key); return v !== null ? v : defaultValue; }
-      return localStorage.getItem(key) || defaultValue;
+      if (!db) throw new Error('IndexedDB 未初期化のため設定を取得できません');
+      const v = await db.getSetting(key); return v !== null ? v : defaultValue;
     }
 
     static async getCustomLabels() {
@@ -528,82 +483,160 @@
     static async getOrderImage(orderNumber = null) {
       const key = orderNumber ? `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
       const db = await StorageManager.ensureDatabase();
-      if (db) return await db.getImage(key);
-      return localStorage.getItem(key);
+      if (!db) throw new Error('IndexedDB 未初期化のため画像を取得できません');
+      return await db.getImage(key);
     }
     static async setOrderImage(imageData, orderNumber = null) {
       const key = orderNumber ? `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
       const db = await StorageManager.ensureDatabase();
-      if (db) { const type = orderNumber ? 'order' : 'global'; await db.setImage(key, imageData, type, orderNumber); }
-      else localStorage.setItem(key, imageData);
+      if (!db) throw new Error('IndexedDB 未初期化のため画像を保存できません');
+  const category = orderNumber ? 'order' : 'global';
+  await db.setImage(key, imageData, category, orderNumber);
     }
     static async removeOrderImage(orderNumber = null) {
       const key = orderNumber ? `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
       const db = await StorageManager.ensureDatabase();
-      if (db) {
-        try {
-          const tx = db.db.transaction(['images'], 'readwrite');
-          const store = tx.objectStore('images');
-          await new Promise((resolve, reject) => { const req = store.delete(key); req.onsuccess = () => resolve(); req.onerror = () => reject(req.error); });
-        } catch (e) { console.error('画像削除エラー:', e); }
-      } else {
-        localStorage.removeItem(key);
-      }
+      if (!db) throw new Error('IndexedDB 未初期化のため画像を削除できません');
+      try {
+        const tx = db.db.transaction(['images'], 'readwrite');
+        const store = tx.objectStore('images');
+        await new Promise((resolve, reject) => { const req = store.delete(key); req.onsuccess = () => resolve(); req.onerror = () => reject(req.error); });
+      } catch (e) { console.error('画像削除エラー:', e); }
     }
 
     static async clearQRImages() {
       const db = await StorageManager.ensureDatabase();
-      if (db) { console.log('QR画像一括削除'); /* TODO: implement if needed */ }
-      else {
-        Object.keys(localStorage).forEach(key => { const value = localStorage.getItem(key); if (value?.includes('qrimage')) localStorage.removeItem(key); });
+      if (!db) throw new Error('IndexedDB 未初期化のためQR画像を削除できません');
+      try {
+        const count = await db.clearAllQRImages();
+        console.log(`🧹 QR画像クリア: ${count}件`);
+        return count;
+      } catch (e) {
+        console.error('QR画像一括削除エラー:', e);
+        throw e;
       }
     }
     static async clearOrderImages() {
       const db = await StorageManager.ensureDatabase();
-      if (db) { console.log('注文画像一括削除'); /* TODO */ }
-      else {
-        Object.keys(localStorage).forEach(key => { if (key === StorageManager.KEYS.GLOBAL_ORDER_IMAGE || key.startsWith(StorageManager.KEYS.ORDER_IMAGE_PREFIX)) localStorage.removeItem(key); });
+      if (!db) throw new Error('IndexedDB 未初期化のため注文画像を削除できません');
+      try {
+        const count = await db.clearAllOrderImages();
+        console.log(`🧹 注文画像クリア: ${count}件`);
+        return count;
+      } catch (e) {
+        console.error('注文画像一括削除エラー:', e);
+        throw e;
       }
     }
 
     static async getQRData(orderNumber) {
       const db = await StorageManager.ensureDatabase();
-      if (db) return await db.getQRData(orderNumber);
-      const data = localStorage.getItem(orderNumber); if (!data) return null; try { return JSON.parse(data); } catch { return null; }
+      if (!db) throw new Error('IndexedDB 未初期化のためQRデータを取得できません');
+      return await db.getQRData(orderNumber);
     }
     static async setQRData(orderNumber, qrData) {
       const db = await StorageManager.ensureDatabase();
-      if (db) await db.setQRData(orderNumber, qrData); else localStorage.setItem(orderNumber, JSON.stringify(qrData));
+      if (!db) throw new Error('IndexedDB 未初期化のためQRデータを保存できません');
+      await db.setQRData(orderNumber, qrData);
     }
     static async checkQRDuplicate(qrContent, currentOrderNumber) {
       const db = await StorageManager.ensureDatabase();
-      if (db) return await db.checkQRDuplicate(qrContent, currentOrderNumber);
-      const qrHash = StorageManager.generateQRHash(qrContent); const duplicates = [];
-      Object.keys(localStorage).forEach(key => {
-        if (key !== currentOrderNumber) {
-          const data = localStorage.getItem(key);
-          if (data) { try { const parsed = JSON.parse(data); if (parsed && parsed.qrhash === qrHash) duplicates.push(key); } catch {} }
-        }
-      });
-      return duplicates;
+      if (!db) throw new Error('IndexedDB 未初期化のため重複チェックができません');
+      return await db.checkQRDuplicate(qrContent, currentOrderNumber);
     }
     static generateQRHash(qrContent) {
       let hash = 0; if (qrContent.length === 0) return hash.toString();
       for (let i = 0; i < qrContent.length; i++) { const char = qrContent.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; }
       return hash.toString();
     }
-    static remove(key) { console.warn(`StorageManager.remove("${key}") は非推奨です。`); localStorage.removeItem(key); }
+  // remove は localStorage 廃止に伴い削除
     static async setUIState(key, value) { await StorageManager.set(key, value); }
     static async getUIState(key, defaultValue = null) { return await StorageManager.get(key, defaultValue); }
     static async setFontSectionCollapsed(collapsed) { await StorageManager.setUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED, collapsed); }
     static async getFontSectionCollapsed() { const v = await StorageManager.getUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED, false); return v === true || v === 'true'; }
+
+    // --- Backup / Restore ---
+    static async exportAllData() {
+      const db = await StorageManager.ensureDatabase();
+      if (!db) throw new Error('IndexedDB 未初期化のためバックアップできません');
+      // 各ストアの全件を取得
+      const exportStore = async (storeName) => new Promise((resolve, reject) => {
+        try {
+          const tx = db.db.transaction([storeName], 'readonly');
+          const store = tx.objectStore(storeName);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        } catch (e) { reject(e); }
+      });
+      const [fonts, settings, images, qrData, orders] = await Promise.all([
+        exportStore('fonts'),
+        exportStore('settings'),
+        exportStore('images'),
+        exportStore('qrData'),
+        exportStore('orders')
+      ]);
+      // ArrayBuffer を Base64 化
+      const encodeBuffer = (obj, fieldNames) => {
+        fieldNames.forEach(f => {
+          if (obj && obj[f] instanceof ArrayBuffer) {
+            obj[f] = { __type: 'base64', mime: obj.type || obj.qrimageType, data: toBase64FromArrayBuffer(obj[f]) };
+          }
+        });
+      };
+      images.forEach(img => encodeBuffer(img, ['data']));
+      qrData.forEach(qr => encodeBuffer(qr, ['qrimage']));
+      // フォント data も ArrayBuffer の可能性
+      fonts.forEach(f => encodeBuffer(f, ['data']));
+      const payload = { version: 1, exportedAt: new Date().toISOString(), fonts, settings, images, qrData, orders };
+      return payload;
+    }
+    static async importAllData(json, { clearExisting = true } = {}) {
+      const db = await StorageManager.ensureDatabase();
+      if (!db) throw new Error('IndexedDB 未初期化のためリストアできません');
+      if (!json || typeof json !== 'object') throw new Error('無効なバックアップデータ');
+      const decodeBuffer = (obj, field) => {
+        const v = obj[field];
+        if (v && typeof v === 'object' && v.__type === 'base64' && v.data) {
+          const ab = toArrayBufferFromBase64(v.data);
+          obj[field] = ab || null;
+          if (v.mime) obj[ field + 'Type' ] = v.mime;
+        }
+      };
+      const { fonts = [], settings = [], images = [], qrData = [], orders = [] } = json;
+      // 既存データクリア
+      if (clearExisting) {
+        const clearStore = (storeName) => new Promise((resolve, reject) => {
+          const tx = db.db.transaction([storeName], 'readwrite');
+          const store = tx.objectStore(storeName); const req = store.clear();
+          req.onsuccess = () => resolve(); req.onerror = () => reject(req.error);
+        });
+        await Promise.all(['fonts','settings','images','qrData','orders'].map(clearStore));
+      }
+      // デコード
+      images.forEach(img => decodeBuffer(img, 'data'));
+      qrData.forEach(qr => decodeBuffer(qr, 'qrimage'));
+      fonts.forEach(f => decodeBuffer(f, 'data'));
+      // 挿入ヘルパ
+      const putAll = (storeName, items) => new Promise((resolve, reject) => {
+        const tx = db.db.transaction([storeName], 'readwrite');
+        const store = tx.objectStore(storeName);
+        items.forEach(item => store.put(item));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      await putAll('fonts', fonts);
+      await putAll('settings', settings);
+      await putAll('images', images);
+      await putAll('qrData', qrData);
+      await putAll('orders', orders);
+    }
   }
 
   // グローバルへ公開
   window.UnifiedDatabase = UnifiedDatabase;
   window.StorageManager = StorageManager;
   window.initializeUnifiedDatabase = initializeUnifiedDatabase;
-  window.cleanupOldFontDatabase = cleanupOldFontDatabase;
   Object.defineProperty(window, 'unifiedDB', {
     get() { return unifiedDB; },
     set(v) { unifiedDB = v; }
