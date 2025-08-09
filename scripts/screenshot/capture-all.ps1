@@ -1,11 +1,16 @@
-﻿﻿# BOOTH CSV 自動スクリーンショット撮影スクリプト（PowerShell 7対応版）
+﻿# BOOTH CSV 自動スクリーンショット撮影スクリプト（PowerShell 7対応版）
 # 使用方法: scripts/screenshot フォルダから実行
 # 例: pwsh .\capture-all.ps1
 
 param(
-    [string]$OutputDir = "../../docs/images",
-    [string]$HtmlFile = "../../boothcsv.html"
+    [string]$OutputDir,
+    [string]$HtmlFile,
+    [string]$ChromeBinaryPath
 )
+
+if (-not $OutputDir -or [string]::IsNullOrWhiteSpace($OutputDir)) { $OutputDir = "../../docs/images" }
+if (-not $HtmlFile -or [string]::IsNullOrWhiteSpace($HtmlFile)) { $HtmlFile = "../../boothcsv.html" }
+if ($ChromeBinaryPath) { $ChromeBinaryPath = (Resolve-Path -LiteralPath $ChromeBinaryPath -ErrorAction SilentlyContinue) }
 
 # PowerShell バージョン確認
 if ($PSVersionTable.PSVersion.Major -lt 7) {
@@ -53,6 +58,10 @@ $chromeDriverDir = Get-Location
 $chromeDriverExe = Join-Path $chromeDriverDir "chromedriver.exe"
 
 function Get-ChromeVersion {
+    param([string]$ExplicitPath)
+    if ($ExplicitPath -and (Test-Path $ExplicitPath)) {
+        try { return (Get-Item $ExplicitPath).VersionInfo.ProductVersion } catch { }
+    }
     $chromePaths = @(
         "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
         "$env:ProgramFiles(x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -108,9 +117,13 @@ function Download-ChromeDriver {
 }
 
 # Chrome/ChromeDriverバージョンチェック
-$chromeVer = Get-ChromeVersion
+$chromeVer = Get-ChromeVersion -ExplicitPath $ChromeBinaryPath
 if (-not $chromeVer) {
-    Write-Host "❌ Google Chromeが見つかりません。Chromeをインストールしてください。" -ForegroundColor Red
+    if ($ChromeBinaryPath) {
+        Write-Host "❌ 指定された ChromeBinaryPath が無効、またはバージョン取得不可: $ChromeBinaryPath" -ForegroundColor Red
+    } else {
+        Write-Host "❌ Google Chromeが見つかりません。-ChromeBinaryPath でパスを指定するか Chrome をインストールしてください。" -ForegroundColor Red
+    }
     exit 1
 }
 $chromeMajor = $chromeVer.Split('.')[0]
@@ -164,6 +177,10 @@ try {
     $chromeOptions.SetLoggingPreference([OpenQA.Selenium.LogType]::Browser, [OpenQA.Selenium.LogLevel]::All)
     
     # ChromeDriverを手動で作成
+    if ($ChromeBinaryPath) {
+        Write-Host "ℹ️  指定Chromeバイナリを使用: $ChromeBinaryPath" -ForegroundColor Cyan
+        $chromeOptions.BinaryLocation = $ChromeBinaryPath
+    }
     $driver = New-Object OpenQA.Selenium.Chrome.ChromeDriver($chromeDriverService, $chromeOptions)
     $driver.Manage().Window.Size = [System.Drawing.Size]::new(1200, 1000)
     
