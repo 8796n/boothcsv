@@ -351,10 +351,7 @@
         req.onsuccess = () => {
           const result = req.result;
           if (!result) return resolve(null);
-          if (result.isBinary && result.qrimage instanceof ArrayBuffer) {
-            const b64 = toBase64FromArrayBuffer(result.qrimage);
-            result.qrimage = b64 ? `data:${result.qrimageType || 'image/png'};base64,${b64}` : result.qrimage;
-          }
+          // ここでは Base64 化せずそのまま返す（呼び出し側で Blob URL 生成）
           resolve(result);
         };
         req.onerror = () => resolve(null);

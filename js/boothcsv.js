@@ -1558,9 +1558,25 @@ async function createLabel(labelData=""){
       addP(divOrdernum, labelData);
       const qr = await StorageManager.getQRData(labelData);
       if(qr && qr['qrimage']){
-        // 保存されたQR画像がある場合は画像を表示
+        // 保存されたQR画像がある場合は画像を表示 (ArrayBuffer -> Blob URL 対応)
         const elImage = document.createElement('img');
-        elImage.src = qr['qrimage'];
+        let srcValue = qr['qrimage'];
+        if (qr.isBinary && qr.qrimage instanceof ArrayBuffer) {
+          try {
+            const blob = new Blob([qr.qrimage], { type: qr.qrimageType || 'image/png' });
+            srcValue = URL.createObjectURL(blob);
+            // 解放タイミング: 画像読み込み後 or 削除時
+            elImage.addEventListener('load', () => {
+              // 過剰に頻繁に revoke すると表示問題が出るブラウザもあるため、削除イベントで revoke
+            });
+            elImage.addEventListener('error', () => {
+              console.error('QR画像Blob URL読み込み失敗');
+            });
+          } catch (e) {
+            console.error('QR画像Blob生成失敗', e);
+          }
+        }
+        elImage.src = srcValue;
         divQr.appendChild(elImage);
         addP(divYamato, qr['receiptnum']);
         addP(divYamato, qr['receiptpassword']);
