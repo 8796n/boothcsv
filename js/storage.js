@@ -136,7 +136,7 @@
     }
 
     // Images
-    async setImage(key, imageData, category = 'unknown', orderNumber = null) {
+  async setImage(key, imageData, mimeType = null, category = 'unknown', orderNumber = null) {
       if (!this.db) await this.init();
       return new Promise((resolve, reject) => {
         const tx = this.db.transaction(['images'], 'readwrite');
@@ -146,7 +146,7 @@
         }
         const categoryValue = category;
         const isBinary = imageData instanceof ArrayBuffer;
-        const imageObject = { key, data: imageData, mimeType: null, category: categoryValue, orderNumber, createdAt: Date.now(), isBinary };
+    const imageObject = { key, data: imageData, mimeType: mimeType || null, category: categoryValue, orderNumber, createdAt: Date.now(), isBinary };
         const req = store.put(imageObject);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
@@ -162,8 +162,20 @@
           const result = req.result;
           if (!result) return resolve(null);
           if (result.isBinary && result.data instanceof ArrayBuffer) {
+            let mimeType = result.mimeType || null;
+            if (!mimeType) {
+              // 簡易MIME推測 (SVG判定)
+              try {
+                const head = new Uint8Array(result.data.slice(0, 64));
+                const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
+                if (/^\s*<svg[\s>]/i.test(text)) {
+                  mimeType = 'image/svg+xml';
+                }
+              } catch {}
+              if (!mimeType) mimeType = 'image/png'; // デフォルト
+            }
             try {
-              const blob = new Blob([result.data], { type: result.mimeType || 'image/png' });
+              const blob = new Blob([result.data], { type: mimeType });
               const url = URL.createObjectURL(blob);
               resolve(url);
             } catch (e) {
@@ -444,12 +456,12 @@
       if (!db) throw new Error('IndexedDB 未初期化のため画像を取得できません');
       return await db.getImage(key);
     }
-    static async setOrderImage(imageData, orderNumber = null) {
+    static async setOrderImage(imageData, orderNumber = null, mimeType = null) {
       const key = orderNumber ? `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : StorageManager.KEYS.GLOBAL_ORDER_IMAGE;
       const db = await StorageManager.ensureDatabase();
       if (!db) throw new Error('IndexedDB 未初期化のため画像を保存できません');
   const category = orderNumber ? 'order' : 'global';
-  await db.setImage(key, imageData, category, orderNumber);
+  await db.setImage(key, imageData, mimeType, category, orderNumber);
     }
     static async removeOrderImage(orderNumber = null) {
       const key = orderNumber ? `${StorageManager.KEYS.ORDER_IMAGE_PREFIX}${orderNumber}` : StorageManager.KEYS.GLOBAL_ORDER_IMAGE;

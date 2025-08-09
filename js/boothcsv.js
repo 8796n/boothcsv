@@ -1746,16 +1746,18 @@ async function readQR(elImage){
 }
 
 // drag&drop 廃止に伴い attachImage は不要となったため削除
-// グローバルで画像ドロップを無効化（外部サイトからのドロップ抑止）
-window.addEventListener('dragover', e => {
-  if (e.dataTransfer && [...e.dataTransfer.types].some(t => t === 'Files' || t === 'text/uri-list')) {
+// QRコード用ペーストゾーンのみドラッグ&ドロップを抑止し、他領域（注文画像/フォント等）は従来どおり許可
+document.addEventListener('dragover', e => {
+  const target = e.target instanceof HTMLElement ? e.target.closest('.dropzone') : null;
+  if (target) {
     e.preventDefault();
   }
 });
-window.addEventListener('drop', e => {
-  if (e.dataTransfer && [...e.dataTransfer.types].some(t => t === 'Files' || t === 'text/uri-list')) {
+document.addEventListener('drop', e => {
+  const target = e.target instanceof HTMLElement ? e.target.closest('.dropzone') : null;
+  if (target) {
     e.preventDefault();
-    console.warn('画像のドラッグ＆ドロップは無効です。Ctrl+V で貼り付けてください。');
+    console.warn('QRコード領域ではドラッグ＆ドロップ不可。Ctrl+V で貼り付けてください。');
   }
 });
 
@@ -1815,7 +1817,14 @@ async function createBaseImageDropZone(options = {}) {
   const savedImage = await StorageManager.getOrderImage(orderNumber);
   if (savedImage) {
     debugLog(`保存された画像を復元: ${storageKey}`);
-    await updatePreview(savedImage, null); // 既存はURLのみ（バッファ不明）
+    let restoredUrl = savedImage;
+    if (savedImage instanceof ArrayBuffer) {
+      try {
+        const blob = new Blob([savedImage], { type: 'image/png' }); // 型情報は未保存のためデフォルトPNG扱い
+        restoredUrl = URL.createObjectURL(blob);
+      } catch(e){ console.error('保存画像復元失敗', e); }
+    }
+    await updatePreview(restoredUrl, null); // ArrayBuffer を URL 化済み
   } else {
     if (isIndividual) {
   dropZone.innerHTML = '';
@@ -1883,12 +1892,16 @@ async function createBaseImageDropZone(options = {}) {
     }
   }
 
-  async function updatePreview(imageUrl, arrayBuffer) {
+  async function updatePreview(imageUrl, arrayBuffer, mimeType = null) {
+    // 既存の Blob URL を解放
+    if (droppedImage && typeof droppedImage === 'string' && droppedImage.startsWith('blob:') && droppedImage !== imageUrl) {
+      try { URL.revokeObjectURL(droppedImage); } catch {}
+    }
     droppedImage = imageUrl;
     if (arrayBuffer instanceof ArrayBuffer) {
       droppedImageBuffer = arrayBuffer;
       // 保存 (非同期保存; 失敗はログのみ)
-      try { await StorageManager.setOrderImage(arrayBuffer, orderNumber); } catch(e){ console.error('画像保存失敗', e); }
+  try { await StorageManager.setOrderImage(arrayBuffer, orderNumber, mimeType); } catch(e){ console.error('画像保存失敗', e); }
     } else if (arrayBuffer === null) {
       // URLのみ（復元時）: 保存操作は不要
     }
@@ -1919,17 +1932,21 @@ async function createBaseImageDropZone(options = {}) {
       e.stopPropagation();
       await StorageManager.removeOrderImage(orderNumber);
       droppedImage = null;
+      // Blob URL であれば解放
+      if (preview.src && preview.src.startsWith('blob:')) {
+        try { URL.revokeObjectURL(preview.src); } catch {}
+      }
       
       if (isIndividual) {
   dropZone.innerHTML = '';
   const node = cloneTemplate('orderImageDropDefault');
         node.textContent = defaultMessage;
         dropZone.appendChild(node);
-        await updateOrderImageDisplay(null);
+  await updateOrderImageDisplay(null);
       } else {
   dropZone.innerHTML = '';
   dropZone.appendChild(cloneTemplate('orderImageDropDefault'));
-        await updateAllOrderImages();
+  await updateAllOrderImages();
       }
     });
   }
@@ -2020,9 +2037,9 @@ function setupDragAndDropEvents(dropZone, updatePreview, isIndividual) {
       reader.onload = async (ev) => {
         const buf = ev.target.result;
         try {
-          const blob = new Blob([buf], { type: file.type });
-          const url = URL.createObjectURL(blob);
-          await updatePreview(url, buf);
+              const blob = new Blob([buf], { type: file.type });
+              const url = URL.createObjectURL(blob);
+              await updatePreview(url, buf, file.type);
         } catch(err){ console.error('ドロップ画像処理失敗', err); }
       };
       reader.readAsArrayBuffer(file);
@@ -2063,7 +2080,7 @@ function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
             try {
               const blob = new Blob([buf], { type: file.type });
               const url = URL.createObjectURL(blob);
-              await updatePreview(url, buf);
+              await updatePreview(url, buf, file.type);
             } catch(err){ console.error('画像読込処理失敗', err); }
           };
           reader.readAsArrayBuffer(file);
