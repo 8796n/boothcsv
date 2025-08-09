@@ -1455,41 +1455,20 @@ function createDiv(classname="", text=""){
   }
   return div;
 }
-function setupDropzoneEvents(dropzone) {
-  dropzone.addEventListener('dragover', function(event) {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    showDropping(this);
-  });
-
-  dropzone.addEventListener('dragleave', function(event) {
-    hideDropping(this);
-  });
-
-  dropzone.addEventListener('drop', function (event) {
-    event.preventDefault();
-    hideDropping(this);
-    const elImage = document.createElement('img');
-    
-    if(event.dataTransfer.types.includes("text/uri-list")){
-      const url = event.dataTransfer.getData('text/uri-list');
-      elImage.src = url;
-      this.parentNode.appendChild(elImage);
-      readQR(elImage);
-    } else {
-      const file = event.dataTransfer.files[0];
-      if(file && file.type.indexOf('image/') === 0){
-        this.parentNode.appendChild(elImage);
-        attachImage(file, elImage);
-      }
-    }
-    
-    this.classList.remove('dropzone');
-    this.style.zIndex = -1;
-    elImage.style.zIndex = 9;
-    addEventQrReset(elImage);
-  });
-
+// 汎用 template クローンヘルパー
+function cloneTemplate(id) {
+  const tpl = document.getElementById(id);
+  if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+    throw new Error(id + ' template が見つかりません');
+  }
+  return tpl.content.firstElementChild.cloneNode(true);
+}
+// QRペーストプレースホルダを template から生成
+function buildQRPastePlaceholder() {
+  return cloneTemplate('qrDropPlaceholder');
+}
+function setupPasteZoneEvents(dropzone) {
+  // クリップボードからの画像ペーストのみを受け付ける
   dropzone.addEventListener("paste", function(event){
     event.preventDefault();
     if (!event.clipboardData 
@@ -1520,29 +1499,17 @@ function setupDropzoneEvents(dropzone) {
     
     // 画像以外がペーストされたときのために、元に戻しておく
     this.textContent = '';
-    const tpl = document.getElementById('qrDropPlaceholder');
-    if (tpl && tpl.content.firstElementChild) {
-      this.innerHTML = '';
-      this.appendChild(tpl.content.firstElementChild.cloneNode(true));
-    } else {
-      this.innerHTML = '<p>Paste QR image here!</p>';
-    }
+  this.innerHTML = '';
+  this.appendChild(buildQRPastePlaceholder());
   });
 }
 
-function createDropzone(div){
+function createDropzone(div){ // 互換のため名称維持（内部はペースト専用）
   const divDrop = createDiv('dropzone');
-  const tpl = document.getElementById('qrDropPlaceholder');
-  if (tpl && tpl.content.firstElementChild) {
-    divDrop.appendChild(tpl.content.firstElementChild.cloneNode(true));
-  } else {
-    divDrop.textContent = 'Paste QR image here!';
-  }
+  divDrop.appendChild(buildQRPastePlaceholder());
   divDrop.setAttribute("contenteditable", "true");
-  divDrop.setAttribute("effectAllowed", "move");
-  
-  // 共通のイベントリスナーを設定
-  setupDropzoneEvents(divDrop);
+  // ペースト専用イベントを設定
+  setupPasteZoneEvents(divDrop);
   
   div.appendChild(divDrop);
 }
@@ -1666,13 +1633,7 @@ function addEventQrReset(elImage){
     });
 }
 
-function showDropping(elDrop) {
-        elDrop.classList.add('dropover');
-}
-
-function hideDropping(elDrop) {
-        elDrop.classList.remove('dropover');
-}
+// ドラッグ＆ドロップ廃止に伴い showDropping / hideDropping は削除
 
 async function readQR(elImage){
   try {
@@ -1687,7 +1648,18 @@ async function readQR(elImage){
         canv.width = img.width;
         canv.height = img.height;
         context.drawImage(img, 0, 0, canv.width, canv.height);
-        const b64data = canv.toDataURL("image/png");
+        // Canvas から直接 ArrayBuffer を取得（データURLは非採用）
+        const blobPromise = new Promise(resolve => canv.toBlob(resolve, 'image/png'));
+        const blob = await blobPromise;
+        let arrayBuffer = null;
+        if (blob) {
+          arrayBuffer = await blob.arrayBuffer();
+        } else {
+          console.warn('QR: canvas toBlob が取得できませんでした。フォールバックとして dataURL を ArrayBuffer 化');
+          const tmpB64 = canv.toDataURL('image/png');
+          const bin = atob(tmpB64.split(',')[1]);
+            const len = bin.length; const u8 = new Uint8Array(len); for (let i=0;i<len;i++){u8[i]=bin.charCodeAt(i);} arrayBuffer = u8.buffer;
+        }
         
         const imageData = context.getImageData(0, 0, canv.width, canv.height);
         const barcode = jsQR(imageData.data, imageData.width, imageData.height);
@@ -1715,7 +1687,8 @@ async function readQR(elImage){
                   // 既存のドロップゾーンを復元
                   dropzone.classList.add('dropzone');
                   dropzone.style.zIndex = '99';
-                  dropzone.innerHTML = '<p>Paste QR image here!</p>';
+                  dropzone.innerHTML = '';
+                  dropzone.appendChild(buildQRPastePlaceholder());
                   dropzone.style.display = 'block';
                 } else {
                   // ドロップゾーンが見つからない場合は新しく作成
@@ -1724,11 +1697,12 @@ async function readQR(elImage){
                   newDropzone.contentEditable = 'true';
                   newDropzone.setAttribute('effectallowed', 'move');
                   newDropzone.style.zIndex = '99';
-                  newDropzone.innerHTML = '<p>Paste QR image here!</p>';
+                  newDropzone.innerHTML = '';
+                  newDropzone.appendChild(buildQRPastePlaceholder());
                   parentQr.appendChild(newDropzone);
                   
                   // ドロップゾーンのイベントリスナーを再設定
-                  setupDropzoneEvents(newDropzone);
+                  setupPasteZoneEvents(newDropzone);
                 }
                 
                 // 画像を削除
@@ -1746,13 +1720,13 @@ async function readQR(elImage){
               d.appendChild(p);
             }
             
-            const qrData = { 
-              "receiptnum": b[1], 
-              "receiptpassword": b[2], 
-              "qrimage": b64data,
-              "qrhash": StorageManager.generateQRHash(barcode.data)
+            const qrData = {
+              receiptnum: b[1],
+              receiptpassword: b[2],
+              qrimage: arrayBuffer,
+              qrimageType: 'image/png',
+              qrhash: StorageManager.generateQRHash(barcode.data)
             };
-            
             await StorageManager.setQRData(ordernum, qrData);
           } else {
             console.warn('QRコードの形式が正しくありません');
@@ -1771,32 +1745,19 @@ async function readQR(elImage){
   }
 }
 
-function attachImage(file, elImage) {
-  if (!file || !elImage) {
-    console.error('ファイルまたは画像要素が無効です');
-    return;
+// drag&drop 廃止に伴い attachImage は不要となったため削除
+// グローバルで画像ドロップを無効化（外部サイトからのドロップ抑止）
+window.addEventListener('dragover', e => {
+  if (e.dataTransfer && [...e.dataTransfer.types].some(t => t === 'Files' || t === 'text/uri-list')) {
+    e.preventDefault();
   }
-
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    try {
-      const src = event.target.result;
-      elImage.src = src;
-      elImage.setAttribute('title', file.name);
-      elImage.onload = function() {
-        readQR(elImage);
-      };
-    } catch (error) {
-      console.error('画像の読み込みエラー:', error);
-    }
-  };
-  
-  reader.onerror = function() {
-    console.error('ファイル読み込みエラー');
-  };
-  
-  reader.readAsDataURL(file);
-}
+});
+window.addEventListener('drop', e => {
+  if (e.dataTransfer && [...e.dataTransfer.types].some(t => t === 'Files' || t === 'text/uri-list')) {
+    e.preventDefault();
+    console.warn('画像のドラッグ＆ドロップは無効です。Ctrl+V で貼り付けてください。');
+  }
+});
 
 // 設定管理
 const CONFIG = {
@@ -1857,29 +1818,13 @@ async function createBaseImageDropZone(options = {}) {
     await updatePreview(savedImage, null); // 既存はURLのみ（バッファ不明）
   } else {
     if (isIndividual) {
-      const imgTpl = document.getElementById('orderImageDropDefault');
-      if (imgTpl && imgTpl.content.firstElementChild) {
-        dropZone.innerHTML = '';
-        const node = imgTpl.content.firstElementChild.cloneNode(true);
-        node.textContent = defaultMessage; // 個別はメッセージ差替
-        dropZone.appendChild(node);
-      } else {
-        dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
-      }
+  dropZone.innerHTML = '';
+  const node = cloneTemplate('orderImageDropDefault');
+      node.textContent = defaultMessage; // 個別はメッセージ差替
+      dropZone.appendChild(node);
     } else {
-      const defaultContentElement = document.getElementById('dropZoneDefaultContent');
-      if (defaultContentElement) {
-        dropZone.innerHTML = '';
-        // 既存の defaultContent を template へ移行していればそちら優先
-        const tpl = document.getElementById('orderImageDropDefault');
-        if (tpl && tpl.content.firstElementChild) {
-          dropZone.appendChild(tpl.content.firstElementChild.cloneNode(true));
-        } else {
-          dropZone.innerHTML = defaultContentElement.innerHTML;
-        }
-      } else {
-        dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
-      }
+  dropZone.innerHTML = '';
+  dropZone.appendChild(cloneTemplate('orderImageDropDefault'));
     }
     debugLog(`初期メッセージを設定: ${isIndividual ? defaultMessage : 'デフォルトコンテンツ'}`);
   }
@@ -1976,24 +1921,14 @@ async function createBaseImageDropZone(options = {}) {
       droppedImage = null;
       
       if (isIndividual) {
-        const imgTpl = document.getElementById('orderImageDropDefault');
-        dropZone.innerHTML = '';
-        if (imgTpl && imgTpl.content.firstElementChild) {
-          const node = imgTpl.content.firstElementChild.cloneNode(true);
-          node.textContent = defaultMessage;
-          dropZone.appendChild(node);
-        } else {
-          dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
-        }
+  dropZone.innerHTML = '';
+  const node = cloneTemplate('orderImageDropDefault');
+        node.textContent = defaultMessage;
+        dropZone.appendChild(node);
         await updateOrderImageDisplay(null);
       } else {
-        const tplGlobal = document.getElementById('orderImageDropDefault');
-        dropZone.innerHTML = '';
-        if (tplGlobal && tplGlobal.content.firstElementChild) {
-          dropZone.appendChild(tplGlobal.content.firstElementChild.cloneNode(true));
-        } else {
-          dropZone.innerHTML = `<p class="order-image-default-msg">${defaultMessage}</p>`;
-        }
+  dropZone.innerHTML = '';
+  dropZone.appendChild(cloneTemplate('orderImageDropDefault'));
         await updateAllOrderImages();
       }
     });
@@ -2299,10 +2234,7 @@ function initializeCustomLabels(customLabels) {
   container.innerHTML = '';
   
   // 説明文を一番上に追加
-  const instTpl = document.getElementById('customLabelsInstructionTemplate');
-  if (instTpl && instTpl.content.firstElementChild) {
-    container.appendChild(instTpl.content.firstElementChild.cloneNode(true));
-  }
+  container.appendChild(cloneTemplate('customLabelsInstructionTemplate'));
   
   if (customLabels && customLabels.length > 0) {
     customLabels.forEach((label, index) => {
@@ -3731,8 +3663,22 @@ function setupTextOnlyEditor(editor) {
   });
 }
 
+// 必須テンプレートの存在を起動時に検証
+function verifyRequiredTemplates() {
+  const required = [
+    'qrDropPlaceholder',
+    'orderImageDropDefault',
+    'customLabelsInstructionTemplate',
+    'fontListItemTemplate'
+  ];
+  // cloneTemplate 内部で存在検証。失敗時は即 throw。
+  required.forEach(id => cloneTemplate(id));
+}
+
 // 印刷ボタンのイベントリスナーを変更
 document.addEventListener('DOMContentLoaded', function() {
+  // 必須 template の存在確認（不足時は起動中断）
+  verifyRequiredTemplates();
   const printButton = document.getElementById('printButton');
   const printButtonCompact = document.getElementById('printButtonCompact');
   const printBtn = document.getElementById('print-btn'); // 新しい印刷ボタン
@@ -4220,18 +4166,15 @@ async function updateFontList() {
 
     // 既存ノードとの差分適用（シンプル版: 全クリア → 再構築）
     fontListElement.textContent = '';
-    const tpl = document.getElementById('fontListItemTemplate');
-    if (!tpl) {
-      console.warn('fontListItemTemplate が見つかりません');
-    }
+    const tplId = 'fontListItemTemplate';
+    // ここで cloneTemplate を使い、1つ目を基準に都度再クローン
+    // 存在チェックは cloneTemplate 内で実施
     entries.forEach(([fontName, fontData]) => {
       const metadata = fontData.metadata || {};
       const originalName = metadata.originalName || fontName;
       const createdAt = metadata.createdAt || Date.now();
       const sizeMB = (fontData.data.byteLength / 1024 / 1024).toFixed(2);
-
-      const node = tpl ? tpl.content.firstElementChild.cloneNode(true) : document.createElement('div');
-      if (!tpl) node.className = 'font-list-item';
+      const node = cloneTemplate(tplId);
       node.dataset.fontName = fontName;
 
       const nameEl = node.querySelector('.font-name') || (() => { const d=document.createElement('div'); d.className='font-name'; node.appendChild(d); return d; })();

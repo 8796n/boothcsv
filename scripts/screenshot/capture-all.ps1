@@ -62,16 +62,22 @@ function Get-ChromeVersion {
     if ($ExplicitPath -and (Test-Path $ExplicitPath)) {
         try { return (Get-Item $ExplicitPath).VersionInfo.ProductVersion } catch { }
     }
+    $pf        = $env:ProgramFiles
+    $pf86      = ${env:ProgramFiles(x86)}  # 正しい表記 (波括弧) で展開
+    $localApp  = $env:LocalAppData
     $chromePaths = @(
-        "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
-        "$env:ProgramFiles(x86)\\Google\\Chrome\\Application\\chrome.exe",
-        "$env:LocalAppData\\Google\\Chrome\\Application\\chrome.exe"
-    )
+        (Join-Path $pf    'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $pf86  'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $localApp 'Google\Chrome\Application\chrome.exe'),
+        # 追加候補: Chrome for Testing 手動配置 / Portable 想定ディレクトリ
+        (Join-Path (Get-Location) 'chrome\chrome.exe'),
+        (Join-Path (Get-Location) 'chrome-win64\chrome.exe')
+    ) | Where-Object { $_ -and (Test-Path $_) }
     foreach ($path in $chromePaths) {
-        if (Test-Path $path) {
+        try {
             $ver = (Get-Item $path).VersionInfo.ProductVersion
             if ($ver) { return $ver }
-        }
+        } catch {}
     }
     return $null
 }
@@ -693,40 +699,42 @@ try {
                                     
                                     fetch('http://localhost:8080/sample/qrcodedsample.png')
                                         .then(response => response.blob())
-                                        .then(blob => {
-                                            // 直接的なファイル入力をシミュレート
-                                            const reader = new FileReader();
-                                            reader.onload = function(e) {
-                                                try {
-                                                    // QRドロップゾーンに直接画像を追加
-                                                    const elImage = document.createElement('img');
-                                                    elImage.src = e.target.result;
-                                                    elImage.style.maxWidth = '100%';
-                                                    elImage.style.height = 'auto';
-                                                    
-                                                    // 画像読み込み完了後にQR処理を実行
-                                                    elImage.onload = function() {
-                                                        // ドロップゾーンを非表示にして画像を表示
-                                                        firstDropZone.style.display = 'none';
-                                                        firstDropZone.parentNode.appendChild(elImage);
-                                                        
-                                                        // QR読み取り処理を実行（もし利用可能であれば）
-                                                        if (typeof readQR === 'function') {
-                                                            readQR(elImage);
-                                                        }
-                                                        
-                                                        // リセットイベントを追加（もし利用可能であれば）
-                                                        if (typeof addEventQrReset === 'function') {
-                                                            addEventQrReset(elImage);
-                                                        }
-                                                        
-                                                        console.log('✅ QRコード画像を直接設定完了');
-                                                    };
-                                                } catch (error) {
-                                                    console.log('QRコード設定エラー:', error);
+                                        .then(async blob => {
+                                            try {
+                                                const arrayBuffer = await blob.arrayBuffer();
+                                                // サンプル用ハッシュ（簡易）
+                                                const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+                                                const hashArray = Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+                                                // IndexedDBへ直接保存 (orderNumber 仮: 'QRDEMO')
+                                                if (window.StorageManager && typeof StorageManager.setQRData === 'function') {
+                                                    await StorageManager.setQRData('QRDEMO', {
+                                                        receiptnum: 'DEMO',
+                                                        receiptpassword: '',
+                                                        qrimage: arrayBuffer,
+                                                        qrimageType: blob.type || 'image/png',
+                                                        qrhash: hashArray
+                                                    });
                                                 }
-                                            };
-                                            reader.readAsDataURL(blob);
+                                                // 表示用 Blob URL
+                                                const url = URL.createObjectURL(new Blob([arrayBuffer], { type: blob.type || 'image/png' }));
+                                                const elImage = document.createElement('img');
+                                                elImage.src = url;
+                                                elImage.style.maxWidth = '100%';
+                                                elImage.style.height = 'auto';
+                                                elImage.onload = function() {
+                                                    firstDropZone.style.display = 'none';
+                                                    firstDropZone.parentNode.appendChild(elImage);
+                                                    if (typeof readQR === 'function') {
+                                                        readQR(elImage);
+                                                    }
+                                                    if (typeof addEventQrReset === 'function') {
+                                                        addEventQrReset(elImage);
+                                                    }
+                                                    console.log('✅ QRコード画像(ArrayBuffer)設定完了');
+                                                };
+                                            } catch (error) {
+                                                console.log('QRコード設定エラー:', error);
+                                            }
                                         })
                                         .catch(error => console.log('QRコード画像読み込みエラー:', error));
                                 } else {
