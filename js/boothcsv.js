@@ -4119,45 +4119,7 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-function getFontMimeType(fileName) {
-  const ext = fileName.toLowerCase().split('.').pop();
-  const mimeTypes = {
-    'ttf': 'font/ttf',
-    'otf': 'font/otf',
-    'woff': 'font/woff',
-    'woff2': 'font/woff2'
-  };
-  return mimeTypes[ext] || 'font/ttf';
-}
-
-function addFontToCSS(fontName, base64Data, mimeType) {
-  let styleElement = document.getElementById('custom-fonts-style');
-  if (!styleElement) {
-    styleElement = document.createElement('style');
-    styleElement.id = 'custom-fonts-style';
-    document.head.appendChild(styleElement);
-  }
-
-  const fontFace = `
-    @font-face {
-      font-family: "${fontName}";
-      src: url("data:${mimeType};base64,${base64Data}") format("${getFontFormat(mimeType)}");
-      font-display: swap;
-    }
-  `;
-
-  styleElement.textContent += fontFace;
-}
-
-function getFontFormat(mimeType) {
-  const formats = {
-    'font/ttf': 'truetype',
-    'font/otf': 'opentype',
-    'font/woff': 'woff',
-    'font/woff2': 'woff2'
-  };
-  return formats[mimeType] || 'truetype';
-}
+// (getFontMimeType / addFontToCSS / getFontFormat) は未使用のため削除済み
 
 async function loadCustomFontsCSS() {
   try {
