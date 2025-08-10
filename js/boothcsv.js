@@ -30,6 +30,9 @@ const DEBUG_MODE = (() => {
 
 // リアルタイム更新制御フラグ
 let isEditingCustomLabel = false;
+// 直近読み込んだCSV結果を保持してカスタムラベル編集時に再レンダリングへ再利用
+window.lastCSVResults = null; // { data: [...] }
+window.lastCSVBaseConfig = null; // { labelyn, labelskip, sortByPaymentDate }
 let pendingUpdateTimer = null;
 
 // デバッグログ用関数
@@ -40,6 +43,8 @@ const DEBUG_FLAGS = {
   font: false,        // フォント読み込み
   customLabel: false, // カスタムラベルUI
   image: false,       // 画像/ドロップゾーン
+  // v6 debug: 一時的に true で画像保存経路を追跡 (問題解決後 false に戻しても良い)
+  image: true,
   general: true       // 一般的な進行ログ
 };
 function debugLog(catOrMsg, ...rest){
@@ -346,27 +351,35 @@ window.addEventListener("load", async function(){
     }
   }, 100); // 少し遅らせて確実にunifiedDBが初期化されるのを待つ
 
-  // 全ての画像をクリアするボタンのイベントリスナーを追加
+  // 全ての注文データをクリアするボタン (QR統合後: orders + 関連QR情報)
   const clearAllButton = document.getElementById('clearAllButton');
   if (clearAllButton) {
     clearAllButton.onclick = async () => {
-      if (confirm('本当に全てのQR画像をクリアしますか？')) {
-  try { const count = await StorageManager.clearQRImages(); alert(`QR画像を削除しました: ${count}件`); } catch (e) { alert('QR画像クリア中にエラーが発生しました: ' + e.message); }
-  location.reload();
+      if (!confirm('本当に全ての注文データ (QR含む) をクリアしますか？この操作は取り消せません。')) return;
+      try {
+        // OrderRepository に統合されたため、orders ストアを全削除
+        if (window.orderRepository && window.orderRepository.db && window.orderRepository.db.clearAllOrders) {
+          await window.orderRepository.db.clearAllOrders();
+          // repository のキャッシュもリセット
+          window.orderRepository.cache.clear();
+          window.orderRepository.emit();
+        } else if (StorageManager && StorageManager.clearAllOrders) {
+          // フォールバック: まだユーティリティがある場合
+          await StorageManager.clearAllOrders();
+        } else {
+          alert('注文データクリア機能が利用できません');
+          return;
+        }
+        alert('全ての注文データを削除しました');
+        location.reload();
+      } catch (e) {
+        alert('注文データクリア中にエラーが発生しました: ' + e.message);
       }
     };
   }
 
   // 全ての注文画像をクリアするボタンのイベントリスナーを追加
-  const clearAllOrderImagesButton = document.getElementById('clearAllOrderImagesButton');
-  if (clearAllOrderImagesButton) {
-    clearAllOrderImagesButton.onclick = async () => {
-      if (confirm('本当に全ての注文画像（グローバル画像と個別画像）をクリアしますか？')) {
-  try { const count = await StorageManager.clearOrderImages(); alert(`注文画像を削除しました: ${count}件`); } catch (e) { alert('注文画像クリア中にエラーが発生しました: ' + e.message); }
-  location.reload();
-      }
-    };
-  }
+  // 個別クリアボタン廃止: 全注文データクリアに統合済み
 
   // バックアップ & リストア
   const backupBtn = document.getElementById('backupDBButton');
@@ -524,31 +537,43 @@ async function updateCustomLabelsPreview() {
         customLabelEnable: settingsCache.customLabelEnable,
         customLabels: settingsCache.customLabelEnable ? getCustomLabelsFromUI().filter(l=>l.enabled) : []
       };
-    
-    // ラベル印刷が無効またはカスタムラベルが無効な場合
-    if (!config.labelyn || !config.customLabelEnable) {
+    const hasCSVLoaded = !!(window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length > 0);
+
+    // CSV が読み込まれている場合: CSVラベル + (必要なら) カスタムラベル を再生成
+    if (hasCSVLoaded) {
+      if (!config.labelyn) {
+        // ラベル印刷OFFなら表示だけクリア
+        clearPreviousResults();
+        updatePrintCountDisplay(0, 0, 0);
+        return;
+      }
+      // 再生成（processCSVResults 内で clearPreviousResults していないので先に消す）
       clearPreviousResults();
-      return;
+      // ベース構成を更新して再利用
+      window.lastCSVBaseConfig = { labelyn: config.labelyn, labelskip: config.labelskip, sortByPaymentDate: config.sortByPaymentDate };
+      await processCSVResults(window.lastCSVResults, config);
+      return; // ここで終了（CSV再表示 + カスタムラベル反映済）
     }
 
-    // 有効なカスタムラベルがある場合のみプレビューを生成
-    if (config.customLabels && config.customLabels.length > 0) {
-      const enabledLabels = config.customLabels.filter(label => label.enabled && label.text.trim() !== '');
-      
-      if (enabledLabels.length > 0) {
-        // 既存の結果をクリアしてからプレビューを生成
-        clearPreviousResults();
-        // カスタムラベルのみの処理を実行（プレビュー用）
-        await processCustomLabelsOnly(config, true); // 第2引数でプレビューモードを指定
-      } else {
-        // 有効なカスタムラベルがない場合は結果をクリアし、固定ヘッダーも更新
-        clearPreviousResults();
-        updatePrintCountDisplay(0, 0, 0); // カスタム面数を0にリセット
-      }
-    } else {
-      // カスタムラベルが存在しない場合も結果をクリアし、固定ヘッダーを更新
+    // CSV が無い場合 (カスタムラベル単独プレビュー)
+    if (!config.labelyn) {
       clearPreviousResults();
-      updatePrintCountDisplay(0, 0, 0); // カスタム面数を0にリセット
+      updatePrintCountDisplay(0, 0, 0);
+      return;
+    }
+    if (!config.customLabelEnable) {
+      // カスタムラベル無効でCSV無し → 何も描画しない
+      clearPreviousResults();
+      updatePrintCountDisplay(0, 0, 0);
+      return;
+    }
+    const enabledLabels = (config.customLabels || []).filter(label => label.enabled && label.text.trim() !== '');
+    if (enabledLabels.length > 0) {
+      clearPreviousResults();
+      await processCustomLabelsOnly(config, true);
+    } else {
+      clearPreviousResults();
+      updatePrintCountDisplay(0, 0, 0);
     }
   } catch (error) {
     console.error('カスタムラベルプレビュー更新エラー:', error);
@@ -622,6 +647,12 @@ async function processCSVResults(results, config) {
     }
   }
   if (!window.orderRepository) return; // フェイルセーフ
+
+  // 直近CSV保持（プレビュー再描画用）
+  try {
+    window.lastCSVResults = { data: Array.isArray(results.data) ? results.data : [] };
+    window.lastCSVBaseConfig = { labelyn: config.labelyn, labelskip: config.labelskip, sortByPaymentDate: config.sortByPaymentDate };
+  } catch(e) { /* ignore */ }
 
   // デバッグ: 先頭行の列キー確認（BOM混入/名称ズレ検出用）
   if (DEBUG_MODE && results && Array.isArray(results.data)) {
@@ -1279,17 +1310,15 @@ async function displayOrderImage(cOrder, orderNumber) {
     // 注文番号を正規化
   const normalizedOrderNumber = (orderNumber == null) ? '' : String(orderNumber).trim();
     
-    // 個別画像があるかチェック
-    const individualImage = await StorageManager.getOrderImage(normalizedOrderNumber);
-    if (individualImage) {
-      imageToShow = individualImage;
-    } else {
-      // 個別画像がない場合はグローバル画像を使用
-      const globalImage = window.orderImageDropZone?.getImage();
-      if (globalImage) {
-        imageToShow = globalImage;
+    // 個別画像: repository から
+    let individualImage = null;
+    if (window.orderRepository) {
+      const rec = window.orderRepository.get(normalizedOrderNumber);
+      if (rec && rec.image && rec.image.data instanceof ArrayBuffer) {
+        try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); individualImage = URL.createObjectURL(blob); } catch {}
       }
     }
+    if (individualImage) imageToShow = individualImage; else imageToShow = await getGlobalOrderImage();
   }
 
   if (imageToShow) {
@@ -1480,7 +1509,9 @@ async function createLabel(labelData=""){
 
   if (typeof labelData === 'string' && labelData) {
     addP(divOrdernum, labelData);
-    const qr = await StorageManager.getQRData(labelData);
+    const repo = window.orderRepository || null;
+    const rec = repo ? repo.get(labelData) : null;
+    const qr = rec ? rec.qr : null;
     if (qr && qr['qrimage']) {
       const elImage = document.createElement('img');
       let srcValue = qr['qrimage'];
@@ -1522,7 +1553,9 @@ function addEventQrReset(elImage){
         // 保存されたQRデータを削除
         if (orderNumber) {
           try {
-            await StorageManager.setQRData(orderNumber, null);
+            if (window.orderRepository) {
+              await window.orderRepository.clearOrderQRData(orderNumber);
+            }
             console.log(`QRデータを削除しました: ${orderNumber}`);
           } catch (error) {
             console.error('QRデータ削除エラー:', error);
@@ -1584,7 +1617,7 @@ async function readQR(elImage){
             const ordernum = (rawOrderNum == null) ? '' : String(rawOrderNum).trim();
             
             // 重複チェック
-            const duplicates = await StorageManager.checkQRDuplicate(barcode.data, ordernum);
+            const duplicates = window.orderRepository ? await window.orderRepository.checkQRDuplicate(barcode.data, ordernum) : [];
             if (duplicates.length > 0) {
               const duplicateList = duplicates.join(', ');
               const confirmMessage = `警告: このQRコードは既に以下の注文で使用されています:\n${duplicateList}\n\n同じQRコードを使用すると配送ミスの原因となる可能性があります。\n続行しますか？`;
@@ -1637,9 +1670,11 @@ async function readQR(elImage){
               receiptpassword: b[2],
               qrimage: arrayBuffer,
               qrimageType: 'image/png',
-              qrhash: StorageManager.generateQRHash(barcode.data)
+              qrhash: (function(content){ let hash=0; if(!content) return hash.toString(); for(let i=0;i<content.length;i++){ const ch=content.charCodeAt(i); hash=((hash<<5)-hash)+ch; hash&=hash; } return hash.toString(); })(barcode.data)
             };
-            await StorageManager.setQRData(ordernum, qrData);
+            if (window.orderRepository) {
+              await window.orderRepository.setOrderQRData(ordernum, qrData);
+            }
           } else {
             console.warn('QRコードの形式が正しくありません');
           }
@@ -1703,17 +1738,34 @@ const CONFIG = {
   }
 };
 
+// v6: グローバル注文画像を settings (IndexedDB) にバイナリ保存するユーティリティ
+// 以前の base64 JSON 方式は廃止。Blob URL を都度生成（簡易実装）。必要ならキャッシュ最適化可。
+async function setGlobalOrderImage(arrayBuffer, mimeType='image/png') {
+  try {
+    if(!(arrayBuffer instanceof ArrayBuffer)) throw new Error('ArrayBuffer 以外');
+    await StorageManager.setGlobalOrderImageBinary(arrayBuffer, mimeType);
+  debugLog('[image] グローバル画像保存完了 size=' + arrayBuffer.byteLength + ' mime=' + mimeType);
+  } catch(e){ console.error('グローバル画像保存失敗', e); }
+}
+async function getGlobalOrderImage(){
+  try {
+    const v = await StorageManager.getGlobalOrderImageBinary();
+    if(!v || !(v.data instanceof ArrayBuffer)) return null;
+    const blob = new Blob([v.data], { type: v.mimeType || 'image/png' });
+    return URL.createObjectURL(blob);
+  } catch(e){ console.error('グローバル画像取得失敗', e); return null; }
+}
+
 // 共通のドラッグ&ドロップ機能を提供するベース関数
 async function createBaseImageDropZone(options = {}) {
   const {
-    storageKey = 'orderImage',
     isIndividual = false,
     orderNumber = null,
     containerClass = 'order-image-drop',
     defaultMessage = '画像をドロップ or クリックで選択'
   } = options;
 
-  debugLog(`ベース画像ドロップゾーン作成: ${storageKey}, 個別: ${isIndividual}, 注文番号: ${orderNumber}`);
+  debugLog(`画像ドロップゾーン作成: 個別=${isIndividual} 注文番号=${orderNumber||'-'}`);
 
   const dropZone = document.createElement('div');
   dropZone.classList.add(containerClass);
@@ -1725,10 +1777,21 @@ async function createBaseImageDropZone(options = {}) {
   let droppedImage = null;           // 表示用URL (Blob URL)
   let droppedImageBuffer = null;     // 保存用 ArrayBuffer
 
-  // StorageManagerから保存された画像を読み込む
-  const savedImage = await StorageManager.getOrderImage(orderNumber);
+  // 保存された画像
+  let savedImage = null;
+  if (orderNumber && window.orderRepository) {
+    const rec = window.orderRepository.get(orderNumber);
+    if (rec && rec.image && rec.image.data instanceof ArrayBuffer) {
+      try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); savedImage = URL.createObjectURL(blob); } catch(e){ console.error('保存画像Blob生成失敗', e); }
+    }
+  }
+  // グローバル（非個別）時は settings から復元
+  if (!orderNumber && !isIndividual && !savedImage) {
+    try { savedImage = await getGlobalOrderImage(); if (savedImage) debugLog('[image] 初期グローバル画像復元'); } catch(e){ console.error('初期グローバル画像取得失敗', e); }
+  }
+  // フォールバック廃止 (images ストア削除)
   if (savedImage) {
-    debugLog(`保存された画像を復元: ${storageKey}`);
+  debugLog('保存された画像を復元');
     let restoredUrl = savedImage;
     if (savedImage instanceof ArrayBuffer) {
       try {
@@ -1769,8 +1832,14 @@ async function createBaseImageDropZone(options = {}) {
       // 個別画像があるかチェック（個別画像を最優先）
       let imageToShow = null;
       if (orderNumber) {
-        const individualImage = await StorageManager.getOrderImage(orderNumber);
-        const globalImage = await StorageManager.getOrderImage(); // グローバル画像を取得
+        let individualImage = null;
+        if (window.orderRepository) {
+          const r = window.orderRepository.get(orderNumber);
+          if (r && r.image && r.image.data instanceof ArrayBuffer) {
+            try { const blob = new Blob([r.image.data], { type: r.image.mimeType || 'image/png' }); individualImage = URL.createObjectURL(blob); } catch(e){ console.error('個別画像Blob生成失敗', e); }
+          }
+  }
+  const globalImage = await getGlobalOrderImage();
         
         debugLog(`注文番号: ${orderNumber}`);
         debugLog(`個別画像: ${individualImage ? 'あり' : 'なし'}`);
@@ -1786,7 +1855,7 @@ async function createBaseImageDropZone(options = {}) {
         }
       } else {
         // 注文番号がない場合はグローバル画像を使用
-        const globalImage = await StorageManager.getOrderImage(); // グローバル画像を取得
+  const globalImage = await getGlobalOrderImage();
         debugLog('注文番号なし、グローバル画像を使用', globalImage ? 'あり' : 'なし');
         imageToShow = globalImage;
       }
@@ -1812,8 +1881,16 @@ async function createBaseImageDropZone(options = {}) {
     droppedImage = imageUrl;
     if (arrayBuffer instanceof ArrayBuffer) {
       droppedImageBuffer = arrayBuffer;
-      // 保存 (非同期保存; 失敗はログのみ)
-  try { await StorageManager.setOrderImage(arrayBuffer, orderNumber, mimeType); } catch(e){ console.error('画像保存失敗', e); }
+      if (isIndividual && orderNumber && window.orderRepository) {
+        // 個別注文画像保存
+        try { await window.orderRepository.setOrderImage(orderNumber, { data: arrayBuffer, mimeType }); }
+        catch(e){ console.error('画像保存失敗', e); }
+      } else if (!isIndividual) {
+        // グローバル画像保存
+  debugLog('[image] グローバル画像保存開始 isIndividual=' + isIndividual + ' orderNumber=' + orderNumber + ' size=' + arrayBuffer.byteLength + ' mime=' + mimeType);
+        try { await setGlobalOrderImage(arrayBuffer, mimeType||'image/png'); }
+        catch(e){ console.error('グローバル画像保存失敗', e); }
+      }
     } else if (arrayBuffer === null) {
       // URLのみ（復元時）: 保存操作は不要
     }
@@ -1842,7 +1919,12 @@ async function createBaseImageDropZone(options = {}) {
     // 画像クリックでリセット
     preview.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await StorageManager.removeOrderImage(orderNumber);
+      if (isIndividual && orderNumber && window.orderRepository) {
+        try { await window.orderRepository.clearOrderImage(orderNumber); } catch(e){ console.error('画像削除失敗', e); }
+      } else if (!isIndividual) {
+        // グローバル画像クリア (空バッファ)
+        try { await StorageManager.setGlobalOrderImageBinary(new ArrayBuffer(0), 'application/octet-stream'); } catch(e){ console.error('グローバル画像削除失敗', e); }
+      }
       droppedImage = null;
       // Blob URL であれば解放
       if (preview.src && preview.src.startsWith('blob:')) {
@@ -1888,7 +1970,7 @@ async function createBaseImageDropZone(options = {}) {
       imageContainer.appendChild(imageDiv);
     } else {
       // 個別画像がない場合はグローバル画像を表示
-      const globalImage = window.orderImageDropZone?.getImage();
+      const globalImage = await getGlobalOrderImage();
       if (globalImage) {
         const imageDiv = document.createElement('div');
         imageDiv.classList.add('order-image');
@@ -1908,11 +1990,7 @@ async function createBaseImageDropZone(options = {}) {
   return {
     element: dropZone,
     getImage: () => droppedImage,
-    setImage: (imageData, buffer) => {
-      droppedImage = imageData;
-      if (buffer instanceof ArrayBuffer) droppedImageBuffer = buffer;
-      updatePreview(imageData, buffer || null);
-    }
+    setImage: (imageData, buffer) => { droppedImage = imageData; if (buffer instanceof ArrayBuffer) droppedImageBuffer = buffer; updatePreview(imageData, buffer || null); }
   };
 }
 
@@ -2122,16 +2200,16 @@ async function updateAllOrderImagesVisibility(enabled) {
         // 画像を表示
         let imageToShow = null;
         if (orderNumber) {
-          const individualImage = await StorageManager.getOrderImage(orderNumber);
-          if (individualImage) {
-            imageToShow = individualImage;
-            debugLog(`個別画像を表示: ${orderNumber}`);
-          } else {
-            const globalImage = await StorageManager.getOrderImage();
-            if (globalImage) {
-              imageToShow = globalImage;
-              debugLog(`グローバル画像を表示: ${orderNumber}`);
+          // 個別画像
+          if (window.orderRepository) {
+            const rec = window.orderRepository.get(orderNumber);
+            if (rec && rec.image && rec.image.data instanceof ArrayBuffer) {
+              try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); imageToShow = URL.createObjectURL(blob); debugLog(`個別画像を表示: ${orderNumber}`); } catch {}
             }
+          }
+          if (!imageToShow) {
+            const globalImage = await getGlobalOrderImage();
+            if (globalImage) { imageToShow = globalImage; debugLog(`グローバル画像を表示: ${orderNumber}`); }
           }
         }
         
@@ -3469,7 +3547,7 @@ function clearAllContent(editor) {
   }
 }
 
-// 選択範囲にフォントサイズを適用
+// 選択範囲にフォントサイズを適用（統合された関数を使用）
 // テキストのみ入力可能にする設定
 function setupTextOnlyEditor(editor) {
   debugLog('setupTextOnlyEditor関数が呼び出されました, editor:', editor); // デバッグ用
