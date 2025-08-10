@@ -226,7 +226,7 @@ window.addEventListener("load", async function(){
   console.log('🎉 アプリケーション初期化完了 (fallback 無し)');
 
   // 複数のカスタムラベルを初期化
-  initializeCustomLabels(settings.customLabels);
+  CustomLabels.initialize(settings.customLabels);
 
   // 固定ヘッダーを初期表示（0枚でも表示）
   updatePrintCountDisplay(0, 0, 0);
@@ -346,11 +346,11 @@ window.addEventListener("load", async function(){
 
   // カスタムラベル機能のイベントリスナー（遅延実行）
   setTimeout(function() {
-    setupCustomLabelEvents();
+  CustomLabels.setupEvents();
   }, 100);
 
   // ボタンの初期状態を設定
-  updateButtonStates();
+  CustomLabels.updateButtonStates();
 
   // labelskipnum の input イベントも統合ハンドラ内で処理（updateButtonStates sideEffect）
 
@@ -379,7 +379,7 @@ async function autoProcessCSV() {
 
       // カスタムラベルのバリデーション（エラー表示なし）
       // バリデーションエラーがあってもCSV処理は継続する
-      const hasValidCustomLabels = validateCustomLabelsQuiet();
+  const hasValidCustomLabels = CustomLabels.validateQuiet();
       if (!hasValidCustomLabels) {
         console.log('カスタムラベルにエラーがありますが、CSV処理は継続します。');
       }
@@ -392,7 +392,7 @@ async function autoProcessCSV() {
       labelskip: settingsCache.labelskip,
       sortByPaymentDate: settingsCache.sortByPaymentDate,
       customLabelEnable: settingsCache.customLabelEnable,
-      customLabels: settingsCache.customLabelEnable ? getCustomLabelsFromUI().filter(l=>l.enabled) : []
+  customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(l=>l.enabled) : []
     };
       
       Papa.parse(config.file, {
@@ -431,7 +431,7 @@ async function updateCustomLabelsPreview() {
         labelskip: settingsCache.labelskip,
         sortByPaymentDate: settingsCache.sortByPaymentDate,
         customLabelEnable: settingsCache.customLabelEnable,
-        customLabels: settingsCache.customLabelEnable ? getCustomLabelsFromUI().filter(l=>l.enabled) : []
+  customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(l=>l.enabled) : []
       };
     const hasCSVLoaded = !!(window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length > 0);
 
@@ -670,10 +670,10 @@ async function processCSVResults(results, config) {
   updatePrintCountDisplay(unprinted.length, labelSheetsForDisplay, customFacesForDisplay);
 
   // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
-  await updateCustomLabelsSummary();
+  await CustomLabels.updateSummary();
 
   // ボタンの状態を更新
-  updateButtonStates();
+  CustomLabels.updateButtonStates();
 }
 
 async function processCustomLabelsOnly(config, isPreviewMode = false) {
@@ -761,7 +761,7 @@ async function processCustomLabelsOnly(config, isPreviewMode = false) {
   }
   
   // ボタンの状態を更新
-  updateButtonStates();
+  CustomLabels.updateButtonStates();
 }
 
 // ヘッダーの印刷枚数表示を更新する関数
@@ -986,7 +986,7 @@ function registerSettingChangeHandlers() {
         case 'sortByPaymentDate': settingsCache.sortByPaymentDate = value; break;
         case 'orderImageEnable': settingsCache.orderImageEnable = value; break;
       }
-      if (def.id === 'labelskipnum') { updateButtonStates(); }
+  if (def.id === 'labelskipnum') { CustomLabels.updateButtonStates(); }
       if (Array.isArray(def.sideEffects)) {
         for (const fx of def.sideEffects) {
           try { await fx(value); } catch(e) { console.error('sideEffect error', def.id, e); }
@@ -996,7 +996,7 @@ function registerSettingChangeHandlers() {
     });
 
     if (def.id === 'labelskipnum') {
-      el.addEventListener('input', function() { updateButtonStates(); });
+  el.addEventListener('input', function() { CustomLabels.updateButtonStates(); });
     }
   }
 }
@@ -1973,8 +1973,8 @@ async function createIndividualOrderImageDropZone(orderNumber) {
 }
 
 document.getElementById("file").addEventListener("change", async function() {
-  updateButtonStates();
-  await updateCustomLabelsSummary();
+  CustomLabels.updateButtonStates();
+  await CustomLabels.updateSummary();
   
   // 固定ヘッダーのファイル選択状態を更新
   const fileInput = this;
@@ -2003,7 +2003,7 @@ document.getElementById("file").addEventListener("change", async function() {
 // ページロード時にボタン状態を設定
 window.addEventListener("load", function() {
   // 初期状態でボタンを設定
-  updateButtonStates();
+  CustomLabels.updateButtonStates();
 });
 
 // グローバルエラーハンドリング
@@ -2319,7 +2319,7 @@ async function updateSkipCount() {
     
     // 有効なカスタムラベル面数を取得
     if (document.getElementById("customLabelEnable").checked) {
-      const customLabels = getCustomLabelsFromUI();
+  const customLabels = CustomLabels.getFromUI();
       const enabledCustomLabels = customLabels.filter(label => label.enabled);
       const totalCustomCount = enabledCustomLabels.reduce((sum, label) => sum + label.count, 0);
       totalUsedLabels += totalCustomCount;
@@ -2345,7 +2345,7 @@ async function updateSkipCount() {
     
     // カスタムラベルの上限も更新（エラーハンドリング付き）
     try {
-      await updateCustomLabelsSummary();
+  await CustomLabels.updateSummary();
       console.log('✅ カスタムラベルサマリー更新完了');
     } catch (summaryError) {
       console.error('⚠️ カスタムラベルサマリー更新エラー:', summaryError);

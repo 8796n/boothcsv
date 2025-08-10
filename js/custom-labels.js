@@ -205,23 +205,7 @@
   highlightEmpty, clearHighlights, updateButtonStates
   };
 
-  // 後方互換グローバル関数（既存コードが呼んでいてもモジュールに委譲）
-  window.initializeCustomLabels = (...a)=>window.CustomLabels.initialize(...a);
-  window.addCustomLabelItem = (...a)=>window.CustomLabels.addItem(...a);
-  window.removeCustomLabelItem = (...a)=>window.CustomLabels.removeItem(...a);
-  window.getCustomLabelsFromUI = ()=>window.CustomLabels.getFromUI();
-  window.saveCustomLabels = ()=>window.CustomLabels.save();
-  window.updateCustomLabelsSummary = ()=>window.CustomLabels.updateSummary();
-  window.adjustCustomLabelsForTotal = (...a)=>window.CustomLabels.adjustForTotal(...a);
-  window.setupCustomLabelEvents = ()=>window.CustomLabels.setupEvents();
-  window.clearAllCustomLabels = ()=>window.CustomLabels.clearAll();
-  window.hasCustomLabelsWithContent = ()=>window.CustomLabels.hasContent();
-  window.hasEmptyEnabledCustomLabels = ()=>window.CustomLabels.hasEmptyEnabled();
-  window.removeEmptyCustomLabels = ()=>window.CustomLabels.removeEmpty();
-  window.highlightEmptyCustomLabels = ()=>window.CustomLabels.highlightEmpty();
-  window.clearCustomLabelHighlights = ()=>window.CustomLabels.clearHighlights();
-  window.updateButtonStates = ()=>window.CustomLabels.updateButtonStates();
-  window.validateCustomLabelsQuiet = window.validateCustomLabelsQuiet || (()=>window.CustomLabels.validateQuiet());
+  // 後方互換グローバルは整理済み（直接呼び出しは CustomLabels.* を利用してください）
 })();
 
 // =============================
