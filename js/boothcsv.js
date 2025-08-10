@@ -2092,58 +2092,11 @@ async function updateAllOrderImagesVisibility(enabled) {
   }
 }
 
-// 複数カスタムラベルの初期化
-// initializeCustomLabels は custom-labels.js モジュールに移動
-
-// カスタムラベル項目を追加
-// addCustomLabelItem は custom-labels.js に移動
-
-// カスタムラベル項目を削除
-// removeCustomLabelItem は custom-labels.js に移動
-
-// UIからカスタムラベルデータを取得
-// getCustomLabelsFromUI は custom-labels.js に移動
-
-// カスタムラベルデータを保存
-// saveCustomLabels は custom-labels.js に移動
-
-// カスタムラベルの総計を更新（非同期対応）
-// updateCustomLabelsSummary は custom-labels.js に移動
-
-// 総枚数用の調整関数
-// adjustCustomLabelsForTotal は custom-labels.js に移動
-
-// setupCustomLabelEvents は custom-labels.js に移動
-
-// 全てのカスタムラベルを削除
-// clearAllCustomLabels は custom-labels.js に移動
-
-// updateButtonStates (カスタムラベル関連処理) は custom-labels.js に移動
-
-// カスタムラベルに内容があるかチェック
-// hasCustomLabelsWithContent は custom-labels.js に移動
-
-// カスタムラベルが有効だが内容が未設定の項目があるかチェック
-// hasEmptyEnabledCustomLabels は custom-labels.js に移動
-
-// 未設定のカスタムラベル項目を削除
-// removeEmptyCustomLabels は custom-labels.js に移動
-
-// 未設定のカスタムラベル項目を強調表示
-// highlightEmptyCustomLabels は custom-labels.js に移動
-
-// カスタムラベル項目の強調表示をクリア
-// clearCustomLabelHighlights は custom-labels.js に移動
-
-// カスタムラベル項目のインデックスを再設定
-// reindexCustomLabelItems は custom-labels.js に移動
-
-
-
-// applyFormatToSelection / clearAllContent など書式関連関数は custom-labels.js へ移動
-
-// 選択範囲にフォントサイズを適用（統合された関数を使用）
-// テキストのみ入力可能にする設定
+// ---- カスタムラベル関連ロジック整理済み ----
+//  編集 / 書式 / フォント / 検証 / 保存 / 集計 / イベント初期化 / 遅延プレビュー
+//  -> custom-labels.js / custom-labels-font.js に集約
+//  boothcsv.js 側は高レベルの CSV 処理と最終描画のみ担当
+// ------------------------------------------
 
 // 必須テンプレートの存在を起動時に検証
 function verifyRequiredTemplates() {
