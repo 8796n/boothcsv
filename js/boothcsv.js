@@ -33,10 +33,36 @@ let isEditingCustomLabel = false;
 let pendingUpdateTimer = null;
 
 // デバッグログ用関数
-function debugLog(...args) {
-  if (DEBUG_MODE) {
-    console.log(...args);
+const DEBUG_FLAGS = {
+  csv: true,          // CSV 読み込み関連
+  repo: true,         // OrderRepository 連携
+  label: false,       // ラベル生成詳細（大量になるので初期OFF）
+  font: false,        // フォント読み込み
+  customLabel: false, // カスタムラベルUI
+  image: false,       // 画像/ドロップゾーン
+  general: true       // 一般的な進行ログ
+};
+function debugLog(catOrMsg, ...rest){
+  if(!DEBUG_MODE) return;
+  let cat = 'general';
+  let msgArgs;
+  if(typeof catOrMsg === 'string' && catOrMsg.startsWith('[')){
+    // 形式: [cat] メッセージ
+    const m = catOrMsg.match(/^\[([^\]]+)\]\s?(.*)$/);
+    if(m){
+      cat = m[1];
+      const tail = m[2];
+      msgArgs = tail ? [tail, ...rest] : rest;
+    } else {
+      msgArgs = [catOrMsg, ...rest];
+    }
+  } else if(typeof catOrMsg === 'string' && DEBUG_FLAGS[catOrMsg] !== undefined){
+    cat = catOrMsg; msgArgs = rest;
+  } else {
+    msgArgs = [catOrMsg, ...rest];
   }
+  if(!DEBUG_FLAGS[cat]) return;
+  console.log(`[${cat}]`, ...msgArgs);
 }
 
 // HTMLエスケープ（フォントメタ表示用）
@@ -597,13 +623,37 @@ async function processCSVResults(results, config) {
   }
   if (!window.orderRepository) return; // フェイルセーフ
 
+  // デバッグ: 先頭行の列キー確認（BOM混入/名称ズレ検出用）
+  if (DEBUG_MODE && results && Array.isArray(results.data)) {
+    const first = results.data[0];
+    if (first) {
+  debugLog('[csv] 先頭行キー一覧', Object.keys(first));
+    } else {
+  debugLog('[csv] CSVにデータ行がありません');
+    }
+  }
+
   // CSV の順序（= BOOTH ダウンロードの注文番号降順）を保持したまま repository に反映
   await window.orderRepository.bulkUpsert(results.data);
   const csvOrderKeys = [];
+  let debugValidOrderCount = 0;
   for (const row of results.data) {
   const num = getOrderNumberFromCSVRow(row);
     if (!num) continue;
     csvOrderKeys.push(OrderRepository.normalize(num));
+    debugValidOrderCount++;
+    if (DEBUG_MODE) {
+      const normalized = OrderRepository.normalize(num);
+      const rec = window.orderRepository.get(normalized);
+  debugLog('[repo] 読み込み注文', { raw:num, normalized, exists: !!rec, printedAt: rec ? rec.printedAt : null });
+    }
+  }
+  if (DEBUG_MODE) {
+  debugLog('[csv] 行数サマリ', {
+      totalRows: results.data.length,
+      withOrderNumber: debugValidOrderCount,
+      repositoryStored: window.orderRepository.getAll().length
+    });
   }
   // 表示対象は今回の CSV に含まれる注文のみ（従来挙動に合わせ、過去 CSV の注文は表示しない）
   const orderObjs = csvOrderKeys.map(k => window.orderRepository.get(k)).filter(o => !!o);
@@ -694,6 +744,18 @@ async function processCSVResults(results, config) {
     if (totalLabelArray.length > 0) {
   await generateLabels(totalLabelArray, { skipOnFirstSheet: skipCount });
     }
+  }
+
+  if (DEBUG_MODE) {
+  debugLog('[label] ラベル生成サマリ', {
+      skipCount,
+      unprintedCount: unprinted.length,
+      detailCount: detailRows.length,
+      labelRowCount: labelRows.length,
+      customLabelCount: totalCustomLabelCount,
+      totalLabelArrayLength: (typeof totalLabelArray !== 'undefined') ? totalLabelArray.length : 0,
+      requiredSheets
+    });
   }
 
   // 印刷枚数の表示（複数シート対応）
@@ -997,12 +1059,12 @@ async function setupOrderPrintedAtPanel(cOrder, orderNumber) {
 // 設定変更イベントを一括登録し重複ロジックを削減
 function registerSettingChangeHandlers() {
   const defs = [
-    { id: 'labelyn', key: 'LABEL_SETTING', type: 'checkbox', scroll: true },
-    { id: 'labelskipnum', key: 'LABEL_SKIP', type: 'number', scroll: true },
-    { id: 'sortByPaymentDate', key: 'SORT_BY_PAYMENT', type: 'checkbox', scroll: true },
-    { id: 'orderImageEnable', key: 'ORDER_IMAGE_ENABLE', type: 'checkbox', scroll: false, sideEffects: [
-        (val)=>toggleOrderImageRow(val),
-        async (val)=>{ await updateAllOrderImagesVisibility(val); }
+    { id: 'labelyn', key: 'LABEL_SETTING', type: 'checkbox' },
+    { id: 'labelskipnum', key: 'LABEL_SKIP', type: 'number' },
+    { id: 'sortByPaymentDate', key: 'SORT_BY_PAYMENT', type: 'checkbox' },
+    { id: 'orderImageEnable', key: 'ORDER_IMAGE_ENABLE', type: 'checkbox', sideEffects: [
+        (val) => toggleOrderImageRow(val),
+        async (val) => { await updateAllOrderImagesVisibility(val); }
       ] },
     // customLabelEnable はカスタムラベルUI群と関係が深く遅延初期化 setupCustomLabelEvents() 内に既存処理があるためここでは扱わない
   ];
@@ -1011,14 +1073,12 @@ function registerSettingChangeHandlers() {
     const el = document.getElementById(def.id);
     if (!el) continue;
     const keyConst = StorageManager.KEYS[def.key];
-    el.addEventListener(def.type === 'number' ? 'change' : 'change', async function() {
-      const restore = def.scroll ? captureAndRestoreScrollPosition() : null;
+    el.addEventListener('change', async function() {
       let value;
       if (def.type === 'checkbox') value = this.checked;
       else if (def.type === 'number') value = parseInt(this.value, 10) || 0;
       else value = this.value;
       await StorageManager.set(keyConst, value);
-      // settingsCache 反映
       switch(def.id){
         case 'labelyn': settingsCache.labelyn = value; break;
         case 'labelskipnum': settingsCache.labelskip = value; break;
@@ -1032,63 +1092,15 @@ function registerSettingChangeHandlers() {
         }
       }
       await autoProcessCSV();
-      if (restore) restore();
     });
 
-    // input イベント（リアルタイムUI反映が必要なもの）
     if (def.id === 'labelskipnum') {
       el.addEventListener('input', function() { updateButtonStates(); });
     }
   }
 }
 
-// スクロール位置を保持・復元する（再描画でDOMが差し替わってもUXを維持）
-function captureAndRestoreScrollPosition() {
-  const doc = document.scrollingElement || document.documentElement;
-  const x = window.scrollX || doc.scrollLeft || 0;
-  const y = window.scrollY || doc.scrollTop || 0;
-  const prevScrollHeight = doc.scrollHeight || document.body.scrollHeight || 0;
-  const viewportH = window.innerHeight || doc.clientHeight || 0;
-  const prevScrollable = (prevScrollHeight - viewportH) > 2; // 実質スクロール可能か
-  debugLog('📌 captureScroll', { x, y, prevScrollHeight, viewportH, prevScrollable });
-
-  return function restore() {
-    const docNow = document.scrollingElement || document.documentElement;
-    const newScrollHeight = docNow.scrollHeight || document.body.scrollHeight || 0;
-    const newViewportH = window.innerHeight || docNow.clientHeight || 0;
-    const newScrollable = (newScrollHeight - newViewportH) > 2;
-
-    // どちらも実質スクロール不可なら復元不要
-    if (!prevScrollable && !newScrollable) {
-      debugLog('↩️ restoreScroll skip: not scrollable');
-      return;
-    }
-
-    const maxPrev = Math.max(prevScrollHeight - viewportH, 1);
-    const ratio = Math.min(Math.max(y / maxPrev, 0), 1);
-    const maxNew = Math.max(newScrollHeight - newViewportH, 0);
-    const targetY = Math.min(Math.max(Math.round(ratio * maxNew), 0), maxNew);
-
-    const doScroll = () => {
-      const currentY = window.scrollY || docNow.scrollTop || 0;
-      const currentX = window.scrollX || docNow.scrollLeft || 0;
-      // ほぼ同位置ならスキップ
-      if (Math.abs(currentY - targetY) < 2 && Math.abs(currentX - x) < 2) {
-        debugLog('↩️ restoreScroll skip: no-op', { targetY, currentY });
-        return;
-      }
-      debugLog('↩️ restoreScroll', { ratio, targetY, maxNew, newScrollHeight });
-      try {
-        window.scrollTo({ left: x, top: targetY, behavior: 'auto' });
-      } catch {
-        window.scrollTo(x, targetY);
-      }
-    };
-
-    // レイアウト確定後に1回だけ復元（二重RAF）
-    requestAnimationFrame(() => requestAnimationFrame(doScroll));
-  };
-}
+// 以前は設定変更時にスクロール位置復元をしていたが、設定UIはページ上部のみで再描画影響が小さいためロジック削除
 
 // 現在の「読み込んだファイル全て表示」のON/OFFを返す
 // showAllOrders 廃止
@@ -1448,82 +1460,49 @@ function createDropzone(div){ // 互換のため名称維持（内部はペー�
 }
 
 async function createLabel(labelData=""){
-  const divQr = createDiv('qr');
-  const divOrdernum = createDiv('ordernum');
-  const divYamato = createDiv('yamato');
-
-  // ラベルデータが文字列の場合（既存の注文番号）
-  if (typeof labelData === 'string') {
-    if (labelData) {
-      addP(divOrdernum, labelData);
-      const qr = await StorageManager.getQRData(labelData);
-      if(qr && qr['qrimage']){
-        // 保存されたQR画像がある場合は画像を表示 (ArrayBuffer -> Blob URL 対応)
-        const elImage = document.createElement('img');
-        let srcValue = qr['qrimage'];
-        if (qr.isBinary && qr.qrimage instanceof ArrayBuffer) {
-          try {
-            const blob = new Blob([qr.qrimage], { type: qr.qrimageType || 'image/png' });
-            srcValue = URL.createObjectURL(blob);
-            // 解放タイミング: 画像読み込み後 or 削除時
-            elImage.addEventListener('load', () => {
-              // 過剰に頻繁に revoke すると表示問題が出るブラウザもあるため、削除イベントで revoke
-            });
-            elImage.addEventListener('error', () => {
-              console.error('QR画像Blob URL読み込み失敗');
-            });
-          } catch (e) {
-            console.error('QR画像Blob生成失敗', e);
-          }
-        }
-        elImage.src = srcValue;
-        divQr.appendChild(elImage);
-        addP(divYamato, qr['receiptnum']);
-        addP(divYamato, qr['receiptpassword']);
-        addEventQrReset(elImage);
-      } else {
-        // QR画像がない場合のみドロップゾーンを作成
-        createDropzone(divQr);
-      }
-    }
-  } 
-  // ラベルデータがオブジェクトの場合（カスタムラベル）
-  else if (typeof labelData === 'object' && labelData.type === 'custom') {
-    divOrdernum.classList.add('custom-label');
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('custom-label-text');
-    contentDiv.innerHTML = labelData.content;
-    
-    // 文字サイズを適用
-    if (labelData.fontSize) {
-      contentDiv.style.fontSize = labelData.fontSize;
-    }
-    
-    divOrdernum.appendChild(contentDiv);
-    
-    // カスタムラベルの場合はQRコードエリアとヤマトエリアを非表示
-    divQr.style.display = 'none';
-    divYamato.style.display = 'none';
-    
-    // カスタムラベルが全体を覆うようにスタイル調整
-    divOrdernum.style.position = 'absolute';
-    divOrdernum.style.width = '100%';
-    divOrdernum.style.height = '100%';
-    divOrdernum.style.top = '0';
-    divOrdernum.style.left = '0';
-    divOrdernum.style.display = 'flex';
-    divOrdernum.style.alignItems = 'center';
-    divOrdernum.style.justifyContent = 'center';
-    divOrdernum.style.padding = '2px';
-    divOrdernum.style.boxSizing = 'border-box';
+  // カスタムラベル判定を先に
+  if (typeof labelData === 'object' && labelData?.type === 'custom') {
+    const base = cloneTemplate('customLabelCell');
+    // base は <td class="qrlabel custom-mode"> ...
+    const td = base.matches('td') ? base : base.querySelector('td.qrlabel');
+    const contentWrap = td.querySelector('.custom-content');
+    contentWrap.innerHTML = labelData.content || '';
+    if (labelData.fontSize) contentWrap.style.fontSize = labelData.fontSize;
+    return td;
   }
 
-  const tdLabel = document.createElement('td');
-  tdLabel.classList.add('qrlabel');
-  tdLabel.appendChild(divQr);
-  tdLabel.appendChild(divOrdernum);
-  tdLabel.appendChild(divYamato);
+  // 通常ラベル（注文番号 or 空）
+  const base = cloneTemplate('labelCell');
+  const tdLabel = base.matches('td') ? base : base.querySelector('td.qrlabel');
+  const divQr = tdLabel.querySelector('.qr');
+  const divOrdernum = tdLabel.querySelector('.ordernum');
+  const divYamato = tdLabel.querySelector('.yamato');
 
+  if (typeof labelData === 'string' && labelData) {
+    addP(divOrdernum, labelData);
+    const qr = await StorageManager.getQRData(labelData);
+    if (qr && qr['qrimage']) {
+      const elImage = document.createElement('img');
+      let srcValue = qr['qrimage'];
+      if (qr.isBinary && qr.qrimage instanceof ArrayBuffer) {
+        try {
+          const blob = new Blob([qr.qrimage], { type: qr.qrimageType || 'image/png' });
+          srcValue = URL.createObjectURL(blob);
+          elImage.addEventListener('error', () => console.error('QR画像Blob URL読み込み失敗'));
+        } catch (e) {
+          console.error('QR画像Blob生成失敗', e);
+        }
+      }
+      elImage.src = srcValue;
+      divQr.appendChild(elImage);
+      addP(divYamato, qr['receiptnum']);
+      addP(divYamato, qr['receiptpassword']);
+      addEventQrReset(elImage);
+    } else {
+      createDropzone(divQr);
+    }
+  }
+  // 空文字 / falsy の場合はパディングセル: 何も入れない
   return tdLabel;
 }
 
@@ -2213,7 +2192,7 @@ function initializeCustomLabels(customLabels) {
 
 // カスタムラベル項目を追加
 function addCustomLabelItem(text = '', count = 1, index = null, enabled = true) {
-  debugLog('addCustomLabelItem関数が呼び出されました'); // デバッグ用
+  debugLog('[customLabel] addCustomLabelItem 呼び出し');
   debugLog('引数:', { text, count, index }); // デバッグ用
   
   const container = document.getElementById('customLabelsContainer');
@@ -3620,7 +3599,9 @@ function verifyRequiredTemplates() {
     'qrDropPlaceholder',
     'orderImageDropDefault',
     'customLabelsInstructionTemplate',
-    'fontListItemTemplate'
+  'fontListItemTemplate',
+  'labelCell',
+  'customLabelCell'
   ];
   // cloneTemplate 内部で存在検証。失敗時は即 throw。
   required.forEach(id => cloneTemplate(id));
@@ -4055,7 +4036,7 @@ async function loadCustomFontsCSS() {
       // 既存style除去
       const old = document.getElementById('custom-fonts-style');
       if (old) old.remove();
-      console.log('カスタムフォントがありません');
+  debugLog('[font] カスタムフォントなし');
       return;
     }
 
@@ -4079,7 +4060,7 @@ async function loadCustomFontsCSS() {
         const p = face.load().then(loaded => {
           if (myToken !== _fontFaceLoadToken) return; // キャンセル
           document.fonts.add(loaded);
-          console.log(`FontFaceロード完了: ${fontName}`);
+          debugLog('[font] FontFaceロード完了', fontName);
         }).catch(err => {
           console.error(`FontFaceロード失敗 (${fontName})`, err);
         });
@@ -4090,7 +4071,7 @@ async function loadCustomFontsCSS() {
     }
     await Promise.all(loadPromises);
     if (myToken !== _fontFaceLoadToken) return; // 途中キャンセル
-  console.log(`${loadPromises.length}個のカスタムフォント(FontFace API)を読み込みました`);
+  debugLog('[font] 読み込み完了', { loadedCount: loadPromises.length });
   return;
   } catch (error) {
     console.error('カスタムフォント読み込みエラー:', error);

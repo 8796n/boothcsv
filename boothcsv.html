@@ -159,6 +159,25 @@
       </table>
     </section>
 </template>
+<!-- 個々のラベルセル用テンプレート（createLabel で利用）。table/tr でラップし td を正しくパースさせる -->
+<template id="labelCell">
+  <table><tr>
+    <td class="qrlabel">
+      <div class="qr"></div>
+      <div class="ordernum"></div>
+      <div class="yamato"></div>
+    </td>
+  </tr></table>
+</template>
+<template id="customLabelCell">
+  <table><tr>
+    <td class="qrlabel custom-mode">
+      <div class="custom-wrapper">
+        <div class="custom-content"></div>
+      </div>
+    </td>
+  </tr></table>
+</template>
 <template id="customLabelItem">
   <div class="custom-label-item">
     <div class="custom-label-item-header">

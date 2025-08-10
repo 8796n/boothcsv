@@ -28,7 +28,23 @@
     async bulkUpsert(csvRows){
       let changed = 0;
       for(const row of csvRows){
-        const raw = (typeof OrderNumberManager !== 'undefined' && OrderNumberManager.getFromCSVRow) ? OrderNumberManager.getFromCSVRow(row) : (row && row[0]);
+        // 現行実装では OrderNumberManager 廃止済みのため CSV ヘッダー名から取得
+        let raw;
+        if (row) {
+          if (typeof OrderNumberManager !== 'undefined' && OrderNumberManager.getFromCSVRow) {
+            raw = OrderNumberManager.getFromCSVRow(row);
+          } else {
+            // ヘッダー付きパース: 注文番号列名でアクセス
+            if (typeof CONSTANTS !== 'undefined' && CONSTANTS.CSV && CONSTANTS.CSV.ORDER_NUMBER_COLUMN) {
+              raw = row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN];
+            } else {
+              raw = row[0]; // フォールバック（想定外）
+            }
+          }
+        }
+        if (DEBUG_MODE) {
+          debugLog('[repo] bulkUpsert row', { raw, sampleKeys: row ? Object.keys(row).slice(0,5) : null });
+        }
         const key = OrderRepository.normalize(raw);
         if(!key) continue;
         const existing = this.cache.get(key);
@@ -44,6 +60,9 @@
             await this.db.saveOrder(existing);
           }
         }
+      }
+      if (DEBUG_MODE) {
+        debugLog('[repo] bulkUpsert summary', { inputRows: csvRows.length, newRecords: changed, totalCache: this.cache.size });
       }
       if(changed>0) this.emit();
       return changed;
