@@ -298,17 +298,9 @@
   function applyDefaultFontToSelection(editor){
     const sel=window.getSelection(); if(!sel.rangeCount || sel.isCollapsed) return; try { const range=sel.getRangeAt(0); const text=range.toString(); if(!text) return; const ca=range.commonAncestorContainer; let target=null; if(ca.nodeType===Node.TEXT_NODE){ const p=ca.parentElement; if(p&&p.tagName==='SPAN'&&p.style.fontFamily) target=p; } else if(ca.tagName==='SPAN' && ca.style.fontFamily) target=ca; if(target){ const style=(target.getAttribute('style')||''); const clean=style.split(';').filter(r=>{ const prop=r.trim().split(':')[0]?.trim().toLowerCase(); return prop && prop!=='font-family'; }).join('; '); if(clean.trim()) target.setAttribute('style', clean); else { const parent=target.parentNode; const textContent=target.textContent; const tn=document.createTextNode(textContent); parent.replaceChild(tn, target); range.selectNode(tn); sel.removeAllRanges(); sel.addRange(range); } } else { applyStyleToSelection('font-family','',editor,true); } cleanupEmptySpans(editor); } catch(e){ log('applyDefaultFontToSelection error', e); applyStyleToSelection('font-family','',editor,true); } editor?.focus(); }
 
-  // 公開
+  // 公開 (CustomLabels に統合)
   window.CustomLabelStyle = { applyStyleToSelection, applyFontFamilyToSelection, applyFontSizeToSelection, applyDefaultFontToSelection, analyzeSelectionRange, cleanupEmptySpans };
-  // CustomLabels 経由でも利用できるよう上書き
   if(window.CustomLabels){ Object.assign(window.CustomLabels, window.CustomLabelStyle); }
-  // グローバル後方互換（既存コードが直接呼んでいた場合）
-  window.applyStyleToSelection = window.applyStyleToSelection || window.CustomLabelStyle.applyStyleToSelection;
-  window.applyFontFamilyToSelection = window.applyFontFamilyToSelection || window.CustomLabelStyle.applyFontFamilyToSelection;
-  window.applyFontSizeToSelection = window.applyFontSizeToSelection || window.CustomLabelStyle.applyFontSizeToSelection;
-  window.applyDefaultFontToSelection = window.applyDefaultFontToSelection || window.CustomLabelStyle.applyDefaultFontToSelection;
-  window.analyzeSelectionRange = window.analyzeSelectionRange || window.CustomLabelStyle.analyzeSelectionRange;
-  window.cleanupEmptySpans = window.cleanupEmptySpans || window.CustomLabelStyle.cleanupEmptySpans;
   // 書式（bold/italic/underline）関連を追加
   function getTargetTagName(command){
     switch(command){
@@ -331,15 +323,11 @@
     const sel=window.getSelection(); sel.removeAllRanges(); if(editor && children.length){ try { const nr=document.createRange(); const first=children[0]; const last=children[children.length-1]; if(first.nodeType===Node.TEXT_NODE) nr.setStart(first,0); else nr.setStartBefore(first); if(last.nodeType===Node.TEXT_NODE) nr.setEnd(last,last.textContent.length); else nr.setEndAfter(last); sel.addRange(nr); } catch { try { const nr=document.createRange(); nr.selectNodeContents(editor); nr.collapse(false); sel.addRange(nr); } catch {} } }
   }
   function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(isSelectionFormatted(range,command)){ removeFormatFromSelection(range,command); } else { applyFormatToRange(range,command); } }
-  function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); window.saveCustomLabels?.(); } }
+  function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); window.CustomLabels?.save(); } }
   function applyFormatToSelection(command, editor){ if(command==='clear'){ clearAllContent(editor); return; } try { let exec; switch(command){ case 'bold': exec='bold'; break; case 'italic': exec='italic'; break; case 'underline': exec='underline'; break; default: return; } document.execCommand(exec,false,null); } catch(e){ applyFormatToSelectionFallback(command, editor); } editor?.focus(); }
-  // 公開 / マージ
+  // 公開 / マージ (後方互換グローバル不要)
   window.CustomLabelStyle = { ...window.CustomLabelStyle, applyFormatToSelection, applyFormatToSelectionFallback, isSelectionFormatted, getTargetTagName, applyFormatToRange, removeFormatFromSelection, clearAllContent };
   if(window.CustomLabels){ Object.assign(window.CustomLabels, { applyFormatToSelection, clearAllContent }); }
-  // 後方互換
-  window.applyFormatToSelection = window.applyFormatToSelection || applyFormatToSelection;
-  window.clearAllContent = window.clearAllContent || clearAllContent;
-  window.removeFormatFromSelection = window.removeFormatFromSelection || removeFormatFromSelection;
 })();
 
 // =============================
@@ -408,9 +396,9 @@
       item.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation();
         setTimeout(()=>{
-          try { applyFormatToSelection(option.command, editor); } catch(err){ clog('applyFormat error', err); }
+          try { window.CustomLabelStyle?.applyFormatToSelection(option.command, editor); } catch(err){ clog('applyFormat error', err); }
           closeContextMenu(menu);
-          try { saveCustomLabels(); } catch{}
+          try { window.CustomLabels?.save(); } catch{}
         },10);
       });
       menu.appendChild(item);
@@ -437,8 +425,8 @@
         item.addEventListener('click', e => {
           e.preventDefault(); e.stopPropagation();
             setTimeout(()=>{
-              try { applyFontSizeToSelection(size, editor); } catch(err){ clog('applyFontSize error', err); }
-              closeContextMenu(menu); try { saveCustomLabels(); } catch{}
+              try { window.CustomLabelStyle?.applyFontSizeToSelection(size, editor); } catch(err){ clog('applyFontSize error', err); }
+              closeContextMenu(menu); try { window.CustomLabels?.save(); } catch{}
             },10);
         });
         menu.appendChild(item);
@@ -465,12 +453,12 @@
             try {
               const selection = window.getSelection();
               if (selection.rangeCount>0 && !selection.isCollapsed) {
-                applyFontFamilyToSelection('', editor);
+                window.CustomLabelStyle?.applyFontFamilyToSelection('', editor);
               } else if (editor?.style?.fontFamily) {
                 editor.style.fontFamily='';
               }
-            } catch(err){ clog('defaultFont error', err); applyFontFamilyToSelection('', editor); }
-            closeContextMenu(menu); try { saveCustomLabels(); } catch{}
+            } catch(err){ clog('defaultFont error', err); window.CustomLabelStyle?.applyFontFamilyToSelection('', editor); }
+            closeContextMenu(menu); try { window.CustomLabels?.save(); } catch{}
           },10);
         });
         menu.appendChild(defaultFontItem);
@@ -498,7 +486,7 @@
             fontItem.addEventListener('mouseenter',function(){ this.style.backgroundColor='#f0f0f0'; });
             fontItem.addEventListener('mouseleave',function(){ this.style.backgroundColor='transparent'; });
             fontItem.addEventListener('mousedown',e=>{ e.preventDefault(); e.stopPropagation(); });
-            fontItem.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try { applyFontFamilyToSelection(font.family, editor); } catch(err){ clog('fontFamily error', err);} closeContextMenu(menu); try { saveCustomLabels(); } catch{} },10); });
+            fontItem.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try { window.CustomLabelStyle?.applyFontFamilyToSelection(font.family, editor); } catch(err){ clog('fontFamily error', err);} closeContextMenu(menu); try { window.CustomLabels?.save(); } catch{} },10); });
             menu.appendChild(fontItem);
           });
         }
@@ -514,7 +502,7 @@
             fontItem.addEventListener('mouseenter',function(){ this.style.backgroundColor='#f0f0f0'; });
             fontItem.addEventListener('mouseleave',function(){ this.style.backgroundColor='transparent'; });
             fontItem.addEventListener('mousedown',e=>{ e.preventDefault(); e.stopPropagation(); });
-            fontItem.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try { applyFontFamilyToSelection(fontName, editor); } catch(err){ clog('customFont error', err);} closeContextMenu(menu); try { saveCustomLabels(); } catch{} },10); });
+            fontItem.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try { window.CustomLabelStyle?.applyFontFamilyToSelection(fontName, editor); } catch(err){ clog('customFont error', err);} closeContextMenu(menu); try { window.CustomLabels?.save(); } catch{} },10); });
             menu.appendChild(fontItem);
           });
         }
