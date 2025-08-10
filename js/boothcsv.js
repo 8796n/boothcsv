@@ -92,48 +92,7 @@ function isValidOrderNumber(orderNumber){
   return !!(orderNumber && String(orderNumber).trim());
 }
 
-// カスタムラベルの複数シート計算ユーティリティ
-class CustomLabelCalculator {
-  // 複数シートにわたるカスタムラベルの配置計算
-  static calculateMultiSheetDistribution(totalLabels, skipCount) {
-    const sheetsInfo = [];
-    let remainingLabels = totalLabels;
-    let currentSkip = skipCount;
-    let sheetNumber = 1;
-    
-    while (remainingLabels > 0) {
-      const availableInSheet = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - currentSkip;
-      const labelsInThisSheet = Math.min(remainingLabels, availableInSheet);
-      const remainingInSheet = availableInSheet - labelsInThisSheet;
-      
-      sheetsInfo.push({
-        sheetNumber,
-        skipCount: currentSkip,
-        labelCount: labelsInThisSheet,
-        remainingCount: remainingInSheet,
-        totalInSheet: currentSkip + labelsInThisSheet
-      });
-      
-      remainingLabels -= labelsInThisSheet;
-      currentSkip = 0; // 2シート目以降はスキップなし
-      sheetNumber++;
-    }
-    
-    return sheetsInfo;
-  }
-  
-  // 最終シートの情報を取得
-  static getLastSheetInfo(totalLabels, skipCount) {
-    const sheetsInfo = this.calculateMultiSheetDistribution(totalLabels, skipCount);
-    return sheetsInfo[sheetsInfo.length - 1] || null;
-  }
-  
-  // 総シート数を計算
-  static calculateTotalSheets(totalLabels, skipCount) {
-    const sheetsInfo = this.calculateMultiSheetDistribution(totalLabels, skipCount);
-    return sheetsInfo.length;
-  }
-}
+// CustomLabelCalculator は custom-labels.js に統合（重複定義削除）
 
 // CSV解析ユーティリティ
 class CSVAnalyzer {
@@ -476,11 +435,6 @@ async function updateCustomLabelsPreview() {
   }
 }
 
-// scheduleDelayedPreviewUpdate は CustomLabels.schedulePreview に移動
-
-// 静かなバリデーション関数（アラート表示なし）
-// validateCustomLabelsQuiet は custom-labels.js へ移動（後方互換のためグローバル関数は存続）
-
 function clearPreviousResults() {
   for (let sheet of document.querySelectorAll('section')) {
     sheet.parentNode.removeChild(sheet);
@@ -489,8 +443,6 @@ function clearPreviousResults() {
   // 印刷枚数表示もクリア
   clearPrintCountDisplay();
 }
-
-// collectConfig 廃止：settingsCache を利用
 
 async function processCSVResults(results, config) {
   // --- Stage B: OrderRepository 利用 ---
@@ -646,10 +598,6 @@ async function processCSVResults(results, config) {
     });
   }
 
-  // 印刷枚数の表示（複数シート対応）
-  // showCSVWithCustomLabelPrintSummary(csvRowCount, totalCustomLabelCount, skipCount, requiredSheets);
-
-  // ヘッダーの印刷枚数表示を更新
   // ラベル印刷がオフの場合はラベル枚数・カスタム面数ともに0を表示する
   const labelSheetsForDisplay = config.labelyn ? requiredSheets : 0;
   const customFacesForDisplay = (config.labelyn && config.customLabelEnable) ? totalCustomLabelCount : 0;
@@ -735,9 +683,6 @@ async function processCustomLabelsOnly(config, isPreviewMode = false) {
     remainingLabels = remainingLabels.filter(label => label.count > 0);
     currentSkip = 0; // 2シート目以降はスキップなし
   }
-  
-  // 印刷枚数の表示（複数シート対応）
-  // showMultiSheetCustomLabelPrintSummary(totalCustomLabelCount, labelskipNum, sheetsInfo);
   
   // ヘッダーの印刷枚数表示を更新（カスタムラベルのみ）
   if (!isPreviewMode) {

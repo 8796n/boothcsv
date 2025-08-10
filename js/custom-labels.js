@@ -1,5 +1,20 @@
 // custom-labels.js
 // カスタムラベル管理モジュール（boothcsv.js から分離）
+// CustomLabelCalculator もここに統合
+class CustomLabelCalculator {
+  static calculateMultiSheetDistribution(totalLabels, skipCount){
+    const sheetsInfo=[]; let remainingLabels=totalLabels; let currentSkip=skipCount; let sheetNumber=1;
+    while(remainingLabels>0){
+      const availableInSheet = (CONSTANTS?.LABEL?.TOTAL_LABELS_PER_SHEET||44) - currentSkip;
+      const labelsInThisSheet = Math.min(remainingLabels, availableInSheet);
+      const remainingInSheet = availableInSheet - labelsInThisSheet;
+      sheetsInfo.push({ sheetNumber, skipCount: currentSkip, labelCount: labelsInThisSheet, remainingCount: remainingInSheet, totalInSheet: currentSkip + labelsInThisSheet });
+      remainingLabels -= labelsInThisSheet; currentSkip=0; sheetNumber++;
+    }
+    return sheetsInfo.length? sheetsInfo : [{ sheetNumber:1, skipCount:currentSkip, labelCount:0, remainingCount:(CONSTANTS?.LABEL?.TOTAL_LABELS_PER_SHEET||44)-currentSkip, totalInSheet:currentSkip }];
+  }
+}
+window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalculator;
 (function(){
   if(window.CustomLabels) return;
   const dlog = (...a)=>{ if(typeof debugLog==='function') debugLog('[customLabel]', ...a); };
