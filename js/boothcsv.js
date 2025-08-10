@@ -857,9 +857,25 @@ async function generateOrderDetails(data, labelarr, labelSet = null, printedAtMa
   for (let row of data) {
     const cOrder = document.importNode(tOrder.content, true);
     let orderNumber = '';
-    
-    // 注文情報の設定
-    orderNumber = setOrderInfo(cOrder, row, labelarr, labelSet);
+    // --- setOrderInfo inline 化 ---
+    for (let c of Object.keys(row).filter(key => key != CONSTANTS.CSV.PRODUCT_COLUMN)) {
+      const divc = cOrder.querySelector('.' + c);
+      if (!divc) continue;
+      if (c === CONSTANTS.CSV.ORDER_NUMBER_COLUMN) {
+        orderNumber = getOrderNumberFromCSVRow(row);
+        divc.textContent = orderNumber; // 生の番号のみ（装飾はCSS）
+      } else if (row[c]) {
+        divc.textContent = row[c];
+      }
+    }
+    // section にアンカーID付与
+    if (orderNumber) {
+      const sectionEl = cOrder.querySelector('section.sheet');
+      if (sectionEl) {
+        const normalized = String(orderNumber).trim();
+        sectionEl.id = `order-${normalized}`;
+      }
+    }
 
     // 注文明細ごとの非印刷パネル（印刷日時）のセットアップ
     try {
@@ -1074,28 +1090,6 @@ function captureAndRestoreScrollPosition() {
   };
 }
 
-// 注文番号のセクションにスクロール（固定ヘッダー分オフセット考慮）
-function scrollToOrderSection(normalizedOrder) {
-  if (!normalizedOrder) return;
-  debugLog('🎯 scrollToOrderSection request', { normalizedOrder });
-  const target = getOrderSection(normalizedOrder);
-  if (!target) {
-    debugLog('🎯 target not found', { normalizedOrder });
-    return false;
-  }
-  const header = document.querySelector('.fixed-header');
-  const headerHeight = header && getComputedStyle(header).display !== 'none' ? header.offsetHeight : 0;
-  const rect = target.getBoundingClientRect();
-  const y = window.scrollY + rect.top - Math.max(headerHeight + 8, 0);
-  debugLog('🎯 scrolling', { headerHeight, rectTop: rect.top, to: y });
-  try {
-    window.scrollTo({ top: Math.max(y, 0), behavior: 'auto' });
-  } catch {
-    window.scrollTo(0, Math.max(y, 0));
-  }
-  return true;
-}
-
 // 現在の「読み込んだファイル全て表示」のON/OFFを返す
 // showAllOrders 廃止
 
@@ -1168,43 +1162,7 @@ function recalcAndUpdateCounts() {
   });
 }
 
-// 将来的に dataset.orderNumber を撤去するための抽象化ヘルパ
-// 旧 getOrderNumberFromSection / OrderNumberManager 呼び出し箇所は
-// 直接 section.id.slice(6) を使用するよう移行済み。
-
-function setOrderInfo(cOrder, row, labelarr, labelSet = null) {
-  let orderNumber = '';
-  
-  for (let c of Object.keys(row).filter(key => key != CONSTANTS.CSV.PRODUCT_COLUMN)) {
-    const divc = cOrder.querySelector("." + c);
-    if (divc) {
-      if (c == CONSTANTS.CSV.ORDER_NUMBER_COLUMN) {
-  orderNumber = getOrderNumberFromCSVRow(row);
-  divc.textContent = orderNumber; // 生の番号のみ。ラベルはCSS擬似要素で付与。
-  // 以前はここで labelarr に未印刷の注文番号を追加していたが、
-  // 現在は DOM 上の未印刷セクションの並びから再収集して重複を避けるため追加しない
-      } else if (row[c]) {
-        divc.textContent = row[c];
-      }
-    }
-  }
-  // セクションに注文アンカーを付与
-  try {
-    const sectionEl = cOrder.querySelector('section.sheet');
-    if (sectionEl && orderNumber) {
-  const normalized = (orderNumber == null) ? '' : String(orderNumber).trim();
-  sectionEl.id = `order-${normalized}`; // id を唯一のアンカーとして利用
-    }
-  } catch {}
-
-// 注文番号 -> section 解決（id のみ）
-function getOrderSection(normalized){
-  if(!normalized) return null;
-  return document.getElementById(`order-${normalized}`);
-}
-  
-  return orderNumber;
-}
+// getOrderSection は scrollToOrderSection 内にインライン化済み（id=order-<番号>）
 
 async function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`個別画像ドロップゾーン作成開始 - 注文番号: "${orderNumber}"`);
