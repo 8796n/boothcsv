@@ -476,20 +476,7 @@ async function updateCustomLabelsPreview() {
   }
 }
 
-// 遅延更新を実行する関数
-function scheduleDelayedPreviewUpdate(delay = 500) {
-  // 既存のタイマーをクリア
-  if (pendingUpdateTimer) {
-    clearTimeout(pendingUpdateTimer);
-  }
-  
-  // 新しいタイマーを設定
-  pendingUpdateTimer = setTimeout(async () => {
-    debugLog('遅延プレビュー更新を実行');
-    await updateCustomLabelsPreview();
-    pendingUpdateTimer = null;
-  }, delay);
-}
+// scheduleDelayedPreviewUpdate は CustomLabels.schedulePreview に移動
 
 // 静かなバリデーション関数（アラート表示なし）
 // validateCustomLabelsQuiet は custom-labels.js へ移動（後方互換のためグローバル関数は存続）

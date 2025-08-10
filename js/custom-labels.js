@@ -50,12 +50,12 @@
       else { (window.__pendingEditorInit = window.__pendingEditorInit || []).push(editorElement); }
       if(typeof setupTextOnlyEditor==='function'){ try{ setupTextOnlyEditor(editorElement);}catch(e){ console.error('setupTextOnlyEditor early error',e);} }
       editorElement.addEventListener('focus',()=>{ dlog('edit start'); isEditingCustomLabel=true; });
-      editorElement.addEventListener('blur',()=>{ dlog('edit end'); isEditingCustomLabel=false; scheduleDelayedPreviewUpdate?.(300); });
+  editorElement.addEventListener('blur',()=>{ dlog('edit end'); isEditingCustomLabel=false; CustomLabels.schedulePreview(300); });
       editorElement.addEventListener('input', async ()=>{
         const item = editorElement.closest('.custom-label-item');
         if(item && editorElement.textContent.trim()!=='') item.classList.remove('error');
         save(); updateButtonStates(); await updateSummary();
-        if(!isEditingCustomLabel){ await autoProcessCSV?.(); } else { scheduleDelayedPreviewUpdate?.(1000); }
+  if(!isEditingCustomLabel){ await autoProcessCSV?.(); } else { CustomLabels.schedulePreview(1000); }
       });
     }
     // checkbox change
@@ -149,7 +149,7 @@
     const initialEditor=document.getElementById('initialCustomLabelEditor');
     if(initialEditor){
       initialEditor.addEventListener('focus',()=>{ isEditingCustomLabel=true; });
-      initialEditor.addEventListener('blur',()=>{ isEditingCustomLabel=false; scheduleDelayedPreviewUpdate?.(300); });
+  initialEditor.addEventListener('blur',()=>{ isEditingCustomLabel=false; CustomLabels.schedulePreview(300); });
     }
     const enableCb=document.getElementById('customLabelEnable');
     enableCb?.addEventListener('change', async function(){ toggleCustomLabelRow?.(this.checked); await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE,this.checked); settingsCache.customLabelEnable=this.checked; updateButtonStates(); await autoProcessCSV?.(); });
@@ -198,11 +198,21 @@
     await updateSummary();
   }
 
+  // カスタムラベル専用 遅延プレビュー更新 (boothcsv.js から移動)
+  let __pendingPreviewTimer=null;
+  async function schedulePreview(delay=500){
+    if(__pendingPreviewTimer){ clearTimeout(__pendingPreviewTimer); }
+    __pendingPreviewTimer = setTimeout(async ()=>{
+      try { debugLog?.('遅延プレビュー更新を実行 (CustomLabels.schedulePreview)'); await window.updateCustomLabelsPreview?.(); }
+      finally { __pendingPreviewTimer=null; }
+    }, delay);
+  }
+
   // 公開 API
   window.CustomLabels = {
     initialize, addItem, removeItem, reindex, getFromUI, save, updateSummary,
   adjustForTotal, setupEvents, clearAll, hasContent, hasEmptyEnabled, removeEmpty, validateQuiet,
-  highlightEmpty, clearHighlights, updateButtonStates
+  highlightEmpty, clearHighlights, updateButtonStates, schedulePreview
   };
 
   // 後方互換グローバルは整理済み（直接呼び出しは CustomLabels.* を利用してください）
