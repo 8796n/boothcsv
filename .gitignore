@@ -47,3 +47,4 @@ download-images.ps1
 # スクリーンショット自動化ツール
 scripts/screenshot/chromedriver.exe
 chromedriver.exe
+tests/

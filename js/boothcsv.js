@@ -1314,19 +1314,27 @@ async function createLabel(labelData=""){
     const repo = window.orderRepository || null;
     const rec = repo ? repo.get(labelData) : null;
     const qr = rec ? rec.qr : null;
-    if (qr && qr['qrimage']) {
+    if (qr && qr['qrimage'] != null) {
       const elImage = document.createElement('img');
-      let srcValue = qr['qrimage'];
-      if (qr.isBinary && qr.qrimage instanceof ArrayBuffer) {
-        try {
+      // 永続化後は ArrayBuffer が入る想定。isBinary フラグに依存せず型で判定する
+      try {
+        if (qr.qrimage instanceof ArrayBuffer) {
           const blob = new Blob([qr.qrimage], { type: qr.qrimageType || 'image/png' });
-          srcValue = URL.createObjectURL(blob);
+          elImage.src = URL.createObjectURL(blob);
           elImage.addEventListener('error', () => console.error('QR画像Blob URL読み込み失敗'));
-        } catch (e) {
-          console.error('QR画像Blob生成失敗', e);
+        } else if (typeof qr.qrimage === 'string') {
+          // 互換: dataURL などの文字列
+          elImage.src = qr.qrimage;
+        } else {
+          console.warn('未知のQR画像型、ドロップゾーンにフォールバック');
+          createDropzone(divQr);
+          return tdLabel;
         }
+      } catch (e) {
+        console.error('QR画像生成失敗', e);
+        createDropzone(divQr);
+        return tdLabel;
       }
-      elImage.src = srcValue;
       divQr.appendChild(elImage);
       addP(divYamato, qr['receiptnum']);
       addP(divYamato, qr['receiptpassword']);

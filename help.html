@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <!-- Favicon -->
+  <link rel="icon" href="/favicon.ico">
   <title>BOOTH CSV 使い方ガイド</title>
   <style>
     body {
@@ -140,7 +142,7 @@
 
     <div class="notice-box">
       <strong>おしらせ</strong><br>
-      これは便利だーって思っていただいたおやさしい方はデバッグに協力すると思って<a href="https://nyantic.booth.pm/" target="_blank">NyanticLabs.</a>からなんか買ってください。これを使って帳票印刷して送ります。
+  これは便利だーって思っていただいたおやさしい方はデバッグに協力すると思って<a href="https://nyantic.booth.pm/" target="_blank" rel="noopener">NyanticLabs.</a>からなんか買ってください。これを使って帳票印刷して送ります。
     </div>
 
     <div class="toc">
@@ -151,7 +153,8 @@
         <li><a href="#ラベルシール印刷">ラベルシール印刷</a></li>
         <li><a href="#画像機能について">画像機能について</a></li>
         <li><a href="#カスタムラベル機能について">カスタムラベル機能について</a></li>
-        <li><a href="#CSV処理結果について">CSV処理結果について</a></li>
+  <li><a href="#CSV処理結果について">CSV処理結果について</a></li>
+  <li><a href="#バックアップとリストア">バックアップとリストア</a></li>
         <li><a href="#デバッグ機能">デバッグ機能</a></li>
         <li><a href="#サンプルで試す">サンプルで試す</a></li>
       </ul>
@@ -160,7 +163,7 @@
     <h2 id="基本情報">基本情報</h2>
     
     <h3>想定する使用対象者は誰？</h3>
-    <p><a href="https://booth.pm/" target="_blank">BOOTH</a>で自家通販をしている人で主に「<a href="https://booth.pm/anshin_booth_pack_guides" target="_blank">あんしんBOOTHパック</a>」の利用者</p>
+  <p><a href="https://booth.pm/" target="_blank" rel="noopener">BOOTH</a>で自家通販をしている人で主に「<a href="https://booth.pm/anshin_booth_pack_guides" target="_blank" rel="noopener">あんしんBOOTHパック</a>」の利用者</p>
 
     <h3>なにができるの？</h3>
     <p>出荷準備のときにあると便利な帳票と「あんしんBOOTHパック」で出荷のときに便利なQRコードをラベルシールに印刷できます。<br>
@@ -173,7 +176,10 @@
         <li><strong>リアルタイム処理</strong>: CSVファイルを選択すると自動的に処理が実行されるようになりました</li>
         <li><strong>ワークフロー最適化</strong>: CSVダウンロード → ファイル選択 → 印刷の流れが分かりやすいレイアウトに変更</li>
         <li><strong>直感的な操作</strong>: 手動実行ボタンを廃止し、シンプルで分かりやすいUIに改善</li>
-        <li><strong>外部リンク表示</strong>: CSVダウンロードボタンにツールチップで「BOOTHの注文一覧へ飛びます」の注意書きを追加</li>
+  <li><strong>外部リンク表示</strong>: CSVダウンロードボタンにツールチップで「BOOTHの注文一覧へ飛びます」の注意書きを追加</li>
+  <li><strong>バックアップ/リストア</strong>: 保存データ（フォント/設定/注文/カスタムラベル/画像）をJSONで一括バックアップ/リストア可能に</li>
+  <li><strong>カスタムラベルの安定化</strong>: カスタムラベルを独立ストア化し、タイムスタンプキーの単調増加で衝突を回避</li>
+  <li><strong>QR画像の再読み込み安定化</strong>: ArrayBuffer画像をBlob URLで表示し、再読み込み後の404を解消</li>
       </ul>
     </div>
 
@@ -189,7 +195,7 @@
     
     <div class="step-list">
       <ol>
-        <li><a href="https://github.com/8796n/boothcsv/archive/master.zip" target="_blank">ここ</a>からzipファイルをダウンロードして展開します。</li>
+  <li><a href="https://github.com/8796n/boothcsv/archive/master.zip" target="_blank" rel="noopener">ここ</a>からzipファイルをダウンロードして展開します。</li>
         <li><code>boothcsv.html</code> を Chrome から開きます。</li>
         <li>注文明細に画像を印刷したい場合は、まず「注文明細に画像を表示」にチェックを入れます。</li>
         <li>全ての注文に同じ画像を表示したい場合は、「注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択」のところに画像をドラッグ&ドロップするかクリックしてファイル選択します。</li>
@@ -206,15 +212,15 @@
 
     <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>
     <img src="docs/images/csv-labels.png" alt="ラベルシール印刷画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
-    <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
+  <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank" rel="noopener">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
 
     <div class="step-list">
       <ol>
-        <li>A4 44面 四辺余白付のラベルシールを用意します。例えば<a href="https://amzn.to/2KkRXhE" target="_blank">これ</a>とか<a href="https://amzn.to/2KpdW7k" target="_blank">これ</a></li>
+  <li>A4 44面 四辺余白付のラベルシールを用意します。例えば<a href="https://amzn.to/2KkRXhE" target="_blank" rel="noopener">これ</a>とか<a href="https://amzn.to/2KpdW7k" target="_blank" rel="noopener">これ</a></li>
         <li>ラベルシールも印刷するにチェックを入れます。</li>
         <li>途中まで使ったラベルシールを再使用する場合にはスキップする枚数を入れます。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。</li>
         <li><strong>📥 CSVをダウンロード</strong>ボタンでBOOTHにアクセスしてCSVをダウンロードし、<strong>📁 CSVファイルを選択</strong>ボタンでファイルを選択すると、ラベル用紙の枚数も自動的に表示されます。</li>
-        <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
+  <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank" rel="noopener">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
         <li>なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。</li>
         <li>印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。</li>
       </ol>
@@ -252,10 +258,9 @@
 
     <p>個別画像はグローバル画像より優先されます。つまり個別画像を設定した注文はその画像が、設定しなかった注文はグローバル画像が表示されます。</p>
 
-    <p>画像は全部ブラウザのIndexedDBに保存されるので、ページを再読み込みしても残ってます。不要になったらクリアボタンで削除できます：</p>
+    <p>画像とQRコード情報はブラウザのIndexedDBに内包保存されるので、ページを再読み込みしても残ります。不要になったらクリアボタンで削除できます：</p>
     <ul>
-      <li><strong>全てのQR画像をクリア</strong>: QRコード関連の画像だけ削除</li>
-      <li><strong>全ての注文画像をクリア</strong>: グローバル画像と全ての個別画像を削除</li>
+      <li><strong>全ての注文データをクリア</strong>: 注文行・QR・注文画像・グローバル画像をまとめて削除（フォント/設定は残る）</li>
     </ul>
 
     <p>画像をクリックすると削除されるので、間違えて設定した場合も簡単にリセットできます。印刷時は画像ドロップゾーンは表示されないので邪魔になりません。</p>
@@ -375,9 +380,9 @@
 
     <h2>使ってる仕組み</h2>
     <ul>
-      <li>印刷に便利なCSS <a href="https://github.com/cognitom/paper-css" target="_blank">Paper CSS</a></li>
-      <li>QRコード読んでくれるJavaScript <a href="https://github.com/cozmo/jsQR" target="_blank">jsQR</a></li>
-      <li>CSVをいい感じに読んでくれるJavaScript <a href="https://github.com/mholt/PapaParse" target="_blank">PapaParse</a></li>
+  <li>印刷に便利なCSS <a href="https://github.com/cognitom/paper-css" target="_blank" rel="noopener">Paper CSS</a></li>
+  <li>QRコード読んでくれるJavaScript <a href="https://github.com/cozmo/jsQR" target="_blank" rel="noopener">jsQR</a></li>
+  <li>CSVをいい感じに読んでくれるJavaScript <a href="https://github.com/mholt/PapaParse" target="_blank" rel="noopener">PapaParse</a></li>
     </ul>
 
     <h2>裏側の見どころ</h2>
@@ -389,8 +394,19 @@
     </ul>
 
     <div style="text-align: center; margin: 40px 0; padding: 20px; background-color: #f6f8fa; border-radius: 6px;">
-      <p><a href="https://github.com/8796n/boothcsv" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: bold;">🚀 このツールの公開場所（GitHub）</a></p>
+      <p><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener" style="color: #0366d6; text-decoration: none; font-weight: bold;">🚀 このツールの公開場所（GitHub）</a></p>
       <p><a href="boothcsv.html" style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">📋 ツールを使う</a></p>
+    </div>
+
+    <h2 id="バックアップとリストア">バックアップとリストア</h2>
+    <div class="feature-box">
+      <h4>保存データのバックアップ/リストア</h4>
+      <ul>
+        <li><strong>バックアップ</strong>: 「📥 データバックアップ」ボタンでJSONをダウンロード</li>
+        <li><strong>リストア</strong>: 「📤 データリストア」からバックアップJSONを選択（現在の全データが上書きされます）</li>
+        <li><strong>対象</strong>: フォント、設定、注文データ（QR・画像含む）、カスタムラベル</li>
+      </ul>
+      <p><strong>注意</strong>: リストアは上書きです。実行前に必要であればバックアップを取得してください。</p>
     </div>
   </div>
 </body>

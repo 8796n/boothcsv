@@ -85,7 +85,8 @@
         delete rec.qr;
       } else {
         // 期待プロパティのみコピー
-        const { receiptnum, receiptpassword, qrimage, qrimageType, qrhash, isBinary } = qrData;
+        const { receiptnum, receiptpassword, qrimage, qrimageType, qrhash } = qrData;
+        const isBinary = qrData.isBinary !== undefined ? qrData.isBinary : (qrimage instanceof ArrayBuffer);
         rec.qr = { receiptnum, receiptpassword, qrimage, qrimageType, qrhash, isBinary, updatedAt:Date.now() };
       }
       await this.db.saveOrder(rec);
