@@ -9,7 +9,7 @@
   class UnifiedDatabase {
     constructor() {
     this.dbName = 'BoothCSVStorage';
-  this.version = 8; // v6: images ストア削除, グローバル画像は settings にバイナリ格納 / v7: 残存 qrData ストア物理削除 / v8: customLabels 独立ストア追加
+  this.version = 9; // v6: images ストア削除, グローバル画像は settings にバイナリ格納 / v7: 残存 qrData ストア物理削除 / v8: customLabels 独立ストア追加 / v9: 旧 v8 環境で customLabels が欠落している DB を強制アップグレードで修復
       this.fontStoreName = 'fonts';
       this.settingsStoreName = 'settings';
       this.db = null; this.connectionLogged = false; this._migrationDone = false;
