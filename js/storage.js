@@ -97,19 +97,29 @@
   async migrateCustomLabelsToStoreOnce(){
       if(!this.db) await this.init();
       try {
+        // レガシー settings.customLabels を削除する共通関数（存在しなくてもOK）
+        const purgeLegacySetting = () => new Promise((res)=>{
+          try{
+            const tx=this.db.transaction(['settings'],'readwrite');
+            const st=tx.objectStore('settings');
+            st.delete('customLabels');
+            tx.oncomplete=()=>res(true);
+            tx.onerror=()=>res(false);
+          }catch{ res(false); }
+        });
         // すでに移行済みのフラグ
         const migrated = await this.getSetting('customLabelsMigratedV1');
-        if(migrated){ return 0; }
+        if(migrated){ await purgeLegacySetting(); return 0; }
         // 新ストアが存在しない場合は何もしない（バージョンが古い）
         if(!this.db.objectStoreNames.contains('customLabels')){ return 0; }
         // 既にデータがある場合は二重移行しない
         const hasData = await new Promise((res,rej)=>{ const tx=this.db.transaction(['customLabels'],'readonly'); const st=tx.objectStore('customLabels'); const c=st.count(); c.onsuccess=()=>res((c.result||0)>0); c.onerror=()=>rej(c.error); });
-        if(hasData){ await this.setSetting('customLabelsMigratedV1', true); return 0; }
+        if(hasData){ await this.setSetting('customLabelsMigratedV1', true); await purgeLegacySetting(); return 0; }
         // 旧 settings の customLabels を取得（JSON 文字列）
         const legacy = await this.getSetting('customLabels');
-        if(!legacy){ await this.setSetting('customLabelsMigratedV1', true); return 0; }
+        if(!legacy){ await this.setSetting('customLabelsMigratedV1', true); await purgeLegacySetting(); return 0; }
         let arr=[]; try{ arr=JSON.parse(legacy)||[]; }catch{ arr=[]; }
-        if(!Array.isArray(arr) || arr.length===0){ await this.setSetting('customLabelsMigratedV1', true); return 0; }
+        if(!Array.isArray(arr) || arr.length===0){ await this.setSetting('customLabelsMigratedV1', true); await purgeLegacySetting(); return 0; }
         // 追加処理（キー衝突は考慮しない前提。念のため +index）
         const base=Date.now();
   await new Promise((res,rej)=>{
@@ -134,10 +144,12 @@
           tx.onerror=()=>rej(tx.error);
         });
         // 後方互換のため settings 側は削除しない
-        await this.setSetting('customLabelsMigratedV1', true);
+  await this.setSetting('customLabelsMigratedV1', true);
   // 直近の ts を更新
   this._lastCustomLabelTs = Math.max(this._lastCustomLabelTs, base + arr.length - 1);
-        return arr.length;
+  // レガシー設定を最後に削除
+  await purgeLegacySetting();
+  return arr.length;
       } catch(e){ console.warn('migrateCustomLabelsToStoreOnce error:', e); return 0; }
     }
 
@@ -215,7 +227,7 @@
   async function initializeUnifiedDatabase(){ try{ console.log('🚀 IndexedDB 初期化...'); unifiedDB=new UnifiedDatabase(); await unifiedDB.init(); return unifiedDB; }catch(e){ console.error('❌ IndexedDB 初期化失敗:', e); alert('お使いの環境では必要なデータベース機能(IndexedDB)を利用できません。\nブラウザ設定(プライベートモード/ストレージ無効化等)を確認してください。'); return null; } }
 
   class StorageManager {
-  static KEYS = { LABEL_SETTING:'labelyn', LABEL_SKIP:'labelskip', SORT_BY_PAYMENT:'sortByPaymentDate', CUSTOM_LABEL_ENABLE:'customLabelEnable', CUSTOM_LABEL_TEXT:'customLabelText', CUSTOM_LABEL_COUNT:'customLabelCount', CUSTOM_LABELS:'customLabels', ORDER_IMAGE_ENABLE:'orderImageEnable', FONT_SECTION_COLLAPSED:'fontSectionCollapsed', GLOBAL_ORDER_IMAGE_BIN:'globalOrderImageBin' };
+  static KEYS = { LABEL_SETTING:'labelyn', LABEL_SKIP:'labelskip', SORT_BY_PAYMENT:'sortByPaymentDate', CUSTOM_LABEL_ENABLE:'customLabelEnable', CUSTOM_LABEL_TEXT:'customLabelText', CUSTOM_LABEL_COUNT:'customLabelCount', CUSTOM_LABELS:'customLabels', ORDER_IMAGE_ENABLE:'orderImageEnable', FONT_SECTION_COLLAPSED:'fontSectionCollapsed', GLOBAL_ORDER_IMAGE_BIN:'globalOrderImageBin', CUSTOM_LABELS_HELP_OPEN:'customLabelsHelpOpen', SIDEBAR_DOCKED:'sidebarDocked' };
     static async ensureDatabase(){ if(!unifiedDB) unifiedDB=await initializeUnifiedDatabase(); return unifiedDB; }
     static getDefaultSettings(){ return { labelyn:true, labelskip:0, sortByPaymentDate:false, customLabelEnable:false, customLabelText:'', customLabelCount:1, customLabels:[], orderImageEnable:false }; }
   static async getSettingsAsync(){ const db=await StorageManager.ensureDatabase(); if(!db) return StorageManager.getDefaultSettings(); try{ const s={}; for(const [_,k] of Object.entries(StorageManager.KEYS)){ const v=await db.getSetting(k); s[k]=v; } return { labelyn: s.labelyn!==null ? s.labelyn : true, labelskip: s.labelskip!==null ? parseInt(s.labelskip,10):0, sortByPaymentDate: s.sortByPaymentDate!==null ? s.sortByPaymentDate:false, customLabelEnable: s.customLabelEnable!==null ? s.customLabelEnable:false, customLabelText: s.customLabelText||'', customLabelCount: s.customLabelCount!==null ? parseInt(s.customLabelCount,10):1, customLabels: await StorageManager.getCustomLabels(), orderImageEnable: s.orderImageEnable!==null ? s.orderImageEnable:false }; }catch(e){ console.error('設定取得エラー:', e); return StorageManager.getDefaultSettings(); } }
@@ -233,14 +245,32 @@
   static async clearAllCustomLabels(){ const db=await StorageManager.ensureDatabase(); if(!db) return; try{ await db.clearAllCustomLabels(); }catch(e){ console.error('clearAllCustomLabels error:', e); }
   }
   // v6: 個別注文画像 API 削除 (OrderRepository を使用) / グローバル画像バイナリ
-    static async setGlobalOrderImageBinary(arrayBuffer,mimeType='image/png'){ const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化'); if(!(arrayBuffer instanceof ArrayBuffer)) throw new Error('ArrayBuffer 必須'); const value={ data: arrayBuffer, mimeType, updatedAt: Date.now() }; await db.setSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN, value); }
-    static async getGlobalOrderImageBinary(){ const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化'); const v=await db.getSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN); if(!v||!v.data) return null; return v; }
+    static async setGlobalOrderImageBinary(arrayBuffer,mimeType='image/png'){
+      const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化');
+      if(!(arrayBuffer instanceof ArrayBuffer)) throw new Error('ArrayBuffer 必須');
+      // 0バイトは保存せずクリア扱い
+      if(arrayBuffer.byteLength===0){ await db.setSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN, null); return; }
+      const value={ data: arrayBuffer, mimeType, updatedAt: Date.now() };
+      await db.setSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN, value);
+    }
+    static async clearGlobalOrderImageBinary(){ const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化'); await db.setSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN, null); }
+    static async getGlobalOrderImageBinary(){
+      const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化');
+      const v=await db.getSetting(StorageManager.KEYS.GLOBAL_ORDER_IMAGE_BIN);
+      // null または data フィールドが無い／0バイトは未設定扱い
+      if(!v||!v.data||!(v.data instanceof ArrayBuffer)||v.data.byteLength===0) return null;
+      return v;
+    }
   static async clearAllOrders(){ const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化のため注文データを削除できません'); try{ const c=await db.clearAllOrders(); console.log(`🧹 注文データクリア: ${c}件`); return c; }catch(e){ console.error('注文データ一括削除エラー:', e); throw e; } }
   // v5: 旧 QR helper 削除 (重複チェック/ハッシュは repository 側)
     static async setUIState(key,val){ await StorageManager.set(key,val); }
     static async getUIState(key,def=null){ return await StorageManager.get(key,def); }
     static async setFontSectionCollapsed(col){ await StorageManager.setUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED,col); }
     static async getFontSectionCollapsed(){ const v=await StorageManager.getUIState(StorageManager.KEYS.FONT_SECTION_COLLAPSED,false); return v===true||v==='true'; }
+  static async setCustomLabelsHelpOpen(isOpen){ await StorageManager.setUIState(StorageManager.KEYS.CUSTOM_LABELS_HELP_OPEN, !!isOpen); }
+  static async getCustomLabelsHelpOpen(){ const v=await StorageManager.getUIState(StorageManager.KEYS.CUSTOM_LABELS_HELP_OPEN,false); return v===true||v==='true'; }
+    static async setSidebarDocked(isDocked){ await StorageManager.setUIState(StorageManager.KEYS.SIDEBAR_DOCKED, !!isDocked); }
+    static async getSidebarDocked(){ const v=await StorageManager.getUIState(StorageManager.KEYS.SIDEBAR_DOCKED,null); if(v===null||typeof v==='undefined') return null; return v===true||v==='true'||v===1||v==='1'; }
   static async exportAllData(){ const db=await StorageManager.ensureDatabase(); if(!db) throw new Error('IndexedDB 未初期化のためバックアップできません'); const exportStore=async(name)=>new Promise((res,rej)=>{ try{ const tx=db.db.transaction([name],'readonly'); const st=tx.objectStore(name); const r=st.getAll(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error);}catch(e){rej(e);} }); const [fonts,settings,orders,customLabels]=await Promise.all(['fonts','settings','orders','customLabels'].map(exportStore)); const encodeAB=(container, fieldPathArr)=>{ // fieldPathArr e.g. ['qr','qrimage'] or ['image','data']
     if(!container) return; let target=container; for(let i=0;i<fieldPathArr.length-1;i++){ target=target[fieldPathArr[i]]; if(!target) return; } const last=fieldPathArr[fieldPathArr.length-1]; const val=target[last]; if(val instanceof ArrayBuffer){ const u8=new Uint8Array(val); target[last]={ __type:'u8', data:Array.from(u8) }; }
   };

@@ -85,7 +85,26 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   function initialize(customLabels){
     const container = getContainer(); if(!container) return;
     container.innerHTML='';
-    container.appendChild(cloneTemplate('customLabelsInstructionTemplate'));
+    const helpNode = cloneTemplate('customLabelsInstructionTemplate');
+    try {
+      // 開閉状態の復元
+      const details = helpNode && helpNode.querySelector ? helpNode.querySelector('#customLabelsHelp') : null;
+      if(details && window.StorageManager && typeof StorageManager.getCustomLabelsHelpOpen==='function'){
+        StorageManager.getCustomLabelsHelpOpen().then(isOpen=>{ if(details.open !== !!isOpen) details.open = !!isOpen; }).catch(()=>{});
+      }
+      // トグル時に保存
+      setTimeout(()=>{
+        const d = document.getElementById('customLabelsHelp');
+        if(d){
+          d.addEventListener('toggle', ()=>{
+            if(window.StorageManager && typeof StorageManager.setCustomLabelsHelpOpen==='function'){
+              StorageManager.setCustomLabelsHelpOpen(!!d.open);
+            }
+          });
+        }
+      }, 0);
+    } catch {}
+    container.appendChild(helpNode);
     if(customLabels && customLabels.length){
       customLabels.forEach((label,index)=>{
         addItem(label.html || label.text, label.count, index, label.enabled !== false, label.fontSize, label.createdAt);
@@ -245,37 +264,23 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   async function updateSummary(){
     const labels = getFromUI();
     const enabledLabels = labels.filter(l=>l.enabled);
-    const totalCount = enabledLabels.reduce((s,l)=>s+l.count,0);
+    const customCount = enabledLabels.reduce((s,l)=>s+l.count,0);
     const skipCount = parseInt(document.getElementById('labelskipnum')?.value||'0',10)||0;
     const fileInput = document.getElementById('file');
     const summary = document.getElementById('customLabelsSummary'); if(!summary) return;
-    if(totalCount===0){
-      if(fileInput?.files?.length>0){
-        try { const info = await CSVAnalyzer.getFileInfo(fileInput.files[0]); const remaining = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - skipCount - info.rowCount; summary.innerHTML=`カスタムラベルなし。<br>44面シート中 スキップ${skipCount} + CSV${info.rowCount} = ${skipCount+info.rowCount}面使用済み。<br>残り${Math.max(0,remaining)}面設定可能。`; }
-        catch { summary.innerHTML='カスタムラベルなし。<br>CSVファイル選択済み（行数解析中...）。'; }
-      } else { summary.innerHTML=`カスタムラベルなし。<br>44面シート中 スキップ${skipCount}面使用済み。`; }
-      summary.style.color='#666'; summary.style.fontWeight='normal'; return;
-    }
+
+    let csvRows = 0;
     if(fileInput?.files?.length>0){
-      try {
-        const info = await CSVAnalyzer.getFileInfo(fileInput.files[0]);
-        const totalLabels = info.rowCount + totalCount;
-        const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalLabels, skipCount);
-        const last = sheetsInfo[sheetsInfo.length-1];
-        if(sheetsInfo.length===1){ summary.innerHTML=`合計 ${totalCount}面のカスタムラベル。<br>1シート使用: スキップ${skipCount} + CSV${info.rowCount} + カスタム${totalCount} = ${skipCount+info.rowCount+totalCount}面<br>最終シート残り${last.remainingCount}面。`; }
-        else { summary.innerHTML=`合計 ${totalCount}面のカスタムラベル。<br>${sheetsInfo.length}シート使用: CSV${info.rowCount} + カスタム${totalCount} = ${info.rowCount+totalCount}面<br>最終シート残り${last.remainingCount}面。`; }
-        summary.style.color='#666'; summary.style.fontWeight='normal';
-      } catch (e) {
-        summary.innerHTML=`合計 ${totalCount}面のカスタムラベル。<br>CSVファイル選択済み（行数解析エラー）<br>CSV処理実行後に最終配置が決定されます。`;
-        summary.style.color='#ffc107'; summary.style.fontWeight='normal';
-      }
-    } else {
-      const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalCount, skipCount);
-      const last = sheetsInfo[sheetsInfo.length-1];
-      if(sheetsInfo.length===1) summary.innerHTML=`合計 ${totalCount}面のカスタムラベル。<br>1シート使用: スキップ${skipCount} + カスタム${totalCount} = ${skipCount+totalCount}面<br>最終シート残り${last.remainingCount}面。`;
-      else summary.innerHTML=`合計 ${totalCount}面のカスタムラベル。<br>${sheetsInfo.length}シート使用: カスタム${totalCount}面<br>最終シート残り${last.remainingCount}面。`;
-      summary.style.color='#666'; summary.style.fontWeight='normal';
+      try { const info = await CSVAnalyzer.getFileInfo(fileInput.files[0]); csvRows = parseInt(info.rowCount||0,10)||0; }
+      catch { /* 解析失敗時は CSV を 0 件扱い（簡素表示優先） */ }
     }
+    const totalLabels = csvRows + customCount;
+    const sheetsInfo = CustomLabelCalculator.calculateMultiSheetDistribution(totalLabels, skipCount);
+    const last = sheetsInfo[sheetsInfo.length-1];
+    const remaining = Math.max(0, last?.remainingCount ?? 0);
+
+    summary.textContent = `最終シートの残り面数: ${remaining}面`;
+    summary.style.color='#666'; summary.style.fontWeight='normal';
   }
 
   async function adjustForTotal(customLabels, maxTotalLabels){
@@ -289,6 +294,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   }
 
   function setupEvents(){
+    // HTML直置きに移行のため、移動ロジックは不要
     const initialEditor=document.getElementById('initialCustomLabelEditor');
     if(initialEditor){
       // Phase2: initialEditor も RichTextManager で統合初期化
@@ -299,7 +305,19 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   initialEditor.addEventListener('blur',()=>{ isEditingCustomLabel=false; CustomLabels.schedulePreview(300); });
     }
     const enableCb=document.getElementById('customLabelEnable');
-    enableCb?.addEventListener('change', async function(){ toggleCustomLabelRow?.(this.checked); await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE,this.checked); settingsCache.customLabelEnable=this.checked; updateButtonStates(); await autoProcessCSV?.(); });
+    if (enableCb) {
+      enableCb.addEventListener('change', async function(){
+        toggleCustomLabelRow?.(this.checked);
+        await StorageManager.set(StorageManager.KEYS.CUSTOM_LABEL_ENABLE,this.checked);
+        settingsCache.customLabelEnable=this.checked;
+        updateButtonStates();
+        await autoProcessCSV?.();
+      });
+      // 初期値の反映（Storageからload済のsettingsCacheに追従）
+      StorageManager.getSettingsAsync()?.then(s=>{
+        try { enableCb.checked = !!s.customLabelEnable; toggleCustomLabelRow?.(enableCb.checked); } catch {}
+      }).catch(()=>{});
+    }
     const addBtn=document.getElementById('addCustomLabelBtn');
     addBtn?.addEventListener('click', async ()=>{ addItem('',1,null,true); save(); updateButtonStates(); await autoProcessCSV?.(); });
     const clearBtn=document.getElementById('clearCustomLabelsBtn');

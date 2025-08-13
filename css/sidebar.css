@@ -1,0 +1,438 @@
+/* Sidebar minimal styles (print-safe, non-conflicting) */
+:root {
+  /* デスクトップ時のサイドバー標準幅（従来より縮小） */
+  --sidebar-width: 350px;
+  /* Sidebar UI tokens */
+  --sb-gap: 8px;
+  --sb-gap-lg: 12px;
+  --sb-radius: 10px;
+  --sb-font-size: 13px;
+}
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 1200;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.sidebar-overlay.show { opacity: 1; visibility: visible; }
+
+.sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  /* 既定幅を変数化して全体の枠組みをスリム化 */
+  width: var(--sidebar-width, 220px);
+  height: 100dvh;
+  background: #fff;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.2);
+  z-index: 1300;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 他スタイルの上書き対策（特異性強化） */
+#appSidebar.sidebar { width: var(--sidebar-width, 220px) !important; }
+/* #appSidebar は .no_print が付与されるため、グローバルの .no_print の min-width を無効化する */
+#appSidebar.no_print { min-width: 0 !important; max-width: none !important; }
+.sidebar.open { transform: translateX(0); }
+
+/* ドック表示: サイドバーを開いたままメインをスクロール */
+body.sidebar-docked #appSidebar { transform: translateX(0) !important; }
+body.sidebar-docked #sidebarOverlay { display: none !important; }
+body.sidebar-docked { overflow: auto !important; margin-left: var(--sidebar-width); transition: margin-left 0.2s ease; }
+/* main-content へのパディングは不要（中央寄せレイアウトと競合するため） */
+body.sidebar-docked .main-content { padding-left: 0; }
+/* ドック時のボタン整頓: ハンバーガー/×を隠してピンのみ */
+body.sidebar-docked #sidebarToggle { display: none !important; }
+body.sidebar-docked #sidebarClose { display: none !important; }
+/* 固定ヘッダーはビューポート基準のため、left/widthでオフセット（paddingでの二重シフトを回避） */
+body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100% - var(--sidebar-width)); padding-left: 0; transition: left 0.2s ease, width 0.2s ease; }
+@media print {
+  body.sidebar-docked { margin-left: 0 !important; }
+  body.sidebar-docked .fixed-header { left: 0 !important; width: 100% !important; padding-left: 0 !important; }
+}
+
+/* ピン留めボタン */
+.sidebar-pin {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #999;
+  transform: rotate(30deg);
+}
+.sidebar-pin:hover { color: #666; }
+.sidebar-pin[aria-pressed="true"] { color: #e91e63; transform: rotate(0deg); }
+
+/* ドック表示: サイドバーを開いたままメインをスクロールできるレイアウト */
+/* main-content の追加オフセットは不要（body margin-left で十分） */
+/* 印刷時はオフセットをリセット（上の @media print で包括） */
+
+.hamburger-btn {
+  width: 36px; height: 36px; min-width: 36px; min-height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.hamburger-btn:hover { background: rgba(255,255,255,0.25); }
+.hamburger-btn:active { transform: translateY(1px); }
+
+.sidebar-header { display:flex; align-items:center; justify-content:space-between; padding:10px 10px; border-bottom:1px solid #eee; }
+.sidebar-title { font-size: var(--sb-font-size); margin: 0 0 6px 0; color: #333; font-weight: 600; }
+.sidebar-close { border:none; background:transparent; font-size:22px; line-height:1; cursor:pointer; }
+.sidebar-content { padding:10px; overflow:auto; flex: 1 1 auto; min-height: 0; }
+.sidebar-footer { padding:6px 10px; border-top:1px solid #eee; color:#666; font-size:12px; }
+.sidebar-footer .sidebar-footer-links { margin-bottom:4px; }
+.sidebar-footer .sidebar-footer-links a { color:#007bff; text-decoration: underline; }
+.sidebar-footer .sidebar-footer-links a:hover { color:#0056b3; }
+.sidebar-section { margin-bottom: var(--sb-gap-lg); }
+.sidebar-group { margin: 6px 0; }
+.sidebar-group label { font-size: 12px; color: #333; }
+.sidebar-group input[type="number"] { width: 120px; padding: 4px 6px; }
+.sidebar-group.checkbox-with-help { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#appSidebar .inline-help {
+  font-size: 12px;
+  color: #007bff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+#appSidebar .inline-help:hover { color: #0056b3; }
+.sidebar-note { color: #666; font-size: 12px; margin-top: 8px; }
+/* dropzone fit */
+.sidebar .dropzone-container { max-width: 100%; }
+/* ID指定のmax-width(760px)を打ち消す */
+#appSidebar #imageDropZone { max-width: 100% !important; width: 100%; }
+/* サイドバー内の画像ドロップゾーンを統一トーンに */
+#appSidebar .order-image-drop {
+  width: 100% !important; /* グローバル定義(600px)を上書き */
+  height: 150px; /* 高さも少し控えめに */
+  margin: 8px 0; /* サイドバーの余白に合わせる */
+  box-sizing: border-box;
+  border: 2px dashed #ccc;
+  border-radius: var(--sb-radius);
+  background: #fafafa;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+#appSidebar .order-image-drop p {
+  padding: 10px; /* 読みやすさを保ちつつ控えめに */
+  font-size: 12px;
+}
+#appSidebar .order-image-drop .preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* サイドバー内のカスタムラベル設定カードの760px上限を解除 */
+#appSidebar .multiple-custom-labels-config { max-width: 100% !important; width: 100%; }
+
+/* 統一ドロップゾーンカード */
+.dropzone-card {
+  width: 100%;
+  min-height: 140px;
+  border: 2px dashed #ccc;
+  border-radius: var(--sb-radius);
+  background: #fafafa;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; cursor: pointer;
+  transition: background-color .2s, border-color .2s, box-shadow .2s;
+}
+.dropzone-card .dz-message { margin: 0; color: #666; padding: 10px; font-size: 12px; }
+.dropzone-card.dragover { background: #e7f3ff; border-color: #007bff; box-shadow: 0 2px 6px rgba(0,123,255,0.15); }
+
+/* フォント用の見た目も画像用に寄せる */
+/* サイドバー内のフォントドロップゾーンを画像ドロップゾーンに揃える */
+#appSidebar #fontDropZone { max-width: 100%; width: 100%; }
+#appSidebar .font-drop-zone {
+  width: 100% !important;
+  height: 150px; /* 画像ドロップゾーンと同じ高さ */
+  margin: 8px 0; /* 画像ドロップゾーンと同じ余白 */
+  box-sizing: border-box;
+  overflow: hidden; /* はみ出し防止 */
+}
+#appSidebar .font-drop-zone .dz-message { padding: 10px; font-size: 12px; max-width: 100%; word-break: break-word; line-height: 1.4; }
+#appSidebar .font-drop-zone .dz-message small { display: block; font-size: 11px; color: #777; }
+
+/* サイドバー内部のカード感（軽い枠と余白）: コンテンツ部のセクションのみ */
+#appSidebar .sidebar-content .sidebar-section {
+  padding: var(--sb-gap);
+  border: 1px solid #eee;
+  border-radius: var(--sb-radius);
+  background: #fff;
+}
+
+/* ラベル/チェックボックスの整列とクリック領域の拡大 */
+#appSidebar .sidebar-group label { display: inline-flex; align-items: center; gap: 8px; line-height: 1.4; }
+#appSidebar .sidebar-group input[type="checkbox"] { width: 16px; height: 16px; }
+
+/* 入力の統一 */
+#appSidebar input[type="number"],
+#appSidebar input[type="text"],
+#appSidebar input[type="file"] {
+  border: 1px solid #ddd;
+  border-radius: calc(var(--sb-radius) - 4px);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+#appSidebar input[type="number"] { width: 100%; max-width: 160px; }
+
+/* 2桁想定の数値入力はコンパクトに（ラベルと同一行に収める） */
+#appSidebar #labelskipnum,
+#appSidebar .custom-label-count-group input[type="number"] {
+  width: 56px !important;   /* 約2桁+パディング分 */
+  max-width: 56px !important;
+  min-width: 44px;
+  text-align: right;
+}
+
+/* サイドバー内のボタンの統一（最低高さ・角丸・字間） */
+#appSidebar .btn-base {
+  border-radius: calc(var(--sb-radius) - 4px) !important;
+  min-height: 32px;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+/* --- Custom labels in sidebar --- */
+#sidebarCustomLabelSection .multiple-custom-labels-config,
+#customLabelsBlock .multiple-custom-labels-config { max-width: 100%; width: 100%; padding: 8px; }
+#sidebarCustomLabelSection .custom-labels-header h4,
+#customLabelsBlock .custom-labels-header h4 { margin: 6px 0; font-size: 14px; }
+#sidebarCustomLabelSection .custom-labels-buttons,
+#customLabelsBlock .custom-labels-buttons { display:flex; gap:6px; flex-wrap:wrap; justify-content: center; }
+/* タイトルを省略した場合でもボタン群が中央に来るようにヘッダー自体を中央寄せ */
+#customLabelsBlock .custom-labels-header { justify-content: center !important; }
+#sidebarCustomLabelSection .custom-label-editor-row,
+#customLabelsBlock .custom-label-editor-row { flex-direction: column; gap: 6px; justify-content: flex-start; align-items: center; }
+#sidebarCustomLabelSection .custom-label-count-group,
+#customLabelsBlock .custom-label-count-group { order: -1; align-self: center; }
+#sidebarCustomLabelSection .rich-text-editor,
+#customLabelsBlock .rich-text-editor { margin: 0 auto; }
+/* カスタムラベルのサマリーは軽量表示（背景のみ） */
+#sidebarCustomLabelSection .custom-labels-summary,
+#customLabelsBlock .custom-labels-summary { margin-top: 8px; padding: 8px; font-size: 12px; color:#444; background:#fafafa; border: none; border-radius: calc(var(--sb-radius) - 4px); }
+
+/* カスタムラベル説明（省スペース表示） */
+#sidebarCustomLabelSection details.custom-labels-instructions,
+#customLabelsBlock details.custom-labels-instructions { margin: 6px 0; border: 1px dashed #ddd; border-radius: 6px; }
+#sidebarCustomLabelSection details.custom-labels-instructions > summary,
+#customLabelsBlock details.custom-labels-instructions > summary { cursor: pointer; padding: 6px 8px; font-size: 12px; color: #555; list-style: none; }
+#sidebarCustomLabelSection details.custom-labels-instructions > summary::before,
+#customLabelsBlock details.custom-labels-instructions > summary::before { content: '▶'; margin-right: 6px; font-size: 10px; color: #777; }
+#sidebarCustomLabelSection details.custom-labels-instructions[open] > summary::before,
+#customLabelsBlock details.custom-labels-instructions[open] > summary::before { content: '▼'; }
+#sidebarCustomLabelSection details.custom-labels-instructions[open] > summary,
+#customLabelsBlock details.custom-labels-instructions[open] > summary { border-bottom: 1px dashed #eee; }
+#sidebarCustomLabelSection details.custom-labels-instructions .instructions-content,
+#customLabelsBlock details.custom-labels-instructions .instructions-content { padding: 6px 8px; font-size: 12px; color: #666; }
+#sidebarCustomLabelSection details.custom-labels-instructions ul,
+#customLabelsBlock details.custom-labels-instructions ul { margin: 0 0 0 1em; padding: 0; }
+
+/* Accessibility helpers */
+.hidden-input { display: none !important; }
+
+/* 保存データ操作（フッター内）は縦並び・同幅に統一 */
+.save-data-footer .save-data-buttons { display: flex; flex-direction: column; gap: 8px; }
+.save-data-footer .save-data-buttons button { width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ヘルプのボタンも同じスタック配置に */
+#appSidebar .stacked-buttons a,
+#appSidebar .stacked-buttons button { width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.save-data-footer .sidebar-title { margin-bottom: 6px; }
+
+/* Help section: remove card frame and center the button */
+#appSidebar #sidebarHelpSection { padding: 0 !important; border: none !important; background: transparent !important; }
+#appSidebar #sidebarHelpSection .stacked-buttons { display: flex; justify-content: center; }
+#appSidebar #sidebarHelpSection .stacked-buttons a,
+#appSidebar #sidebarHelpSection .stacked-buttons button { width: auto !important; max-width: 100%; }
+
+/* Sidebar header right controls */
+.sidebar-header > div { display:flex; align-items:center; gap:8px; margin-left: auto; }
+#appSidebar .sidebar-help-btn { padding: 4px 10px; font-size: 12px; }
+#appSidebar .sidebar-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;          /* サイドバーのボタン既定高さに合わせる */
+  padding: 0 12px;       /* 上下は高さでセンタリングするため0 */
+  line-height: 1;        /* 絵文字による行高のブレを抑止 */
+  gap: 6px;              /* アイコンとテキストの間隔 */
+}
+
+/* Print isolation */
+@media print {
+  .sidebar, .sidebar-overlay, .hamburger-btn { display:none !important; }
+}
+
+/* モバイルでは使いやすさを優先して幅を広げる（オーバーレイ型） */
+@media (max-width: 600px) {
+  .sidebar { width: 88vw; }
+}
+
+/* Header flex styles */
+.fixed-header .fixed-header-content { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: nowrap; }
+.fixed-header-left { display: inline-flex; align-items: center; gap: 10px; }
+
+/* 修正: 本ファイル内の旧定義が固定ヘッダーを上書きしていたため、正規スタイルを再適用 */
+.fixed-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 8px 0;
+}
+.fixed-header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap; /* ヘッダー全体は原則1行で維持 */
+  gap: 15px;
+}
+/* タイトルは既定のまま（boothcsv.css） */
+.main-content { margin-top: 80px; }
+
+/* --- Rich text editor (custom labels) inside sidebar --- */
+#appSidebar .rich-text-editor {
+  width: 180px; /* ラベル幅48.3mm相当 */
+  height: 95px; /* ラベル高25.3mm相当 */
+  min-height: 95px;
+  max-height: 95px;
+  padding: 8px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  background-color: #fff;
+  overflow: hidden; /* スクロールバー非表示 */
+  font-family: inherit;
+  font-size: 12pt;
+  line-height: 1.2;
+  box-sizing: border-box;
+  resize: none;
+  text-align: center;
+  display: block;
+  position: relative;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap; /* 改行とスペースを保持 */
+}
+#appSidebar .rich-text-editor::-webkit-scrollbar { display: none; }
+#appSidebar .rich-text-editor { -ms-overflow-style: none; }
+@supports (-moz-appearance: none) {
+  #appSidebar .rich-text-editor { scrollbar-width: none; }
+}
+
+#appSidebar .custom-label-item.error .rich-text-editor {
+  border-color: #dc3545;
+  background-color: #fff5f5;
+}
+
+#appSidebar .rich-text-editor *,
+#appSidebar .rich-text-editor span,
+#appSidebar .rich-text-editor div {
+  line-height: 1.2 !important;
+  vertical-align: baseline;
+}
+
+#appSidebar .rich-text-editor::after {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; right: -1px; bottom: -1px;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+#appSidebar .rich-text-editor:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+}
+
+#appSidebar .rich-text-editor[contenteditable]:empty::before {
+  content: attr(placeholder);
+  color: #999;
+  font-style: italic;
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: normal;
+  pointer-events: none;
+  font-size: 11pt;
+  text-align: center;
+  width: 90%;
+  max-width: 160px;
+}
+
+/* カスタムフォント設定（サイドバー内に限定） */
+#appSidebar .custom-font-section {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+}
+#appSidebar .custom-font-section h4 {
+  margin: 0 0 10px 0;
+  color: #666;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+#appSidebar .custom-font-section #fontSectionArrow {
+  margin-right: 8px;
+  transition: transform 0.3s;
+}
+#appSidebar .custom-font-section #fontSectionContent {
+  transition: max-height 0.3s ease-out;
+  overflow: hidden;
+}
+#appSidebar #fontDropZone { margin-bottom: 10px; }
+#appSidebar .subtle-title { margin: 5px 0; color: #666; }
+#appSidebar .font-list-header { display:flex; align-items:center; justify-content: space-between; gap:8px; margin: 5px 0; }
+#appSidebar .font-list-header .font-clear-btn { min-height: 28px; padding: 4px 8px; }
+#appSidebar .font-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  padding: 10px;
+  background: white;
+}
+#appSidebar .font-list-placeholder { color: #999; text-align: center; padding: 10px; }
+#appSidebar .font-list-message { text-align: center; padding: 10px; font-size: 13px; }
+#appSidebar .font-list-error { color: #d32f2f; text-align: center; padding: 10px; }
+#appSidebar .font-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  background: #f8f9fa;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+#appSidebar .font-list-item:last-child { margin-bottom: 0; }
+#appSidebar .font-list-item .font-info { flex: 1; min-width: 0; }
+#appSidebar .font-list-item .font-name { font-weight: 500; color: #333; font-size: 14px; }
+#appSidebar .font-list-item .font-meta { font-size: 11px; color: #666; margin-top: 2px; }
+#appSidebar .font-list-item .font-meta span { color: #999; }
+#appSidebar .font-list-item .font-remove-btn { min-width: 50px; }
+/* 見出しとクリアボタンを横並び・余白調整 */
+#appSidebar .font-list-header h5 { margin: 0; }

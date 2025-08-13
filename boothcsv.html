@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/paper-css/0.4.1/paper.css">
 
   <link rel="stylesheet" href="./css/boothcsv.css">
+  <!-- Sidebar styles -->
+  <link rel="stylesheet" href="./css/sidebar.css">
 
   <title>BOOTH宛名印刷用CSV帳票化</title>
   <style>
@@ -26,7 +28,13 @@
 <!-- 固定ヘッダー -->
 <div class="fixed-header">
   <div class="fixed-header-content">
-    <h1 class="fixed-title">BOOTH宛名印刷用CSV帳票化</h1>
+    <div class="fixed-header-left">
+      <!-- ハンバーガーメニュー（サイドバー開閉） -->
+      <button id="sidebarToggle" class="hamburger-btn no_print" aria-label="設定メニューを開く" aria-controls="appSidebar" aria-expanded="false" title="設定メニュー">
+        <span aria-hidden="true">☰</span>
+      </button>
+  <h1 class="fixed-title" title="BOOTH宛名印刷用CSV帳票化">BOOTH宛名印刷用CSV帳票化</h1>
+    </div>
     <div class="main-actions">
       <!-- 印刷枚数表示 -->
   <div class="print-count-display" id="printCountDisplay" aria-live="polite">
@@ -70,91 +78,108 @@
 
 <!-- メインコンテンツ（既存の内容） -->
 <main class="main-content" id="mainContent">
-<div class="no_print text-center">
-  <form method="POST" enctype="multipart/form-data" id="form">
-  <table class="form-table">
-      <tr>
-        <td><label for="labelyn">ラベルシールも印刷する：</label></td>
-        <td><input type="checkbox" id="labelyn" name="labelprint" checked></td>
-      </tr>
-  <!-- showAllOrders 廃止 -->
-      <tr>
-        <td><label for="sortByPaymentDate">支払い日時で並び替え：</label></td>
-        <td><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"></td>
-      </tr>
-      <tr>
-  <td><label for="labelskipnum">ラベルをスキップする面数：</label></td>
-        <td><input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0"></td>
-      </tr>
-      <tr>
-        <td><label for="customLabelEnable">残りラベルに任意文字列を印刷：</label></td>
-        <td><input type="checkbox" id="customLabelEnable" name="customLabelEnable"></td>
-      </tr>
-      <tr id="customLabelRow">
-        <td colspan="2">
-          <div class="multiple-custom-labels-config">
-            <div class="custom-labels-header">
-              <h4>カスタムラベル設定</h4>
-              <div class="custom-labels-buttons">
-                <button type="button" id="addCustomLabelBtn" class="btn-base btn-success btn-medium">ラベル追加</button>
-                <button type="button" id="clearCustomLabelsBtn" class="btn-base btn-danger btn-medium">全削除</button>
-              </div>
+  <!-- メイン領域は純粋なプレビュー/印刷に専念（公開場所リンクはサイドバー下部へ移設） -->
+</main> <!-- main-content 終了 -->
+<!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
+<div id="sidebarOverlay" class="sidebar-overlay no_print" hidden></div>
+<aside id="appSidebar" class="sidebar no_print" aria-hidden="true" tabindex="-1">
+  <header class="sidebar-header">
+    <h2 class="sidebar-title">設定</h2>
+    <div>
+      <a href="help.html" target="_blank" rel="noopener" class="btn-base btn-success btn-small sidebar-help-btn" title="使い方ガイド（新しいタブ）">📚 使い方ガイド</a>
+      <button type="button" id="sidebarPin" class="sidebar-pin" aria-pressed="false" title="ピン留め（ドック表示）">📌</button>
+      <button type="button" id="sidebarClose" class="sidebar-close" aria-label="設定メニューを閉じる">×</button>
+    </div>
+  </header>
+  <div class="sidebar-content">
+    
+    <section class="sidebar-section">
+      <h3 class="sidebar-title">基本設定</h3>
+      <div class="sidebar-group">
+        <label for="labelyn"><input type="checkbox" id="labelyn" name="labelprint"> ラベルシールも印刷する</label>
+      </div>
+      <div class="sidebar-group">
+        <label for="labelskipnum">ラベルをスキップする面数：</label>
+        <input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0" aria-label="ラベルをスキップする面数">
+      </div>
+      <div class="sidebar-group">
+        <label for="sortByPaymentDate"><input type="checkbox" id="sortByPaymentDate" name="sortByPaymentDate" title="BOOTHからダウンロードしたCSVは新しい注文が上に来るので、支払いの古い順に並べ替えたい場合はチェックしてください。"> 支払い日時で並び替え</label>
+      </div>
+      <p class="sidebar-note">変更は自動で適用され、プレビューが更新されます。</p>
+  </section>
+    <section class="sidebar-section">
+      <h3 class="sidebar-title">注文明細用画像</h3>
+      <div class="sidebar-group checkbox-with-help">
+        <label for="orderImageEnable"><input type="checkbox" id="orderImageEnable" name="orderImageEnable"> 注文明細に画像を表示</label>
+        <a href="help.html#画像機能について" target="_blank" rel="noopener" class="inline-help" title="画像機能の説明（新しいタブ）">説明</a>
+      </div>
+      <div class="sidebar-group">
+        <div id="imageDropZone" class="dropzone-container text-center"></div>
+      </div>
+    </section>
+    <section class="sidebar-section">
+      <h3 class="sidebar-title">カスタムラベル</h3>
+      <div class="sidebar-group checkbox-with-help">
+        <label for="customLabelEnable"><input type="checkbox" id="customLabelEnable" name="customLabelEnable"> 残りラベルに任意文字列を印刷</label>
+        <a href="help.html#カスタムラベル機能について" target="_blank" rel="noopener" class="inline-help" title="カスタムラベル機能の説明（新しいタブ）">説明</a>
+      </div>
+      <!-- カスタムラベル設定ブロック（チェックON時のみ表示） -->
+      <div id="customLabelsBlock" class="custom-labels-root" hidden>
+        <div class="multiple-custom-labels-config">
+          <div class="custom-labels-header">
+            <!-- 重複見出しは省略し、操作ボタンのみ配置 -->
+            <div class="custom-labels-buttons">
+              <button type="button" id="addCustomLabelBtn" class="btn-base btn-success btn-medium">ラベル追加</button>
+              <button type="button" id="clearCustomLabelsBtn" class="btn-base btn-danger btn-medium">全削除</button>
             </div>
-            <div id="customLabelsContainer" class="custom-labels-container">
-              <!-- 複数のカスタムラベル項目がここに追加される -->
-            </div>
-            <div class="custom-labels-summary">
-              <div id="customLabelsSummary" class="custom-labels-summary">※残りラベル数に応じて上限が自動調整されます</div>
-            </div>
-            <!-- カスタムフォント設定セクション -->
-            <div class="custom-font-section">
-              <h4 onclick="toggleFontSection()" id="fontSectionHeader">
-                <span id="fontSectionArrow">▼</span>
-                カスタムフォント設定
-              </h4>
-              <div id="fontSectionContent">
-                <div id="fontDropZone"></div>
-                <div id="fontManagement">
-                  <div class="my-10">
+          </div>
+          <div id="customLabelsContainer" class="custom-labels-container">
+            <!-- 複数のカスタムラベル項目がここに追加される -->
+          </div>
+          <div class="custom-labels-summary"><div id="customLabelsSummary" class="custom-labels-summary">最終シートの残り面数: 0面</div></div>
+          <!-- カスタムフォント設定セクション -->
+          <div class="custom-font-section">
+            <h4 onclick="toggleFontSection()" id="fontSectionHeader">
+              <span id="fontSectionArrow">▼</span>
+              カスタムフォント設定
+            </h4>
+            <div id="fontSectionContent">
+              <div id="fontDropZone"></div>
+              <div id="fontManagement">
+                <div class="my-10">
+                  <div class="font-list-header">
                     <h5 class="subtle-title">アップロード済みフォント</h5>
-                    <div id="fontList" class="font-list">
-                      <div class="font-list-placeholder text-center">フォントファイルをアップロードしてください</div>
-                    </div>
-                    <div class="text-center mt-10">
-                      <button type="button" id="clearAllFontsButton" class="btn-base btn-danger btn-clear btn-small">全てのカスタムフォントをクリア</button>
-                    </div>
+                    <button type="button" id="clearAllFontsButton" class="btn-base btn-danger btn-small font-clear-btn" title="全てのカスタムフォントをクリア">全削除</button>
+                  </div>
+                  <div id="fontList" class="font-list">
+                    <div class="font-list-placeholder text-center">フォントファイルをアップロードしてください</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </td>
-      </tr>
-      <tr>
-        <td><label for="orderImageEnable">注文明細に画像を表示：</label></td>
-        <td><input type="checkbox" id="orderImageEnable" name="orderImageEnable"></td>
-      </tr>
-      <tr id="orderImageRow">
-        <td colspan="2">
-          <div id="imageDropZone" class="dropzone-container text-center"></div>
-        </td>
-      </tr>
-    </table>
-  </form>
-  <p class="text-center">保存データ操作：
-  <button type="button" id="clearAllButton" class="btn-base btn-danger btn-clear">全ての注文データをクリア</button>
-    <button type="button" id="backupDBButton" class="btn-base btn-info btn-clear">📥 データバックアップ</button>
-    <button type="button" id="restoreDBButton" class="btn-base btn-warning btn-clear">📤 データリストア</button>
-    <input type="file" id="restoreDBFile" accept="application/json" style="display:none" />
-  </p>
-  <div class="text-center my-15">
-    <a href="help.html" target="_blank" rel="noopener" class="btn-base btn-success btn-small btn-margin">📚 使い方ガイド</a>
-    <a href="help.html#画像機能について" target="_blank" rel="noopener" class="btn-base btn-info btn-small btn-margin">🖼️ 画像機能の説明</a>
-    <a href="help.html#カスタムラベル機能について" target="_blank" rel="noopener" class="btn-base btn-warning btn-small btn-margin">🏷️ カスタムラベル機能</a>
+        </div>
+      </div>
+    </section>
+    <!-- 保存データ操作（画像とカスタムラベルの下に配置） -->
+    <section class="sidebar-section save-data-footer" id="sidebarSaveDataSection">
+      <h3 class="sidebar-title">保存データ操作</h3>
+      <div class="sidebar-group save-data-buttons" id="sidebarSaveDataControls">
+        <button type="button" id="clearAllButton" class="btn-base btn-danger btn-clear">全ての注文データをクリア</button>
+        <button type="button" id="backupDBButton" class="btn-base btn-info btn-clear">📥 データバックアップ</button>
+        <button type="button" id="restoreDBButton" class="btn-base btn-warning btn-clear">📤 データリストア</button>
+        <input type="file" id="restoreDBFile" accept="application/json" class="hidden-input" aria-label="バックアップJSONの選択" />
+      </div>
+    </section>
   </div>
-  <p><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener noreferrer">このツールの公開場所</a></p>
-</div>
-</main> <!-- main-content 終了 -->
+  <footer class="sidebar-footer">
+    <div class="sidebar-footer-links"><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener noreferrer">このツールの公開場所</a></div>
+    <small>© 8796.jp</small>
+  </footer>
+  <!-- 今後: 既存フォーム要素（ID維持）を安全に移設 -->
+  <!-- 例: #labelyn, #labelskipnum, #sortByPaymentDate, #customLabelEnable, #orderImageEnable など -->
+  <!-- 本パネルは @media print で完全非表示 -->
+</aside>
 <template id="L44">
   <section class="sheet">
       <table class="label44">
@@ -194,9 +219,9 @@
   <div class="rich-text-editor" contenteditable="true" 
        id="initialCustomLabelEditor"
        placeholder="印刷したい文字列を入力してください..."></div>
-        <div class="custom-label-count-group">
+          <div class="custom-label-count-group">
           <label>印刷面数：</label>
-          <input type="number" min="1" value="1">
+          <input type="number" min="1" max="99" value="1">
         </div>
       </div>
     </div>
@@ -220,15 +245,17 @@
   <p class="order-image-default-msg">注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
 </template>
 <template id="customLabelsInstructionTemplate">
-  <div class="custom-labels-instructions">
+  <details class="custom-labels-instructions" id="customLabelsHelp">
+    <summary>カスタムラベルの使い方</summary>
     <div class="instructions-content">
-      <strong>カスタムラベル設定について：</strong><br>
-      • 実際のラベルサイズ: 48.3mm × 25.3mm<br>
-      • テキストのみ入力可能<br>
-      • 改行: Enterキー<br>
-      • 書式設定: 右クリックでコンテキストメニューを表示（太字、斜体、フォントサイズ変更、フォントの変更）
+      <ul>
+        <li>ラベル実寸: 48.3mm × 25.3mm</li>
+        <li>入力はテキストのみ（複数行可）</li>
+        <li>改行: Enter</li>
+        <li>書式: 右クリックのメニュー（太字・斜体・サイズ・フォント）</li>
+      </ul>
     </div>
-  </div>
+  </details>
 </template>
 <template id="注文明細">
   <section class="sheet">

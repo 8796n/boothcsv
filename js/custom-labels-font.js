@@ -98,12 +98,11 @@
   function initializeFontDropZone(){
     const dzWrapper = document.getElementById('fontDropZone'); if(!dzWrapper) return;
     const zone = document.createElement('div');
-    zone.className='font-drop-zone-internal';
-    zone.style.cssText='border:2px dashed #ccc;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#f9f9f9;';
-    zone.innerHTML='<p style="margin:0 0 10px;color:#666;">フォントファイルをここにドロップ<br><small>TTF / OTF / WOFF / WOFF2 対応</small></p>';
-    zone.addEventListener('dragover',e=>{e.preventDefault(); zone.style.background='#e7f3ff'; zone.style.borderColor='#007bff';});
-    zone.addEventListener('dragleave',e=>{e.preventDefault(); zone.style.background='#f9f9f9'; zone.style.borderColor='#ccc';});
-    zone.addEventListener('drop',e=>{e.preventDefault(); zone.style.background='#f9f9f9'; zone.style.borderColor='#ccc'; const files=[...e.dataTransfer.files]; files.forEach(f=>handleFontFile(f)); });
+  zone.className='dropzone-card font-drop-zone';
+  zone.innerHTML='<p class="dz-message">フォントファイルをここにドロップ<br><small>TTF / OTF / WOFF / WOFF2 対応</small></p>';
+  zone.addEventListener('dragover',e=>{e.preventDefault(); zone.classList.add('dragover');});
+  zone.addEventListener('dragleave',e=>{e.preventDefault(); zone.classList.remove('dragover');});
+  zone.addEventListener('drop',e=>{e.preventDefault(); zone.classList.remove('dragover'); const files=[...e.dataTransfer.files]; files.forEach(f=>handleFontFile(f)); });
     zone.addEventListener('click',()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='.ttf,.otf,.woff,.woff2'; inp.multiple=true; inp.addEventListener('change',()=>{ [...inp.files].forEach(f=>handleFontFile(f)); }); inp.click(); });
     dzWrapper.appendChild(zone);
   }

@@ -191,10 +191,29 @@ window.addEventListener("load", async function(){
   updatePrintCountDisplay(0, 0, 0);
 
    // 画像ドロップゾーンの初期化
-  const imageDropZoneElement = document.getElementById('imageDropZone');
-  const imageDropZone = await createOrderImageDropZone();
-  imageDropZoneElement.appendChild(imageDropZone.element);
-  window.orderImageDropZone = imageDropZone;
+  async function initGlobalDropZone(){
+    const host = document.getElementById('imageDropZone');
+  if (!host) return false;
+    if (host.children.length>0) return true;
+    const dz = await createOrderImageDropZone();
+    if (dz && dz.element) { host.appendChild(dz.element); window.orderImageDropZone = dz; return true; }
+    return false;
+  }
+  if (!await initGlobalDropZone()) {
+    setTimeout(initGlobalDropZone, 100);
+    setTimeout(initGlobalDropZone, 300);
+  }
+  // 画像表示トグルとドロップゾーンの表示を同期
+  try {
+    const dzHost = document.getElementById('imageDropZone');
+    const group = dzHost ? dzHost.closest('.sidebar-group') || dzHost : null;
+    const cb = document.getElementById('orderImageEnable');
+    const apply = (on) => { if (group) group.style.display = on ? '' : 'none'; };
+    if (cb) {
+      apply(cb.checked);
+      cb.addEventListener('change', () => apply(cb.checked));
+    }
+  } catch {}
 
   // フォント関連初期化（移行後API）
   if (window.CustomLabelFont) {
@@ -436,9 +455,8 @@ async function updateCustomLabelsPreview() {
 }
 
 function clearPreviousResults() {
-  for (let sheet of document.querySelectorAll('section')) {
-    sheet.parentNode.removeChild(sheet);
-  }
+  // 結果セクションだけを削除（サイドバー等の一般sectionは残す）
+  document.querySelectorAll('section.sheet').forEach(sec => sec.remove());
   
   // 印刷枚数表示もクリア
   clearPrintCountDisplay();
@@ -1559,8 +1577,8 @@ async function setGlobalOrderImage(arrayBuffer, mimeType='image/png') {
 }
 async function getGlobalOrderImage(){
   try {
-    const v = await StorageManager.getGlobalOrderImageBinary();
-    if(!v || !(v.data instanceof ArrayBuffer)) return null;
+  const v = await StorageManager.getGlobalOrderImageBinary();
+  if(!v || !(v.data instanceof ArrayBuffer) || v.data.byteLength===0) return null;
     const blob = new Blob([v.data], { type: v.mimeType || 'image/png' });
     return URL.createObjectURL(blob);
   } catch(e){ console.error('グローバル画像取得失敗', e); return null; }
@@ -1627,17 +1645,17 @@ async function createBaseImageDropZone(options = {}) {
   async function updateAllOrderImages() {
     // 注文画像表示機能が無効の場合は何もしない
     const settings = await StorageManager.getSettingsAsync();
-    if (!settings.orderImageEnable) {
+       if (!settings.orderImageEnable) {
       return;
     }
 
-    const allOrderSections = document.querySelectorAll('section');
+    const allOrderSections = document.querySelectorAll('section.sheet');
     for (const orderSection of allOrderSections) {
       const imageContainer = orderSection.querySelector('.order-image-container');
       if (!imageContainer) continue;
 
       // 統一化された方法で注文番号を取得
-  const orderNumber = (orderSection.id && orderSection.id.startsWith('order-')) ? orderSection.id.substring(6) : '';
+      const orderNumber = (orderSection.id && orderSection.id.startsWith('order-')) ? orderSection.id.substring(6) : '';
 
       // 個別画像があるかチェック（個別画像を最優先）
       let imageToShow = null;
@@ -1732,8 +1750,8 @@ async function createBaseImageDropZone(options = {}) {
       if (isIndividual && orderNumber && window.orderRepository) {
         try { await window.orderRepository.clearOrderImage(orderNumber); } catch(e){ console.error('画像削除失敗', e); }
       } else if (!isIndividual) {
-        // グローバル画像クリア (空バッファ)
-        try { await StorageManager.setGlobalOrderImageBinary(new ArrayBuffer(0), 'application/octet-stream'); } catch(e){ console.error('グローバル画像削除失敗', e); }
+        // グローバル画像クリア（0バイトは保存せず null を保存）
+        try { await StorageManager.clearGlobalOrderImageBinary(); } catch(e){ console.error('グローバル画像削除失敗', e); }
       }
       droppedImage = null;
       // Blob URL であれば解放
@@ -1962,21 +1980,25 @@ if (window.performance && window.performance.mark) {
 
 // カスタムラベル機能の関数群
 function toggleCustomLabelRow(enabled) {
-  const customLabelRow = document.getElementById('customLabelRow');
-  customLabelRow.style.display = enabled ? 'table-row' : 'none';
+  // 新: 統合されたカスタムラベルブロック
+  const block = document.getElementById('customLabelsBlock');
+  if (block) block.hidden = !enabled;
+  // 旧IDへの互換（残っていても非表示に）
+  const legacy = document.getElementById('sidebarCustomLabelSection');
+  if (legacy) legacy.hidden = true;
 }
 
 // 注文画像表示機能の関数群
 function toggleOrderImageRow(enabled) {
   const orderImageRow = document.getElementById('orderImageRow');
-  orderImageRow.style.display = enabled ? 'table-row' : 'none';
+  if (orderImageRow) orderImageRow.style.display = enabled ? 'table-row' : 'none';
 }
 
 // 全ての注文明細の画像表示可視性を更新
 async function updateAllOrderImagesVisibility(enabled) {
   debugLog(`画像表示機能が${enabled ? '有効' : '無効'}に変更されました`);
   
-  const allOrderSections = document.querySelectorAll('section');
+  const allOrderSections = document.querySelectorAll('section.sheet');
   for (const orderSection of allOrderSections) {
     const imageContainer = orderSection.querySelector('.order-image-container');
     const individualZone = orderSection.querySelector('.individual-order-image-zone');
@@ -2017,10 +2039,8 @@ async function updateAllOrderImagesVisibility(enabled) {
               try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); imageToShow = URL.createObjectURL(blob); debugLog(`個別画像を表示: ${orderNumber}`); } catch {}
             }
           }
-          if (!imageToShow) {
-            const globalImage = await getGlobalOrderImage();
-            if (globalImage) { imageToShow = globalImage; debugLog(`グローバル画像を表示: ${orderNumber}`); }
-          }
+          const globalImage = await getGlobalOrderImage();
+          if (globalImage) { imageToShow = globalImage; debugLog(`グローバル画像を表示: ${orderNumber}`); }
         }
         
         imageContainer.innerHTML = '';
@@ -2250,9 +2270,13 @@ async function updateSkipCount() {
       const repo = window.orderRepository;
       if (repo) {
         const now = new Date().toISOString();
-        const orderPages = document.querySelectorAll('.page');
-        for (const page of orderPages) {
-          const orderNumber = (page.id && page.id.startsWith('order-')) ? page.id.substring(6) : '';
+        // 注文明細セクションは section.sheet にID "order-<番号>" が付与される
+        const sections = document.querySelectorAll('section.sheet');
+        for (const section of sections) {
+          // 既に印刷済みのものは今回対象外（@media print でも除外されている）
+          if (section.classList.contains('is-printed')) continue;
+          const id = section.id || '';
+          const orderNumber = id.startsWith('order-') ? id.substring(6) : '';
           if (orderNumber) await repo.markPrinted(orderNumber, now);
         }
         console.log('✅ 印刷済み注文番号の印刷日時を保存しました (repository)');
@@ -2499,3 +2523,140 @@ function adjustFontSectionHeight() {
 
 // CSS用のpulseアニメーションを追加
 // フォントアニメーション定義は移動済み
+
+// ================================
+// サイドバー開閉ロジック（印刷非影響）
+// ================================
+(function setupSidebar() {
+  function initSidebarOnce(){
+    if (initSidebarOnce._ran) return; initSidebarOnce._ran = true;
+  // HTML直置きに移行したためフォールバック自動挿入は廃止
+
+  const toggleBtn = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('appSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const closeBtn = document.getElementById('sidebarClose');
+  const pinBtn = document.getElementById('sidebarPin');
+    if (!toggleBtn || !sidebar || !overlay || !closeBtn) return;
+
+    const focusableSelectors = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    let lastFocused = null;
+
+    function openSidebar() {
+      lastFocused = document.activeElement;
+      sidebar.classList.add('open');
+      sidebar.removeAttribute('aria-hidden');
+      toggleBtn.setAttribute('aria-expanded', 'true');
+      if (!document.body.classList.contains('sidebar-docked')) {
+        overlay.hidden = false;
+        overlay.classList.add('show');
+        overlay.style.display = 'block';
+        document.body.dataset.scrollLock = '1';
+        document.body.style.overflow = 'hidden';
+      }
+      // フォーカス移動
+      const first = sidebar.querySelector(focusableSelectors);
+      (first || sidebar).focus();
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      sidebar.setAttribute('aria-hidden', 'true');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      if (!document.body.classList.contains('sidebar-docked')) {
+        overlay.classList.remove('show');
+        overlay.hidden = true;
+        overlay.style.display = 'none';
+        if (document.body.dataset.scrollLock === '1') {
+          delete document.body.dataset.scrollLock;
+          document.body.style.overflow = '';
+        }
+      }
+      if (lastFocused && typeof lastFocused.focus === 'function') {
+        lastFocused.focus();
+      } else {
+        toggleBtn.focus();
+      }
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
+    });
+    overlay.addEventListener('click', closeSidebar);
+    closeBtn.addEventListener('click', closeSidebar);
+
+    // ピン留め（ドック）切り替え
+    function applyDockedState(docked){
+      if (docked) {
+        document.body.classList.add('sidebar-docked');
+        pinBtn?.setAttribute('aria-pressed','true');
+  // ドック時はサイドバーは常時表示・オーバーレイ無効
+        sidebar.classList.add('open');
+        sidebar.removeAttribute('aria-hidden');
+        overlay.classList.remove('show');
+        overlay.hidden = true;
+        overlay.style.display = 'none';
+        // スクロールロック解除
+        if (document.body.dataset.scrollLock === '1') {
+          delete document.body.dataset.scrollLock;
+          document.body.style.overflow = '';
+        }
+      } else {
+        document.body.classList.remove('sidebar-docked');
+        pinBtn?.setAttribute('aria-pressed','false');
+  // 閉状態に戻す（必要なら）
+        sidebar.classList.remove('open');
+        sidebar.setAttribute('aria-hidden','true');
+      }
+    }
+
+    // 保存された状態を復元（IndexedDB優先、未設定なら初期値: ドックON）
+    (async () => {
+      let persisted = null;
+      try { if (window.StorageManager && typeof StorageManager.getSidebarDocked==='function') { persisted = await StorageManager.getSidebarDocked(); } } catch {}
+      if (persisted === null) {
+        // 初期既定: ドックON
+        applyDockedState(true);
+        try {
+          if (window.StorageManager && typeof StorageManager.setSidebarDocked==='function') await StorageManager.setSidebarDocked(true);
+        } catch {}
+      } else {
+        applyDockedState(!!persisted);
+      }
+    })();
+
+  pinBtn?.addEventListener('click', async () => {
+      const docked = !document.body.classList.contains('sidebar-docked');
+      applyDockedState(docked);
+      try {
+        if (window.StorageManager && typeof StorageManager.setSidebarDocked==='function') await StorageManager.setSidebarDocked(!!docked);
+      } catch {}
+    });
+
+  // HTML直置きに移行したため保存データ操作の移動ロジックは廃止
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+        e.preventDefault();
+        closeSidebar();
+      } else if (e.key === 'Tab' && sidebar.classList.contains('open')) {
+        // フォーカストラップ
+        const nodes = Array.from(sidebar.querySelectorAll(focusableSelectors)).filter(el => el.offsetParent !== null);
+        if (nodes.length === 0) return;
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    });
+  }
+  // DOM が既に準備済みなら即時実行、そうでなければ DOMContentLoaded で実行
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSidebarOnce, { once: true });
+  } else {
+    initSidebarOnce();
+  }
+})();
