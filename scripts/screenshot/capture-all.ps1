@@ -190,11 +190,17 @@ try {
     $driver = New-Object OpenQA.Selenium.Chrome.ChromeDriver($chromeDriverService, $chromeOptions)
     $driver.Manage().Window.Size = [System.Drawing.Size]::new(1200, 1000)
     
-    # HTTPサーバー経由でHTMLファイルを開く
+    # HTTPサーバー経由でHTMLファイルを開く（ルートではなく対象HTMLに直接アクセス）
     $serverUrl = "http://localhost:8080"
-    Write-Host "🌐 HTTPサーバー経由でアクセス: $serverUrl" -ForegroundColor Cyan
-    $driver.Url = $serverUrl
+    $pageLeaf = Split-Path -Leaf $HtmlFile  # 例: boothcsv.html
+    $pageUrl = "$serverUrl/$pageLeaf"
+    Write-Host "🌐 HTTPサーバー経由でアクセス: $pageUrl" -ForegroundColor Cyan
+    $driver.Url = $pageUrl
     Start-Sleep 8  # サーバー起動とページロード、JavaScript初期化を十分に待つ
+    try {
+        $currentUrl = $driver.ExecuteScript('return window.location.href;')
+        if ($currentUrl) { Write-Host "🔎 現在のURL: $currentUrl" -ForegroundColor DarkCyan }
+    } catch {}
     
     # DOM要素の読み込み確認
     $driver.ExecuteScript(@"
@@ -207,6 +213,70 @@ try {
 "@)
     
     Write-Host "✅ ページロード完了" -ForegroundColor Green
+
+        # サイドバーを確実にドック固定にする（以前の状態が残っていても上書き）
+        Write-Host "📌 サイドバーをドック固定に設定" -ForegroundColor Yellow
+                $driver.ExecuteScript(@"
+try {
+    // 設定を永続化（IndexedDB）
+    if (window.StorageManager && typeof StorageManager.setSidebarDocked === 'function') {
+        StorageManager.setSidebarDocked(true).catch(()=>{});
+    }
+} catch(e) {}
+try {
+    // 見た目を即時反映
+    document.body.classList.add('sidebar-docked');
+    const sidebar = document.getElementById('appSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const pin = document.getElementById('sidebarPin');
+    if (sidebar) {
+        sidebar.classList.add('open');
+        sidebar.removeAttribute('aria-hidden');
+    }
+    if (overlay) {
+        overlay.classList.remove('show');
+        overlay.hidden = true;
+        overlay.style.display = 'none';
+    }
+    if (pin) pin.setAttribute('aria-pressed','true');
+    console.log('✅ Sidebar forced to docked mode for screenshots');
+} catch(e) { console.warn('Sidebar dock force failed', e); }
+"@)
+
+    # 固定ヘッダー高さ補正ヘルパーを注入（すべてのスクロールで利用）
+    $driver.ExecuteScript(@"
+try {
+    window.__getHeaderOffset = function() {
+        let offset = 0;
+        try {
+            // 固定/スティッキーで上部に配置されている可視要素の最大高さを採用
+            const nodes = Array.from(document.body.querySelectorAll('*'));
+            for (const el of nodes) {
+                const cs = getComputedStyle(el);
+                if (!cs) continue;
+                const fixedTop = (cs.position === 'fixed' || cs.position === 'sticky');
+                if (!fixedTop) continue;
+                const rect = el.getBoundingClientRect();
+                const visible = rect.height > 0 && rect.width > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+                const anchoredTop = (cs.top === '0px' || rect.top <= 0);
+                if (visible && anchoredTop) {
+                    offset = Math.max(offset, rect.height);
+                }
+            }
+            // デフォルト値（既存想定80px）。微小な場合は既定値にフェイルオーバー
+            if (offset < 40) offset = 80;
+        } catch(e) { offset = 80; }
+        return Math.ceil(offset) + 4; // 少し余白
+    };
+    window.__applyHeaderOffset = function(extra) {
+        const off = (typeof window.__getHeaderOffset === 'function') ? window.__getHeaderOffset() : 80;
+        const total = off + (extra || 0);
+        window.scrollBy(0, -total);
+        return total;
+    };
+    console.log('✅ Header offset helper installed');
+} catch(e) { console.warn('Header offset helper install failed', e); }
+"@)
     
     # コンソールログ取得関数を定義
     function Get-BrowserConsoleLog {
@@ -382,13 +452,13 @@ try {
                     const customLabelLabel = document.querySelector('label[for="customLabelEnable"]');
                     if (customLabelLabel) {
                         customLabelLabel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                        if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                         console.log('✅ 「残りラベルに任意文字列を印刷」までスクロール完了');
                         window.scrollCompleted = true;
                     } else {
                         // フォールバック: customLabelRowにスクロール
                         customLabelRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                        if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                         console.log('✅ カスタムラベル設定エリアにスクロール完了（フォールバック）');
                         window.scrollCompleted = true;
                     }
@@ -463,7 +533,7 @@ try {
                         customRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         // 固定ヘッダー分を考慮して調整
                         setTimeout(() => {
-                            window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                            if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                         }, 1000);
                     }
                 }, 500);
@@ -479,7 +549,7 @@ try {
                             firstLabelTable.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             // 固定ヘッダー分を考慮して少し上にスクロール調整
                             setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                                if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                                 console.log('✅ カスタムラベルシート位置(section.sheet table.label44)にスクロール＋ヘッダー調整完了');
                             }, 1000);
                         } else {
@@ -499,7 +569,7 @@ try {
                             fontSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             // 固定ヘッダー分を考慮して調整
                             setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                                if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                             }, 1000);
                             console.log('✅ カスタムフォント設定セクションにスクロール完了');
                         } else {
@@ -509,7 +579,8 @@ try {
                                 customRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                                 // フォント設定エリアまで少し下にスクロール + 固定ヘッダー調整
                                 setTimeout(() => {
-                                    window.scrollBy(0, 200 - 80); // フォント設定エリア移動 + 固定ヘッダー分を調整
+                                    const off = (window.__getHeaderOffset ? window.__getHeaderOffset() : 80);
+                                    window.scrollBy(0, 200 - off); // フォント設定エリア移動 + 固定ヘッダー分を調整
                                     console.log('✅ カスタムラベル設定エリア下部（フォント設定付近）にスクロール完了');
                                 }, 1000);
                             } else {
@@ -553,7 +624,7 @@ try {
                         imageRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         // 固定ヘッダー分を考慮して調整
                         setTimeout(() => {
-                            window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                            if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                         }, 1000);
                     }
                 }, 1000);
@@ -588,7 +659,7 @@ try {
                                             const imageRow = document.getElementById('orderImageRow');
                                             if (imageRow) {
                                                 imageRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                setTimeout(() => { window.scrollBy(0, -80); }, 1000);
+                                                setTimeout(() => { if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); } }, 1000);
                                             }
                                         } else if (performance.now() - start < 5000) {
                                             setTimeout(trySet, 200);
@@ -782,7 +853,7 @@ try {
                             console.log('🔄 スクロール実行中...');
                             // スクロール完了を待機
                             setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                                if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                                 console.log('✅ ラベルテーブル(section.sheet table.label44)にスクロール＋ヘッダー調整完了');
                                 // スクロール完了マーカーを設定
                                 window.scrollCompleted = true;
@@ -818,7 +889,7 @@ try {
                             firstPageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             // 固定ヘッダー分を考慮して少し上にスクロール調整
                             setTimeout(() => {
-                                window.scrollBy(0, -80); // 固定ヘッダー分を調整
+                                if (window.__applyHeaderOffset) { window.__applyHeaderOffset(); } else { window.scrollBy(0, -80); }
                                 console.log('✅ 注文明細ページ(section.sheet div.page)にスクロール完了');
                             }, 1000);
                         } else {
