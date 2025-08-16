@@ -28,6 +28,10 @@ const DEBUG_MODE = (() => {
   return urlParams.get('debug') === '1';
 })();
 
+// 初回クイックガイド表示制御（グローバルからどこでも呼べるユーティリティ）
+function hideQuickGuide(){ const el = document.getElementById('initialQuickGuide'); if(el) el.hidden = true; }
+function showQuickGuide(){ const el = document.getElementById('initialQuickGuide'); if(el) el.hidden = false; }
+
 // リアルタイム更新制御フラグ
 // isEditingCustomLabel は custom-labels.js で window プロパティとして定義される
 // 直近読み込んだCSV結果を保持してカスタムラベル編集時に再レンダリングへ再利用
@@ -184,18 +188,52 @@ window.addEventListener("load", async function(){
   toggleOrderImageRow(settings.orderImageEnable);
   console.log('🎉 アプリケーション初期化完了 (fallback 無し)');
 
-  // 初回クイックガイド制御: CSV未選択時のみ表示。CSV読込で非表示。
-  const quickGuideEl = document.getElementById('initialQuickGuide');
-  function hideQuickGuide(){ if(quickGuideEl) quickGuideEl.hidden = true; }
-  function showQuickGuide(){ if(quickGuideEl) quickGuideEl.hidden = false; }
-  // 既存データがあれば非表示
-  if (window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length) {
+  // 初回クイックガイド制御: 以下のいずれかなら非表示
+  // 1) 既に CSV データがある 2) 起動時点でラベルシート(section.sheet)が存在 3) カスタムラベル設定が残っていて生成済み
+  // まだ DOM 生成前の場合を考慮し、初回判定と遅延再判定を実施
+  const hasExistingCSV = !!(window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length);
+  const hasSheetsNow = !!document.querySelector('section.sheet');
+  // カスタムラベル設定有無だけでは非表示にしない（ユーザ要望）
+  if (hasExistingCSV || hasSheetsNow) {
     hideQuickGuide();
   } else {
     showQuickGuide();
   }
+  // カスタムラベル初期化 / シート生成後の再チェック（0ms + 300ms 両方）
+  setTimeout(() => {
+    if (document.querySelector('section.sheet')) hideQuickGuide();
+  }, 0);
+  setTimeout(() => {
+    if (document.querySelector('section.sheet')) hideQuickGuide();
+  }, 300);
 
-  // 複数のカスタムラベルを初期化
+  // 動的に label シートが生成されたタイミングでクイックガイドを自動非表示にする監視
+  // （ユーザが「ラベルシールも印刷する」を後からチェックした場合など）
+  (function setupSheetAppearObserver(){
+    // 既に非表示なら不要
+    const guide = document.getElementById('initialQuickGuide');
+    if (!guide || guide.hidden) return;
+    // すでに存在すれば即非表示
+    if (document.querySelector('section.sheet')) { hideQuickGuide(); return; }
+    const observer = new MutationObserver((mutations)=>{
+      if (guide.hidden) { observer.disconnect(); return; }
+      for (const m of mutations) {
+        if (m.type === 'childList') {
+          // 追加ノードおよびその子孫に sheet が無いか確認
+          for (const n of m.addedNodes) {
+            if (!(n instanceof HTMLElement)) continue;
+            if (n.matches && n.matches('section.sheet')) { hideQuickGuide(); observer.disconnect(); return; }
+            if (n.querySelector && n.querySelector('section.sheet')) { hideQuickGuide(); observer.disconnect(); return; }
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // window に保持し、後で明示解除も可能に
+    window.__quickGuideSheetObserver = observer;
+  })();
+
+  // 複数のカスタムラベルを初期化（これによりシートが生成される場合、上の遅延チェックでガイドが非表示化される）
   CustomLabels.initialize(settings.customLabels);
 
   // 固定ヘッダーを初期表示（0枚でも表示）
