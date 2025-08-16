@@ -81,6 +81,16 @@
   <!-- メイン領域は純粋なプレビュー/印刷に専念（公開場所リンクはサイドバー下部へ移設） -->
   <!-- Screenshot snap anchors (no_print, invisible) -->
   <div class="snap-anchor no_print" data-snap="main-top" aria-hidden="true"></div>
+  <!-- 初回ガイド: CSV未読み込み時のみ表示（JSで非表示制御） -->
+  <section id="initialQuickGuide" class="initial-quick-guide no_print" aria-live="polite">
+    <h2 class="quick-guide-title">最初の操作は 3 ステップ</h2>
+    <ol class="quick-guide-steps">
+      <li>① BOOTHで <button type="button" class="btn-compact btn-download" onclick="window.open('https://manage.booth.pm/orders?state=paid','_blank')">📥 CSVをダウンロード</button>して</li>
+  <li>② ダウンロードしたファイルを <button type="button" class="file-input-button-compact quick-guide-file-btn" onclick="document.getElementById('file').click()">📁 CSVファイルを選択</button>する</li>
+      <li>③ プレビューを確認し <button type="button" class="btn-compact quick-guide-print-dummy" aria-hidden="true" tabindex="-1">印刷</button> を押す</li>
+    </ol>
+    <p class="quick-guide-note">詳しい説明はサイドバー右上の「使い方ガイド」リンクから確認できます。</p>
+  </section>
 </main> <!-- main-content 終了 -->
 <!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
 <div id="sidebarOverlay" class="sidebar-overlay no_print" hidden></div>

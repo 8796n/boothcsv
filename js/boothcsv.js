@@ -184,6 +184,17 @@ window.addEventListener("load", async function(){
   toggleOrderImageRow(settings.orderImageEnable);
   console.log('🎉 アプリケーション初期化完了 (fallback 無し)');
 
+  // 初回クイックガイド制御: CSV未選択時のみ表示。CSV読込で非表示。
+  const quickGuideEl = document.getElementById('initialQuickGuide');
+  function hideQuickGuide(){ if(quickGuideEl) quickGuideEl.hidden = true; }
+  function showQuickGuide(){ if(quickGuideEl) quickGuideEl.hidden = false; }
+  // 既存データがあれば非表示
+  if (window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length) {
+    hideQuickGuide();
+  } else {
+    showQuickGuide();
+  }
+
   // 複数のカスタムラベルを初期化
   CustomLabels.initialize(settings.customLabels);
 
@@ -1934,6 +1945,7 @@ document.getElementById("file").addEventListener("change", async function() {
       const shortName = fileName.length > 15 ? fileName.substring(0, 12) + '...' : fileName;
       fileSelectedInfoCompact.textContent = shortName;
       fileSelectedInfoCompact.classList.add('has-file');
+  hideQuickGuide();
       
       // CSVファイルが選択されたら自動的に処理を実行
       console.log('CSVファイルが選択されました。自動処理を開始します:', fileName);
@@ -1941,6 +1953,7 @@ document.getElementById("file").addEventListener("change", async function() {
     } else {
       fileSelectedInfoCompact.textContent = '未選択';
       fileSelectedInfoCompact.classList.remove('has-file');
+  showQuickGuide();
       
       // ファイルがクリアされた場合は結果もクリア
       clearPreviousResults();

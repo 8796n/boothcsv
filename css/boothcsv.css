@@ -563,20 +563,28 @@ table.label44 td {
 }
 
 .file-input-button-compact {
-  background: rgba(255,255,255,0.2);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: white;
-  padding: 6px 12px;
-  border-radius: 4px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 5px;
   font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .5px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all .25s ease;
   white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.18);
 }
 
 .file-input-button-compact:hover {
-  background: rgba(255,255,255,0.3);
+  filter: brightness(1.08);
   transform: translateY(-1px);
+}
+
+.file-input-button-compact:active {
+  transform: translateY(0);
+  filter: brightness(.95);
 }
 
 .file-selected-info-compact {
@@ -741,6 +749,30 @@ table.label44 td {
 #orderImageRow,
 #dropZoneDefaultContent { display: none; }
 
+/* --- Initial Quick Guide (初回表示ガイド) --- */
+.initial-quick-guide { max-width: 760px; margin: 140px auto 40px; background:#fff; border:1px solid #ddd; border-radius:12px; padding:32px 40px; box-shadow:0 4px 16px rgba(0,0,0,0.08); font-size:15px; line-height:1.6; }
+.initial-quick-guide h2.quick-guide-title { margin-top:0; font-size:1.4rem; text-align:center; }
+.quick-guide-steps { list-style: none; padding:0; margin:24px 0; display:flex; flex-direction:column; gap:14px; }
+.quick-guide-steps li { background:#fafafa; border:1px solid #e2e2e2; border-radius:8px; padding:14px 16px; display:flex; align-items:center; gap:12px; font-weight:500; }
+.quick-guide-steps li button { cursor:pointer; }
+.quick-guide-note { margin:8px 0 0; font-size:0.9rem; color:#555; text-align:center; }
+.initial-quick-guide[hidden] { display:none !important; }
+/* ダミー印刷ボタン (初回ガイド内) */
+.quick-guide-print-dummy { pointer-events:none; opacity:.8; }
+.quick-guide-print-dummy {
+  background: linear-gradient(45deg, #FF5722, #FF7043);
+  color:#fff;
+  border:none;
+  border-radius:5px;
+  padding:6px 14px;
+  font-size:13px;
+  font-weight:600;
+  box-shadow:0 2px 4px rgba(0,0,0,0.2);
+}
+/* 初回ガイド内ボタンの統一余白調整 */
+.initial-quick-guide .quick-guide-steps button.btn-compact { padding:6px 14px; font-size:13px; }
+.initial-quick-guide .quick-guide-steps li { line-height:1.4; }
+.initial-quick-guide .quick-guide-file-btn { /* 固定ヘッダーの file-input-button-compact と同一色味を再利用（class流用） */ margin-left:4px; }
 .file-input-button {
   display: inline-block;
   padding: 8px 20px;
