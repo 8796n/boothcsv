@@ -722,7 +722,7 @@ function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, custo
   const customLabelCountElement = document.getElementById('customLabelCount');
   const customLabelItem = document.getElementById('customLabelCountItem');
   
-  console.log(`updatePrintCountDisplay呼び出し: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
+  debugLog('general', `updatePrintCountDisplay呼び出し: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
   
   if (!displayElement) {
     console.error('printCountDisplay要素が見つかりません');
@@ -756,7 +756,7 @@ function updatePrintCountDisplay(orderSheetCount = 0, labelSheetCount = 0, custo
   // 全体を常に表示（0枚でも表示）
   displayElement.style.display = 'flex';
   
-  console.log(`印刷枚数更新完了: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
+  debugLog('general', `印刷枚数更新完了: ラベル:${labelSheetCount}枚, 普通紙:${orderSheetCount}枚, カスタム:${customLabelCount}面`);
 }
 
 // 印刷枚数をクリアする関数
@@ -915,7 +915,10 @@ function registerSettingChangeHandlers() {
     { id: 'sortByPaymentDate', key: 'SORT_BY_PAYMENT', type: 'checkbox' },
     { id: 'orderImageEnable', key: 'ORDER_IMAGE_ENABLE', type: 'checkbox', sideEffects: [
         (val) => toggleOrderImageRow(val),
-        async (val) => { await updateAllOrderImagesVisibility(val); }
+        (val) => { 
+          // CSSクラスをトグルするだけで再描画はしない
+          document.body.classList.toggle('order-image-hidden', !val);
+        }
       ] },
     // customLabelEnable はカスタムラベルUI群と関係が深く遅延初期化 setupCustomLabelEvents() 内に既存処理があるためここでは扱わない
   ];
@@ -925,6 +928,7 @@ function registerSettingChangeHandlers() {
     if (!el) continue;
     const keyConst = StorageManager.KEYS[def.key];
     el.addEventListener('change', async function() {
+      debugLog('general', `⚙️ 設定変更ハンドラがトリガーされました: ${def.id}`);
       let value;
       if (def.type === 'checkbox') value = this.checked;
       else if (def.type === 'number') value = parseInt(this.value, 10) || 0;
@@ -936,17 +940,20 @@ function registerSettingChangeHandlers() {
         case 'sortByPaymentDate': settingsCache.sortByPaymentDate = value; break;
         case 'orderImageEnable': settingsCache.orderImageEnable = value; break;
       }
-  if (def.id === 'labelskipnum') { CustomLabels.updateButtonStates(); }
+      if (def.id === 'labelskipnum') { CustomLabels.updateButtonStates(); }
       if (Array.isArray(def.sideEffects)) {
         for (const fx of def.sideEffects) {
           try { await fx(value); } catch(e) { console.error('sideEffect error', def.id, e); }
         }
       }
-      await autoProcessCSV();
+      // orderImageEnable の変更では autoProcessCSV を呼ばない
+      if (def.id !== 'orderImageEnable') {
+        await autoProcessCSV();
+      }
     });
 
     if (def.id === 'labelskipnum') {
-  el.addEventListener('input', function() { CustomLabels.updateButtonStates(); });
+      el.addEventListener('input', function() { CustomLabels.updateButtonStates(); });
     }
   }
 }
@@ -1036,23 +1043,9 @@ async function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`ドロップゾーンコンテナ発見: ${!!individualDropZoneContainer}`);
   debugLog(`個別ゾーン発見: ${!!individualZone}`);
   
-  // 注文画像表示機能が無効の場合は個別画像ゾーン全体を非表示
-  const settings = await StorageManager.getSettingsAsync();
-  debugLog(`注文画像表示設定: ${settings.orderImageEnable}`);
-  
-  if (!settings.orderImageEnable) {
-    if (individualZone) {
-      individualZone.style.display = 'none';
-      debugLog('注文画像表示が無効のため個別ゾーンを非表示');
-    }
-    return;
-  }
-
-  // 有効な場合は表示
-  if (individualZone) {
-    individualZone.style.display = 'block';
-    debugLog('注文画像表示が有効のため個別ゾーンを表示');
-  }
+  // 注文画像表示機能の有効/無効チェックを削除。
+  // 表示/非表示はCSSクラス `order-image-hidden` で body タグレベルで制御する。
+  // ここでは常にドロップゾーンを作成する。
 
   if (individualDropZoneContainer && isValidOrderNumber(orderNumber)) {
     // 注文番号を正規化
@@ -1119,11 +1112,8 @@ function setProductItemElements(cItem, productInfo) {
 }
 
 async function displayOrderImage(cOrder, orderNumber) {
-  // 注文画像表示機能が無効の場合は何もしない
-  const settings = await StorageManager.getSettingsAsync();
-  if (!settings.orderImageEnable) {
-    return;
-  }
+  // 注文画像表示機能の有効/無効チェックを削除。
+  // 表示/非表示はCSSクラスで制御するため、ここでは常に画像データを取得・表示する。
 
   let imageToShow = null;
   if (isValidOrderNumber(orderNumber)) {
@@ -1996,73 +1986,10 @@ function toggleOrderImageRow(enabled) {
 
 // 全ての注文明細の画像表示可視性を更新
 async function updateAllOrderImagesVisibility(enabled) {
-  debugLog(`画像表示機能が${enabled ? '有効' : '無効'}に変更されました`);
-  
-  const allOrderSections = document.querySelectorAll('section.sheet');
-  for (const orderSection of allOrderSections) {
-    const imageContainer = orderSection.querySelector('.order-image-container');
-    const individualZone = orderSection.querySelector('.individual-order-image-zone');
-    const individualDropZoneContainer = orderSection.querySelector('.individual-image-dropzone');
-    
-    if (enabled) {
-      // 有効な場合：画像を表示し、個別画像ゾーンも表示
-      if (individualZone) {
-        individualZone.style.display = 'block';
-      }
-      
-      // 統一化された方法で注文番号を取得
-  const orderNumber = (orderSection.id && orderSection.id.startsWith('order-')) ? orderSection.id.substring(6) : '';
-      
-      // 個別画像ドロップゾーンが存在するが中身が空の場合、ドロップゾーンを作成
-      if (individualDropZoneContainer && orderNumber && individualDropZoneContainer.children.length === 0) {
-        debugLog(`個別画像ドロップゾーンを後から作成: ${orderNumber}`);
-        try {
-          const individualImageDropZone = await createIndividualOrderImageDropZone(orderNumber);
-          if (individualImageDropZone && individualImageDropZone.element) {
-            individualDropZoneContainer.appendChild(individualImageDropZone.element);
-            debugLog(`個別画像ドロップゾーン作成成功: ${orderNumber}`);
-          }
-        } catch (error) {
-          debugLog(`個別画像ドロップゾーン作成エラー: ${error.message}`);
-          console.error('個別画像ドロップゾーン作成エラー:', error);
-        }
-      }
-      
-      if (imageContainer) {
-        // 画像を表示
-        let imageToShow = null;
-        if (orderNumber) {
-          // 個別画像
-          if (window.orderRepository) {
-            const rec = window.orderRepository.get(orderNumber);
-            if (rec && rec.image && rec.image.data instanceof ArrayBuffer) {
-              try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); imageToShow = URL.createObjectURL(blob); debugLog(`個別画像を表示: ${orderNumber}`); } catch {}
-            }
-          }
-          const globalImage = await getGlobalOrderImage();
-          if (globalImage) { imageToShow = globalImage; debugLog(`グローバル画像を表示: ${orderNumber}`); }
-        }
-        
-        imageContainer.innerHTML = '';
-        if (imageToShow) {
-          const imageDiv = document.createElement('div');
-          imageDiv.classList.add('order-image');
-          const img = document.createElement('img');
-          img.src = imageToShow;
-          imageDiv.appendChild(img);
-          imageContainer.appendChild(imageDiv);
-        }
-      }
-    } else {
-      // 無効な場合：画像を非表示にし、個別画像ゾーンも非表示
-      if (imageContainer) {
-        imageContainer.innerHTML = '';
-      }
-      if (individualZone) {
-        individualZone.style.display = 'none';
-      }
-    }
-  }
+  // この関数は不要になったため、中身を空にするか、呼び出し元を削除します。
+  // 今回は呼び出し元を修正したため、この関数はもう呼ばれません。
+  // 念のため残しますが、処理は行いません。
+  debugLog('updateAllOrderImagesVisibility はアーキテクチャ変更により不要になりました。');
 }
 
 // ---- カスタムラベル関連ロジック整理済み ----

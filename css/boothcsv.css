@@ -862,7 +862,6 @@ table.label44 td {
 .btn-clear {
   padding: 5px 15px;
   font-size: 14px;
-  margin: 0 5px;
 }
 
 /* 追加のカラーバリエーション（リンク風ボタンで利用） */
@@ -1119,4 +1118,10 @@ label[for="orderImageEnable"]:hover {
   color: #333;
   margin: 0;
   cursor: pointer;
+}
+
+/* 注文画像表示OFF時の表示制御 */
+.order-image-hidden .individual-order-image-zone,
+.order-image-hidden .order-image-container {
+  display: none !important;
 }

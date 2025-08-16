@@ -1,0 +1,14 @@
+{
+  "name": "boothcsv-screenshots",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Puppeteer based screenshot tool for boothcsv",
+  "scripts": {
+    "capture": "node screenshot.js"
+  },
+  "dependencies": {
+  "puppeteer-core": "^22.0.0",
+  "minimist": "^1.2.8",
+  "jimp": "^0.22.10"
+  }
+}

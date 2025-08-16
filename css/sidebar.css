@@ -8,6 +8,9 @@
   --sb-radius: 10px;
   --sb-font-size: 13px;
 }
+/* ---- Screenshot snap anchors ---- */
+.snap-anchor { position: relative; width: 0; height: 0; overflow: hidden; }
+.snap-anchor[aria-hidden="true"] { pointer-events: none; }
 .sidebar-overlay {
   position: fixed;
   inset: 0;

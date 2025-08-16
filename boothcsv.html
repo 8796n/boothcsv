@@ -79,6 +79,8 @@
 <!-- メインコンテンツ（既存の内容） -->
 <main class="main-content" id="mainContent">
   <!-- メイン領域は純粋なプレビュー/印刷に専念（公開場所リンクはサイドバー下部へ移設） -->
+  <!-- Screenshot snap anchors (no_print, invisible) -->
+  <div class="snap-anchor no_print" data-snap="main-top" aria-hidden="true"></div>
 </main> <!-- main-content 終了 -->
 <!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
 <div id="sidebarOverlay" class="sidebar-overlay no_print" hidden></div>
@@ -109,6 +111,7 @@
   </section>
     <section class="sidebar-section">
       <h3 class="sidebar-title">注文明細用画像</h3>
+  <div class="snap-anchor no_print" data-snap="image" aria-hidden="true"></div>
       <div class="sidebar-group checkbox-with-help">
         <label for="orderImageEnable"><input type="checkbox" id="orderImageEnable" name="orderImageEnable"> 注文明細に画像を表示</label>
         <a href="help.html#画像機能について" target="_blank" rel="noopener" class="inline-help" title="画像機能の説明（新しいタブ）">説明</a>
@@ -119,6 +122,7 @@
     </section>
     <section class="sidebar-section">
       <h3 class="sidebar-title">カスタムラベル</h3>
+  <div class="snap-anchor no_print" data-snap="custom-labels" aria-hidden="true"></div>
       <div class="sidebar-group checkbox-with-help">
         <label for="customLabelEnable"><input type="checkbox" id="customLabelEnable" name="customLabelEnable"> 残りラベルに任意文字列を印刷</label>
         <a href="help.html#カスタムラベル機能について" target="_blank" rel="noopener" class="inline-help" title="カスタムラベル機能の説明（新しいタブ）">説明</a>
@@ -139,6 +143,7 @@
           <div class="custom-labels-summary"><div id="customLabelsSummary" class="custom-labels-summary">最終シートの残り面数: 0面</div></div>
           <!-- カスタムフォント設定セクション -->
           <div class="custom-font-section">
+            <div class="snap-anchor no_print" data-snap="custom-fonts" aria-hidden="true"></div>
             <h4 onclick="toggleFontSection()" id="fontSectionHeader">
               <span id="fontSectionArrow">▼</span>
               カスタムフォント設定
@@ -182,6 +187,7 @@
 </aside>
 <template id="L44">
   <section class="sheet">
+  <div class="snap-anchor no_print" data-snap="label-sheet" aria-hidden="true"></div>
       <table class="label44">
       </table>
     </section>
@@ -259,6 +265,7 @@
 </template>
 <template id="注文明細">
   <section class="sheet">
+  <div class="snap-anchor no_print" data-snap="order-page" aria-hidden="true"></div>
     <!-- 各注文明細の非印刷パネル（印刷日時の表示と更新/クリア） -->
     <div class="order-print-info no_print">
       <span>印刷日時: <span class="printed-at">未印刷</span></span>
