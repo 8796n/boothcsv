@@ -1452,7 +1452,14 @@ async function createLabel(labelData=""){
   const divYamato = tdLabel.querySelector('.yamato');
 
   if (typeof labelData === 'string' && labelData) {
-    addP(divOrdernum, labelData);
+    // 注文番号をリンク化
+    const orderLink = document.createElement('a');
+    orderLink.href = `https://manage.booth.pm/orders/${labelData}`;
+    orderLink.textContent = labelData;
+    orderLink.target = '_blank';
+    orderLink.rel = 'noopener';
+    divOrdernum.appendChild(orderLink);
+
     const repo = window.orderRepository || null;
     const rec = repo ? repo.get(labelData) : null;
     const qr = rec ? rec.qr : null;
@@ -1565,7 +1572,9 @@ async function readQR(elImage){
           const b = String(barcode.data).replace(/^\s+|\s+$/g,'').replace(/ +/g,' ').split(" ");
           
           if(b.length === CONSTANTS.QR.EXPECTED_PARTS){
-            const rawOrderNum = elImage.closest("td").querySelector(".ordernum p").innerHTML;
+            // 注文番号リンク化対応: .ordernum a から取得
+            const orderNumElem = elImage.closest("td").querySelector(".ordernum a");
+            const rawOrderNum = orderNumElem ? orderNumElem.textContent : null;
             const ordernum = (rawOrderNum == null) ? '' : String(rawOrderNum).trim();
             
             // 重複チェック
@@ -1638,6 +1647,7 @@ async function readQR(elImage){
     
     img.onerror = function() {
       console.error('画像の読み込みに失敗しました');
+      alert('画像の取得に失敗しました。外部画像の場合はCORS制限の可能性があります。Ctrl+Vで貼り付けるか、ローカル画像を使用してください。');
     };
   } catch (error) {
     console.error('QR読み取り関数エラー:', error);
@@ -1646,19 +1656,7 @@ async function readQR(elImage){
 
 // drag&drop 廃止に伴い attachImage は不要となったため削除
 // QRコード用ペーストゾーンのみドラッグ&ドロップを抑止し、他領域（注文画像/フォント等）は従来どおり許可
-document.addEventListener('dragover', e => {
-  const target = e.target instanceof HTMLElement ? e.target.closest('.dropzone') : null;
-  if (target) {
-    e.preventDefault();
-  }
-});
-document.addEventListener('drop', e => {
-  const target = e.target instanceof HTMLElement ? e.target.closest('.dropzone') : null;
-  if (target) {
-    e.preventDefault();
-    console.warn('QRコード領域ではドラッグ＆ドロップ不可。Ctrl+V で貼り付けてください。');
-  }
-});
+// ...existing code...
 
 // 設定管理
 const CONFIG = {

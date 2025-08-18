@@ -1,3 +1,15 @@
+/* 注文番号リンクの印刷時スタイル調整 */
+.qrlabel .ordernum a {
+  color: #0366d6;
+  text-decoration: underline;
+}
+
+@media print {
+  .qrlabel .ordernum a {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+}
 /* スキップ面の視覚表示（画面のみ） */
 .qrlabel.skip-face {
   position: relative;

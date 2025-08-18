@@ -1,4 +1,4 @@
-<#
+﻿<#
 boothcsv.ps1
 簡易HTTPファイルサーバー (PowerShell)
 - カレントディレクトリを配信
@@ -6,10 +6,11 @@ boothcsv.ps1
 - 使い方: PowerShell を管理者権限不要で開き、スクリプトのあるフォルダで実行
 #>
 param(
-    [int]$Port = 8000,
+    [int]$Port = 8796,
     [string]$DefaultPage = "boothcsv.html",
     [bool]$OpenBrowser = $true
 )
+Add-Type -AssemblyName System.Web
 
 $listener = New-Object System.Net.HttpListener
 $prefix = "http://localhost:$Port/"
@@ -55,8 +56,26 @@ function Get-ContentType($ext){
 }
 
 try {
+    # Ctrl+C を検知したら listener.Stop() を呼んで GetContext のブロッキングを解除する
+    $null = [Console]::add_CancelKeyPress([ConsoleCancelEventHandler]{
+        param($sender,$e)
+        Write-Host "Ctrl+C detected - stopping listener..."
+        try { $listener.Stop() } catch {}
+        # スクリプトは終了処理を行うので、Ctrl+C の既定動作は抑制する
+        $e.Cancel = $true
+    })
+
     while ($listener.IsListening) {
-        $ctx = $listener.GetContext()
+        try {
+            $ctx = $listener.GetContext()
+        } catch [System.Net.HttpListenerException] {
+            # listener が Stop() されたときなどに発生する。ループを抜けて終了処理へ。
+            break
+        } catch [System.InvalidOperationException] {
+            # こちらも listener の状態変化で発生しうるので安全に抜ける
+            break
+        }
+
         $req = $ctx.Request
         $res = $ctx.Response
 
