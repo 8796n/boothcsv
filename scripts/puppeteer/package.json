@@ -7,8 +7,8 @@
     "capture": "node screenshot.js"
   },
   "dependencies": {
-  "puppeteer-core": "^22.0.0",
-  "minimist": "^1.2.8",
-  "jimp": "^0.22.10"
+    "jimp": "^0.22.12",
+    "minimist": "^1.2.8",
+    "puppeteer-core": "^22.15.0"
   }
 }
