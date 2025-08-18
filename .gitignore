@@ -41,10 +41,4 @@ logs/
 coverage/
 .nyc_output/
 
-# 既存の除外設定
-download-images.ps1
-
-# スクリーンショット自動化ツール
-scripts/screenshot/chromedriver.exe
-chromedriver.exe
 tests/

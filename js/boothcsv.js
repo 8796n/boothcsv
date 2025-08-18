@@ -1301,23 +1301,67 @@ function buildQRPastePlaceholder() {
   return cloneTemplate('qrDropPlaceholder');
 }
 function setupPasteZoneEvents(dropzone) {
-  // クリップボードからの画像ペーストのみを受け付ける
-  dropzone.addEventListener("paste", function(event){
-    event.preventDefault();
-    if (!event.clipboardData 
-            || !event.clipboardData.types
-            || (!event.clipboardData.types.includes("Files"))) {
-            return true;
+  // クリップボードからの画像ペーストを受け付ける
+  dropzone.addEventListener("paste", function (event) {
+    try {
+      event.preventDefault();
+      const cd = event.clipboardData;
+      if (!cd) return;
+
+      // ファイルが含まれる場合はファイル優先で処理
+      if (cd.files && cd.files.length > 0) {
+        for (const file of cd.files) {
+          if (!file.type || !file.type.match(/^image\/((jpeg|png)|svg\+xml)$/)) continue;
+          const fr = new FileReader();
+          fr.onload = function (e) {
+            const elImage = document.createElement('img');
+            elImage.src = e.target.result;
+            elImage.onload = function () {
+              dropzone.parentNode.appendChild(elImage);
+              readQR(elImage);
+              dropzone.classList.remove('dropzone');
+              dropzone.style.zIndex = -1;
+              elImage.style.zIndex = 9;
+              addEventQrReset(elImage);
+            };
+          };
+          fr.readAsDataURL(file);
+        }
+      } else if (cd.types && (cd.types.includes('text/plain') || cd.types.includes('text/uri-list'))) {
+        // クリップボードに URL がある場合（外部画像のURLを貼り付けたケースなど）
+        const text = cd.getData('text/uri-list') || cd.getData('text/plain');
+        if (text) handleExternalImageUrl(text.trim());
+      }
+    } catch (e) {
+      console.error('paste handler error', e);
+    } finally {
+      // プレースホルダを復元
+      dropzone.innerHTML = '';
+      dropzone.appendChild(buildQRPastePlaceholder());
     }
-    
-    for(let item of event.clipboardData.items){
-      if(item["kind"] == "file"){
-        const imageFile = item.getAsFile();
-        const fr = new FileReader();
-        fr.onload = function(e) {
+  });
+
+  // ドラッグ操作の見た目制御
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('dragover'); });
+
+  // ドロップサポート: ファイル or URL
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const dt = e.dataTransfer;
+    if (!dt) return;
+
+    // ファイルがあれば優先して処理
+    if (dt.files && dt.files.length > 0) {
+      const file = dt.files[0];
+      if (file && file.type && file.type.match(/^image\/((jpeg|png)|svg\+xml)$/)) {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const dataUrl = ev.target.result;
           const elImage = document.createElement('img');
-          elImage.src = e.target.result;
-          elImage.onload = function() {
+          elImage.src = dataUrl;
+          elImage.onload = function () {
             dropzone.parentNode.appendChild(elImage);
             readQR(elImage);
             dropzone.classList.remove('dropzone');
@@ -1326,15 +1370,56 @@ function setupPasteZoneEvents(dropzone) {
             addEventQrReset(elImage);
           };
         };
-        fr.readAsDataURL(imageFile);
+        reader.readAsDataURL(file);
+        return;
       }
     }
-    
-    // 画像以外がペーストされたときのために、元に戻しておく
-    this.textContent = '';
-  this.innerHTML = '';
-  this.appendChild(buildQRPastePlaceholder());
+
+    // URL ドロップの処理 (ブラウザ間ドラッグで URL が来る場合)
+    const url = (dt.getData && (dt.getData('text/uri-list') || dt.getData('text/plain'))) || null;
+    if (url) {
+      handleExternalImageUrl(url.trim());
+    }
   });
+
+  function handleExternalImageUrl(rawUrl) {
+    if (!rawUrl) return;
+    // data: スキームは直接使用
+    if (rawUrl.startsWith('data:')) {
+      const elImage = document.createElement('img');
+      elImage.src = rawUrl;
+      elImage.onload = function () {
+        dropzone.parentNode.appendChild(elImage);
+        readQR(elImage);
+        dropzone.classList.remove('dropzone');
+        dropzone.style.zIndex = -1;
+        elImage.style.zIndex = 9;
+        addEventQrReset(elImage);
+      };
+      return;
+    }
+
+    // HTTP/HTTPS はサーバープロキシ経由で取得（CORS回避）
+    if (/^https?:\/\//i.test(rawUrl)) {
+      try {
+        const proxied = '/proxy?url=' + encodeURIComponent(rawUrl);
+        const elImage = document.createElement('img');
+        elImage.crossOrigin = 'anonymous';
+        elImage.src = proxied;
+        elImage.onload = function () {
+          dropzone.parentNode.appendChild(elImage);
+          readQR(elImage);
+          dropzone.classList.remove('dropzone');
+          dropzone.style.zIndex = -1;
+          elImage.style.zIndex = 9;
+          addEventQrReset(elImage);
+        };
+        elImage.onerror = function () { console.error('外部画像の読み込みに失敗しました', rawUrl); };
+      } catch (e) {
+        console.error('外部画像処理エラー', e);
+      }
+    }
+  }
 }
 
 function createDropzone(div){ // 互換のため名称維持（内部はペースト専用）
