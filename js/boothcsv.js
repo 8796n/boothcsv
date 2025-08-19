@@ -51,6 +51,8 @@ const DEBUG_FLAGS = {
   image: true,
   general: true       // 一般的な進行ログ
 };
+
+// デバッグログ出力（カテゴリ別フィルタリング対応）
 function debugLog(catOrMsg, ...rest){
   if(!DEBUG_MODE) return;
   let cat = 'general';
@@ -85,18 +87,17 @@ function escapeHTML(str) {
     .replace(/'/g, '&#39;');
 }
 
-// 注文番号ユーティリティ（軽量化のためオブジェクト廃止）
+// CSVの行データから注文番号を取得
 function getOrderNumberFromCSVRow(row){
   if (!row || !row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN]) return '';
   return String(row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN]).trim();
 }
 // 表示用の『注文番号 : 』プレフィクスは CSS の .注文番号::before で付与するため
 // ここでのフォーマット関数は不要になった。
+// 注文番号の有効性をチェック
 function isValidOrderNumber(orderNumber){
   return !!(orderNumber && String(orderNumber).trim());
 }
-
-// CustomLabelCalculator は custom-labels.js に統合（重複定義削除）
 
 // CSV解析ユーティリティ
 class CSVAnalyzer {
@@ -280,7 +281,6 @@ window.addEventListener("load", async function(){
     clearAllButton.onclick = async () => {
       if (!confirm('本当に全ての注文データ (QR含む) をクリアしますか？この操作は取り消せません。')) return;
       try {
-        // OrderRepository に統合されたため、orders ストアを全削除
         if (window.orderRepository && window.orderRepository.db && window.orderRepository.db.clearAllOrders) {
           await window.orderRepository.db.clearAllOrders();
           // repository のキャッシュもリセット
@@ -300,9 +300,6 @@ window.addEventListener("load", async function(){
       }
     };
   }
-
-  // 全ての注文画像をクリアするボタンのイベントリスナーを追加
-  // 個別クリアボタン廃止: 全注文データクリアに統合済み
 
   // バックアップ & リストア
   const backupBtn = document.getElementById('backupDBButton');
@@ -368,8 +365,6 @@ window.addEventListener("load", async function(){
 
   // 設定UIイベントをマッピングで一括登録（重複リスナー整理）
   registerSettingChangeHandlers();
-
-  // showAllOrders 廃止
 
   // カスタムラベル機能のイベントリスナー（遅延実行）
   setTimeout(function() {
@@ -503,6 +498,7 @@ async function updateCustomLabelsPreview() {
   }
 }
 
+// 前回の処理結果をクリア
 function clearPreviousResults() {
   // 結果セクションだけを削除（サイドバー等の一般sectionは残す）
   document.querySelectorAll('section.sheet').forEach(sec => sec.remove());
@@ -511,6 +507,7 @@ function clearPreviousResults() {
   clearPrintCountDisplay();
 }
 
+// CSVデータを処理して注文詳細とラベルを生成
 async function processCSVResults(results, config) {
   // --- Stage B: OrderRepository 利用 ---
   const db = await StorageManager.ensureDatabase();
@@ -678,6 +675,7 @@ async function processCSVResults(results, config) {
   CustomLabels.updateButtonStates();
 }
 
+// カスタムラベルのみを処理（CSV無し）
 async function processCustomLabelsOnly(config, isPreviewMode = false) {
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
@@ -813,6 +811,7 @@ function clearPrintCountDisplay() {
   updatePrintCountDisplay(0, 0, 0);
 }
 
+// 注文データから注文明細のHTML要素を生成
 async function generateOrderDetails(data, labelarr, labelSet = null, printedAtMap = null) {
   const tOrder = document.querySelector('#注文明細');
   
@@ -1007,10 +1006,7 @@ function registerSettingChangeHandlers() {
   }
 }
 
-// 以前は設定変更時にスクロール位置復元をしていたが、設定UIはページ上部のみで再描画影響が小さいためロジック削除
-
 // 現在の「読み込んだファイル全て表示」のON/OFFを返す
-// showAllOrders 廃止
 
 // 既存のDOMからラベル部分だけ再生成（CSVデータはDBから復元）
 async function regenerateLabelsFromDB() {
@@ -1025,7 +1021,6 @@ async function regenerateLabelsFromDB() {
   if (!settings.labelyn) return; // ラベル印刷OFFなら終了
 
   const repo = window.orderRepository || null;
-  // A: DOM 走査を廃止し、表示中注文番号リスト + repository のみで未印刷抽出
   const displayed = Array.isArray(window.currentDisplayedOrderNumbers) ? window.currentDisplayedOrderNumbers : [];
   let sourceNumbers = displayed;
   if (displayed.length === 0 && repo) {
@@ -1039,7 +1034,6 @@ async function regenerateLabelsFromDB() {
   const skip = parseInt(settings.labelskip || '0', 10) || 0;
   // 未印刷 0 件ならラベルシートは表示しない（プレビュー用にも残さない方針）
   if (unprintedOrderNumbers.length === 0) {
-    // 既存 label-sheet は既に削除済みなので枚数再計算のみ
     recalcAndUpdateCounts();
     return;
   }
@@ -1083,6 +1077,7 @@ function recalcAndUpdateCounts() {
 
 // getOrderSection は scrollToOrderSection 内にインライン化済み（id=order-<番号>）
 
+// 注文明細内に個別注文画像ドロップゾーンを作成
 async function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`個別画像ドロップゾーン作成開始 - 注文番号: "${orderNumber}"`);
   
@@ -1092,7 +1087,6 @@ async function createIndividualImageDropZone(cOrder, orderNumber) {
   debugLog(`ドロップゾーンコンテナ発見: ${!!individualDropZoneContainer}`);
   debugLog(`個別ゾーン発見: ${!!individualZone}`);
   
-  // 注文画像表示機能の有効/無効チェックを削除。
   // 表示/非表示はCSSクラス `order-image-hidden` で body タグレベルで制御する。
   // ここでは常にドロップゾーンを作成する。
 
@@ -1117,6 +1111,7 @@ async function createIndividualImageDropZone(cOrder, orderNumber) {
   }
 }
 
+// 注文の商品アイテムリストを処理してHTMLに追加
 function processProductItems(cOrder, row) {
   const tItems = cOrder.querySelector('#商品');
   const trSpace = cOrder.querySelector('.spacerow');
@@ -1134,6 +1129,7 @@ function processProductItems(cOrder, row) {
   }
 }
 
+// 商品行データを解析して商品情報オブジェクトを返す
 function parseProductItemData(itemrow) {
   const firstSplit = itemrow.split(' / ');
   const itemIdSplit = firstSplit[0].split(':');
@@ -1145,6 +1141,7 @@ function parseProductItemData(itemrow) {
   return { itemId, quantity, productName };
 }
 
+// 商品情報をHTML要素に設定
 function setProductItemElements(cItem, productInfo) {
   const tdId = cItem.querySelector(".商品ID");
   if (tdId) {
@@ -1160,8 +1157,8 @@ function setProductItemElements(cItem, productInfo) {
   }
 }
 
+// 注文明細に注文画像を表示
 async function displayOrderImage(cOrder, orderNumber) {
-  // 注文画像表示機能の有効/無効チェックを削除。
   // 表示/非表示はCSSクラスで制御するため、ここでは常に画像データを取得・表示する。
 
   let imageToShow = null;
@@ -1195,8 +1192,7 @@ async function displayOrderImage(cOrder, orderNumber) {
   }
 }
 
-// 旧: グローバル印刷日時パネルは廃止（各注文明細内に移行）
-
+// ラベルシートを生成してDOMに追加
 async function generateLabels(labelarr, options = {}) {
   const opts = {
     skipOnFirstSheet: 0,
@@ -1267,17 +1263,14 @@ async function generateLabels(labelarr, options = {}) {
   window.currentLabelSheetCount++;
 }
 
-// 以下の関数は廃止されました（印刷枚数は固定ヘッダーにリアルタイム表示）
-// function showPrintSummary() { ... }
-// function showCustomLabelPrintSummary() { ... }
-// function showMultiSheetCustomLabelPrintSummary() { ... }
-// function showCSVWithCustomLabelPrintSummary() { ... }
-
+// div要素にpタグを追加するヘルパー関数
 function addP(div, text){
   const p = document.createElement("p");
   p.innerText = text;
   div.appendChild(p);
 }
+
+// div要素を作成するヘルパー関数
 function createDiv(classname="", text=""){
   const div = document.createElement('div');
   if(classname){
@@ -1300,6 +1293,8 @@ function cloneTemplate(id) {
 function buildQRPastePlaceholder() {
   return cloneTemplate('qrDropPlaceholder');
 }
+
+// ペーストゾーンにクリップボード画像ペーストイベントを設定
 function setupPasteZoneEvents(dropzone) {
   // クリップボードからの画像ペーストを受け付ける
   dropzone.addEventListener("paste", function (event) {
@@ -1432,6 +1427,7 @@ function createDropzone(div){ // 互換のため名称維持（内部はペー�
   div.appendChild(divDrop);
 }
 
+// ラベル要素を作成（注文番号またはカスタムラベル）
 async function createLabel(labelData=""){
   // カスタムラベル判定を先に
   if (typeof labelData === 'object' && labelData?.type === 'custom') {
@@ -1496,6 +1492,7 @@ async function createLabel(labelData=""){
   return tdLabel;
 }
 
+// QRコード画像にクリックでリセット機能を追加
 function addEventQrReset(elImage){
     elImage.addEventListener('click', async function(event) {
       event.preventDefault();
@@ -1537,8 +1534,7 @@ function addEventQrReset(elImage){
     });
 }
 
-// ドラッグ＆ドロップ廃止に伴い showDropping / hideDropping は削除
-
+// 画像からQRコードを読み取り、伝票データを抽出
 async function readQR(elImage){
   try {
     const img = new Image();
@@ -1654,7 +1650,6 @@ async function readQR(elImage){
   }
 }
 
-// drag&drop 廃止に伴い attachImage は不要となったため削除
 // QRコード用ペーストゾーンのみドラッグ&ドロップを抑止し、他領域（注文画像/フォント等）は従来どおり許可
 // ...existing code...
 
@@ -1689,7 +1684,6 @@ const CONFIG = {
 };
 
 // v6: グローバル注文画像を settings (IndexedDB) にバイナリ保存するユーティリティ
-// 以前の base64 JSON 方式は廃止。Blob URL を都度生成（簡易実装）。必要ならキャッシュ最適化可。
 async function setGlobalOrderImage(arrayBuffer, mimeType='image/png') {
   try {
     if(!(arrayBuffer instanceof ArrayBuffer)) throw new Error('ArrayBuffer 以外');
@@ -1697,6 +1691,8 @@ async function setGlobalOrderImage(arrayBuffer, mimeType='image/png') {
   debugLog('[image] グローバル画像保存完了 size=' + arrayBuffer.byteLength + ' mime=' + mimeType);
   } catch(e){ console.error('グローバル画像保存失敗', e); }
 }
+
+// グローバル注文画像をIndexedDBから取得してURL生成
 async function getGlobalOrderImage(){
   try {
   const v = await StorageManager.getGlobalOrderImageBinary();
@@ -1739,7 +1735,6 @@ async function createBaseImageDropZone(options = {}) {
   if (!orderNumber && !isIndividual && !savedImage) {
     try { savedImage = await getGlobalOrderImage(); if (savedImage) debugLog('[image] 初期グローバル画像復元'); } catch(e){ console.error('初期グローバル画像取得失敗', e); }
   }
-  // フォールバック廃止 (images ストア削除)
   if (savedImage) {
   debugLog('保存された画像を復元');
     let restoredUrl = savedImage;
@@ -2033,6 +2028,7 @@ function setupClickEvent(dropZone, updatePreview, getDroppedImage) {
   });
 }
 
+// グローバル注文画像ドロップゾーンを作成
 async function createOrderImageDropZone() {
   return await createBaseImageDropZone({
     storageKey: 'orderImage',
@@ -2102,7 +2098,7 @@ if (window.performance && window.performance.mark) {
   window.performance.mark('app-start');
 }
 
-// カスタムラベル機能の関数群
+// カスタムラベル設定行の表示/非表示を切り替え
 function toggleCustomLabelRow(enabled) {
   // 新: 統合されたカスタムラベルブロック
   const block = document.getElementById('customLabelsBlock');
@@ -2317,6 +2313,14 @@ async function updateSkipCount() {
     document.getElementById("labelskipnum").value = newSkipValue;
     await StorageManager.set(StorageManager.KEYS.LABEL_SKIP, newSkipValue);
     
+    // settingsCacheも更新（CSV再読み込み時の不整合を防ぐ）
+    settingsCache.labelskip = newSkipValue;
+    
+    // lastCSVBaseConfigも更新（カスタムラベルプレビューの不整合を防ぐ）
+    if (window.lastCSVBaseConfig) {
+      window.lastCSVBaseConfig.labelskip = newSkipValue;
+    }
+    
     // カスタムラベルの上限も更新（エラーハンドリング付き）
     try {
   await CustomLabels.updateSummary();
@@ -2384,17 +2388,10 @@ async function updateSkipCount() {
 // カスタムフォント管理機能
 // initializeFontDropZone / handleFontFile は custom-labels-font.js に移動
 
-// handleFontFile は移動済み
-
-// localStorage ベースの容量チェックは廃止 (IndexedDB 専用化に伴い削除済み)
-
 
 // (getFontMimeType / addFontToCSS / getFontFormat) は未使用のため削除済み
 
 let _fontFaceLoadToken = 0;
-// loadCustomFontsCSS は移動済み
-
-// updateFontList は移動済み
 
 // --- 汎用入力 Enter 抑止 (フォーム内で Enter がフォント削除ボタン等にフォーカス飛ぶ副作用対策) ---
 function setupPreventEnterOnSimpleInputs() {
@@ -2435,8 +2432,6 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
-// removeFontFromList は移動済み
-
 // applyStyleToSelection などのスタイル編集関数は custom-labels.js (CustomLabelStyle) に移動
 
 // updateSpanStyle は移動
@@ -2470,8 +2465,6 @@ document.addEventListener('keydown', e => {
 
 // フォントサイズを選択範囲に適用（統合された関数を使用）
 // applyFontSizeToSelection は移動
-
-// cleanupEmptySpans は custom-labels.js (CustomLabelStyle) に統合済み
 
 // span要素のスタイルを統合するヘルパー関数
 // mergeSpanStyles は移動
@@ -2576,22 +2569,12 @@ function adjustFontSectionHeight() {
   }
 }
 
-// 成功メッセージ表示ヘルパー
-// showSuccessMessage は移動済み
-
-// ローディング表示ヘルパー
-// showFontUploadProgress は移動済み
-
-// CSS用のpulseアニメーションを追加
-// フォントアニメーション定義は移動済み
-
 // ================================
 // サイドバー開閉ロジック（印刷非影響）
 // ================================
 (function setupSidebar() {
   function initSidebarOnce(){
     if (initSidebarOnce._ran) return; initSidebarOnce._ran = true;
-  // HTML直置きに移行したためフォールバック自動挿入は廃止
 
   const toggleBtn = document.getElementById('sidebarToggle');
     const sidebar = document.getElementById('appSidebar');
@@ -2693,8 +2676,6 @@ function adjustFontSectionHeight() {
         if (window.StorageManager && typeof StorageManager.setSidebarDocked==='function') await StorageManager.setSidebarDocked(!!docked);
       } catch {}
     });
-
-  // HTML直置きに移行したため保存データ操作の移動ロジックは廃止
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && sidebar.classList.contains('open')) {
