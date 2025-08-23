@@ -1169,3 +1169,89 @@ label[for="orderImageEnable"]:hover {
 .order-image-hidden .order-image-container {
   display: none !important;
 }
+
+/* プロトコル警告スタイル */
+.protocol-warning {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.protocol-warning h3 {
+  margin: 0 0 8px 0;
+  color: #495057;
+  font-size: 16px;
+}
+
+.protocol-warning p {
+  margin: 8px 0;
+  color: #6c757d;
+  line-height: 1.4;
+}
+
+.protocol-warning code {
+  background: #e9ecef;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.protocol-warning details {
+  margin-top: 12px;
+}
+
+.protocol-warning summary {
+  cursor: pointer;
+  font-weight: bold;
+  color: #007bff;
+}
+
+.protocol-warning ol {
+  margin: 8px 0 0 20px;
+  padding: 0;
+}
+
+.protocol-warning li {
+  margin: 4px 0;
+}
+
+.protocol-warning small {
+  color: #6c757d;
+  font-size: 12px;
+  font-style: italic;
+  margin-top: 8px;
+  display: block;
+}
+
+.protocol-warning strong {
+  color: #495057;
+}
+
+.protocol-warning .alternative-methods {
+  margin-top: 12px;
+}
+
+.protocol-warning .alternative-methods h5 {
+  margin: 8px 0 4px 0;
+  font-size: 14px;
+  color: #495057;
+  font-weight: bold;
+}
+
+.protocol-warning .alternative-methods code {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.protocol-warning kbd {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #495057;
+}

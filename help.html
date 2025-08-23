@@ -128,6 +128,15 @@
     strong {
       color: #24292e;
     }
+    kbd {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 3px;
+      padding: 2px 4px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #495057;
+    }
   </style>
 </head>
 <body>
@@ -150,6 +159,7 @@
       <ul>
         <li><a href="#基本情報">基本情報</a></li>
         <li><a href="#基本的な使い方">基本的な使い方</a></li>
+        <li><a href="#ローカルサーバー">ローカルでの簡易サーバー</a></li>
         <li><a href="#ラベルシール印刷">ラベルシール印刷</a></li>
         <li><a href="#画像機能について">画像機能について</a></li>
         <li><a href="#カスタムラベル機能について">カスタムラベル機能について</a></li>
@@ -209,6 +219,64 @@
         <li>「注文明細に画像を表示」のチェックを外すと、設定した画像は保持されたまま表示だけを切り替えできます。リアルタイムで反映されるので印刷時の調整に便利です。</li>
         <li>プリンターに用紙をセットして印刷します。</li>
       </ol>
+    </div>
+
+    <h2 id="ローカルサーバー">ローカルでの簡易サーバー</h2>
+    
+    <div class="notice-box">
+      <strong>💡 より便利に使うには</strong><br>
+      HTMLファイルを直接開いた場合、他サイトからの画像ドラッグ&ドロップが制限されます。簡易HTTPサーバー経由でアクセスすることで、この制限を回避できます。
+    </div>
+
+    <h3>🪟 Windows の場合 (boothcsv.ps1)</h3>
+    <div class="step-list">
+      <ol>
+        <li>リポジトリのルート（<code>boothcsv.ps1</code> があるフォルダ）に移動します。</li>
+        <li><strong>実行ポリシーの設定</strong>（初回のみ）<br>
+          PowerShellで <code>Set-ExecutionPolicy RemoteSigned -Scope CurrentUser</code> を実行</li>
+        <li><code>.\boothcsv.ps1</code> を実行</li>
+        <li>自動で開かれるブラウザでアクセス</li>
+      </ol>
+    </div>
+    
+    <div class="feature-box">
+      <h4>⚠️ セキュリティに関する注意</h4>
+      <ul>
+        <li><code>Set-ExecutionPolicy</code> はセキュリティ設定に影響します。スクリプトの内容を確認してから実行してください。</li>
+        <li><code>RemoteSigned</code> は比較的安全な選択ですが、ローカルで作成した悪意のあるスクリプトは実行される可能性があります。</li>
+        <li>設定を戻す場合: <code>Set-ExecutionPolicy Restricted -Scope CurrentUser</code></li>
+      </ul>
+    </div>
+
+    <h3>🍎 macOS / 🐧 Linux の場合</h3>
+    
+    <h4>方法1: シェルスクリプト使用 (boothcsv.sh)</h4>
+    <div class="step-list">
+      <ol>
+        <li>ターミナルでリポジトリのルート（<code>boothcsv.sh</code> があるフォルダ）に移動</li>
+        <li>初回のみ実行権限を付与: <code>chmod +x boothcsv.sh</code></li>
+        <li><code>./boothcsv.sh</code> を実行</li>
+        <li>自動で開かれるブラウザでアクセス</li>
+      </ol>
+    </div>
+
+    <h4>方法2: Python HTTPサーバー使用（推奨）</h4>
+    <div class="step-list">
+      <ol>
+        <li>ターミナルでファイルがあるフォルダに移動</li>
+        <li><code>python3 -m http.server 8796</code> を実行</li>
+        <li>ブラウザで <code>http://localhost:8796</code> を開く</li>
+        <li>使い終わったら <kbd>Ctrl</kbd> + <kbd>C</kbd> で停止</li>
+      </ol>
+    </div>
+
+    <h4>その他の方法</h4>
+    <div class="feature-box">
+      <p><strong>Node.js利用可能な場合:</strong><br>
+      <code>npx http-server -p 8796 -o</code></p>
+      
+      <p><strong>PHP利用可能な場合:</strong><br>
+      <code>php -S localhost:8796</code></p>
     </div>
 
     <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>

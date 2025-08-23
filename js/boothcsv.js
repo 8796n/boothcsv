@@ -28,6 +28,13 @@ const DEBUG_MODE = (() => {
   return urlParams.get('debug') === '1';
 })();
 
+// プロトコル判定ユーティリティ
+const PROTOCOL_UTILS = {
+  isFileProtocol: () => window.location.protocol === 'file:',
+  isHttpProtocol: () => window.location.protocol === 'http:' || window.location.protocol === 'https:',
+  canDragFromExternalSites: () => !PROTOCOL_UTILS.isFileProtocol()
+};
+
 // 初回クイックガイド表示制御（グローバルからどこでも呼べるユーティリティ）
 function hideQuickGuide(){ const el = document.getElementById('initialQuickGuide'); if(el) el.hidden = true; }
 function showQuickGuide(){ const el = document.getElementById('initialQuickGuide'); if(el) el.hidden = false; }
@@ -161,6 +168,15 @@ window.settingsCache = {
 };
 
 window.addEventListener("load", async function(){
+  // プロトコル判定とファイルプロトコル警告の表示
+  if (PROTOCOL_UTILS.isFileProtocol()) {
+    const warningElement = document.getElementById('fileProtocolWarning');
+    if (warningElement) {
+      warningElement.hidden = false;
+      debugLog('ファイルプロトコル警告を表示');
+    }
+  }
+
   // IndexedDB 初期化（失敗時は利用不可とし終了）
   await StorageManager.ensureDatabase();
   if (!window.unifiedDB) {
@@ -1289,9 +1305,10 @@ function cloneTemplate(id) {
   }
   return tpl.content.firstElementChild.cloneNode(true);
 }
-// QRペーストプレースホルダを template から生成
+// QRペーストプレースホルダを template から生成（プロトコルに応じて適切なテンプレートを選択）
 function buildQRPastePlaceholder() {
-  return cloneTemplate('qrDropPlaceholder');
+  const templateId = PROTOCOL_UTILS.canDragFromExternalSites() ? 'qrDropPlaceholderHttp' : 'qrDropPlaceholder';
+  return cloneTemplate(templateId);
 }
 
 // ペーストゾーンにクリップボード画像ペーストイベントを設定
@@ -1748,14 +1765,16 @@ async function createBaseImageDropZone(options = {}) {
   } else {
     if (isIndividual) {
   dropZone.innerHTML = '';
-  const node = cloneTemplate('orderImageDropDefault');
+  const templateId = PROTOCOL_UTILS.canDragFromExternalSites() ? 'orderImageDropDefault' : 'orderImageDropDefaultFile';
+  const node = cloneTemplate(templateId);
       node.textContent = defaultMessage; // 個別はメッセージ差替
       dropZone.appendChild(node);
     } else {
   dropZone.innerHTML = '';
-  dropZone.appendChild(cloneTemplate('orderImageDropDefault'));
+      const templateId = PROTOCOL_UTILS.canDragFromExternalSites() ? 'orderImageDropDefault' : 'orderImageDropDefaultFile';
+  dropZone.appendChild(cloneTemplate(templateId));
     }
-    debugLog(`初期メッセージを設定: ${isIndividual ? defaultMessage : 'デフォルトコンテンツ'}`);
+    debugLog(`初期メッセージを設定: ${isIndividual ? defaultMessage : 'デフォルトコンテンツ'} プロトコル: ${window.location.protocol}`);
   }
 
   // 全ての注文明細の画像を更新する関数
@@ -2039,12 +2058,16 @@ async function createOrderImageDropZone() {
 
 // 個別注文用の画像ドロップゾーンを作成する関数（リファクタリング済み）
 async function createIndividualOrderImageDropZone(orderNumber) {
+  const defaultMessage = PROTOCOL_UTILS.canDragFromExternalSites() 
+    ? '画像をドロップ or クリックで選択'
+    : '画像をクリックで選択 (ドラッグは簡易サーバー経由で可能)';
+    
   return await createBaseImageDropZone({
     storageKey: `orderImage_${orderNumber}`,
     isIndividual: true,
     orderNumber: orderNumber,
     containerClass: 'individual-order-image-drop',
-    defaultMessage: '画像をドロップ or クリックで選択'
+    defaultMessage: defaultMessage
   });
 }
 

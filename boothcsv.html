@@ -90,6 +90,50 @@
       <li>③ プレビューを確認し <button type="button" class="btn-compact quick-guide-print-dummy" aria-hidden="true" tabindex="-1">印刷</button> を押す</li>
     </ol>
     <p class="quick-guide-note">詳しい説明はサイドバー右上の「使い方ガイド」リンクから確認できます。</p>
+    <!-- ファイルプロトコル警告（JSで条件表示） -->
+    <div id="fileProtocolWarning" class="protocol-warning" hidden>
+      <h3>💡 より便利に使うには</h3>
+      <p>現在HTMLファイルを直接開いているため、他サイトからの画像ドラッグ&amp;ドロップが制限されています。</p>
+      <p><strong>推奨:</strong> 簡易HTTPサーバー経由でアクセスしてください。</p>
+      <details>
+        <summary>🪟 Windows - PowerShellスクリプト使用</summary>
+        <ol>
+          <li>PowerShellでこのフォルダを開く</li>
+          <li><strong>実行ポリシーの設定</strong>（初回のみ）<br>
+            <code>Set-ExecutionPolicy RemoteSigned -Scope CurrentUser</code></li>
+          <li><code>.\boothcsv.ps1</code> を実行</li>
+          <li>自動で開かれるブラウザでアクセス</li>
+        </ol>
+        <p><small>※ 実行ポリシーの設定はセキュリティに影響します。スクリプトの内容を確認してから実行してください。</small></p>
+      </details>
+      <details>
+        <summary>🍎 macOS / 🐧 Linux - Python使用（推奨）</summary>
+        <ol>
+          <li>ターミナルでこのフォルダを開く</li>
+          <li><code>python3 -m http.server 8796</code> を実行</li>
+          <li>ブラウザで <code>http://localhost:8796</code> を開く</li>
+          <li>使い終わったら <kbd>Ctrl</kbd> + <kbd>C</kbd> で停止</li>
+        </ol>
+      </details>
+      <details>
+        <summary>🍎 macOS / 🐧 Linux - シェルスクリプト使用</summary>
+        <ol>
+          <li>ターミナルでこのフォルダを開く</li>
+          <li>初回のみ: <code>chmod +x boothcsv.sh</code></li>
+          <li><code>./boothcsv.sh</code> を実行</li>
+          <li>自動で開かれるブラウザでアクセス</li>
+        </ol>
+      </details>
+      <details>
+        <summary>🌐 その他の方法</summary>
+        <div class="alternative-methods">
+          <h5>Node.js利用可能な場合:</h5>
+          <code>npx http-server -p 8796 -o</code>
+          <h5>PHP利用可能な場合:</h5>
+          <code>php -S localhost:8796</code>
+        </div>
+      </details>
+    </div>
   </section>
 </main> <!-- main-content 終了 -->
 <!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
@@ -256,9 +300,15 @@
 <!-- QRコード・画像系／カスタムラベル説明テンプレート群 -->
 <template id="qrDropPlaceholder">
   <p class="qr-drop-placeholder">Paste QR image here (Ctrl+V)</p>
- </template>
+</template>
+<template id="qrDropPlaceholderHttp">
+  <p class="qr-drop-placeholder">QR画像をここにドロップ or ペースト (Ctrl+V)</p>
+</template>
 <template id="orderImageDropDefault">
   <p class="order-image-default-msg">注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
+</template>
+<template id="orderImageDropDefaultFile">
+  <p class="order-image-default-msg">注文明細の余白に表示したい画像をクリックでファイルを選択 (他サイトからのドラッグ&ドロップは簡易サーバー経由で可能)</p>
 </template>
 <template id="customLabelsInstructionTemplate">
   <details class="custom-labels-instructions" id="customLabelsHelp">
