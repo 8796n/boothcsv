@@ -5,6 +5,7 @@ boothcsv.ps1
 - ルートにアクセスが来た場合は `boothcsv.html` を返す
 - 使い方: PowerShell を管理者権限不要で開き、スクリプトのあるフォルダで実行
 #>
+[CmdletBinding()]
 param(
     [int]$Port = 8796,
     [string]$DefaultPage = "boothcsv.html",
@@ -78,6 +79,14 @@ try {
 
         $req = $ctx.Request
         $res = $ctx.Response
+
+    # アクセスログ（デフォルトでコンソールに表示）
+        try {
+            $remote = if ($req.RemoteEndPoint -ne $null) { $req.RemoteEndPoint.Address.ToString() } elseif ($req.UserHostAddress) { $req.UserHostAddress } else { 'unknown' }
+        } catch {
+            $remote = 'unknown'
+        }
+    Write-Host "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))] $($req.HttpMethod) $($req.Url.AbsolutePath) from $remote"
 
         # パスを安全に処理
         $rawPath = $req.Url.AbsolutePath
