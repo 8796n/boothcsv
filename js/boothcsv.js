@@ -46,6 +46,31 @@ window.lastCSVResults = null; // { data: [...] }
 window.lastCSVBaseConfig = null; // { labelyn, labelskip, sortByPaymentDate }
 let pendingUpdateTimer = null;
 
+const processedOrdersState = {
+  sortKey: 'paymentDate',
+  sortDirection: 'desc',
+  currentPage: 1,
+  pageSize: 20,
+  unprintedOnly: false,
+  totalItems: 0,
+  totalPages: 1,
+  pageItems: []
+};
+const processedOrdersSelection = new Set();
+const processedOrdersUI = {
+  panel: null,
+  body: null,
+  selectAll: null,
+  deleteButton: null,
+  prev: null,
+  next: null,
+  pageInfo: null,
+  empty: null,
+  filter: null,
+  headerCells: []
+};
+let processedOrdersUnsubscribe = null;
+
 // デバッグログ用関数
 const DEBUG_FLAGS = {
   csv: true,          // CSV 読み込み関連
@@ -164,7 +189,8 @@ window.settingsCache = {
   labelskip: 0,
   sortByPaymentDate: false,
   customLabelEnable: false,
-  orderImageEnable: false
+  orderImageEnable: false,
+  shippingMessageTemplate: ''
 };
 
 window.addEventListener("load", async function(){
@@ -192,14 +218,22 @@ window.addEventListener("load", async function(){
   const elSort = document.getElementById("sortByPaymentDate"); if (elSort) elSort.checked = settings.sortByPaymentDate;
   const elCustom = document.getElementById("customLabelEnable"); if (elCustom) elCustom.checked = settings.customLabelEnable;
   const elImg = document.getElementById("orderImageEnable"); if (elImg) elImg.checked = settings.orderImageEnable;
+  const elShippingTemplate = document.getElementById("shippingMessageTemplate");
+  if (elShippingTemplate) elShippingTemplate.value = settings.shippingMessageTemplate || '';
 
   Object.assign(window.settingsCache, {
     labelyn: settings.labelyn,
     labelskip: settings.labelskip,
     sortByPaymentDate: settings.sortByPaymentDate,
     customLabelEnable: settings.customLabelEnable,
-    orderImageEnable: settings.orderImageEnable
+    orderImageEnable: settings.orderImageEnable,
+    shippingMessageTemplate: settings.shippingMessageTemplate || ''
   });
+
+  initializeShippingMessageTemplateUI(settings.shippingMessageTemplate || '');
+
+  await setupProcessedOrdersPanel();
+  updateProcessedOrdersVisibility();
 
   toggleCustomLabelRow(settings.customLabelEnable);
   toggleOrderImageRow(settings.orderImageEnable);
@@ -406,6 +440,7 @@ async function autoProcessCSV() {
       const fileInput = document.getElementById("file");
       if (!fileInput.files || fileInput.files.length === 0) {
         console.log('ファイルが選択されていません。自動処理をスキップします。');
+        updateProcessedOrdersVisibility();
         try {
           await updateCustomLabelsPreview();
           resolve();
@@ -424,6 +459,7 @@ async function autoProcessCSV() {
       
       console.log('自動CSV処理を開始します...');
       clearPreviousResults();
+      updateProcessedOrdersVisibility();
     const config = {
       file: document.getElementById('file').files[0],
       labelyn: settingsCache.labelyn,
@@ -523,19 +559,349 @@ function clearPreviousResults() {
   clearPrintCountDisplay();
 }
 
+async function ensureOrderRepository() {
+  if (window.orderRepository) {
+    if (typeof window.orderRepository.init === 'function' && !window.orderRepository.initialized) {
+      await window.orderRepository.init();
+    }
+    return window.orderRepository;
+  }
+  if (typeof OrderRepository === 'undefined') {
+    console.error('OrderRepository 未読込');
+    return null;
+  }
+  const db = await StorageManager.ensureDatabase();
+  if (!db) return null;
+  const repo = new OrderRepository(db);
+  await repo.init();
+  window.orderRepository = repo;
+  return repo;
+}
+
+function parseDateToTimestamp(value) {
+  if (!value) return NaN;
+  const direct = Date.parse(value);
+  if (!Number.isNaN(direct)) return direct;
+  const normalized = value.replace(/T/, ' ').replace(/-/g, '/');
+  const fallback = Date.parse(normalized);
+  return Number.isNaN(fallback) ? NaN : fallback;
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+  const normalized = value.replace(/T/, ' ').replace(/-/g, '/');
+  const fallback = new Date(normalized);
+  if (!Number.isNaN(fallback.getTime())) return fallback.toLocaleString();
+  return value;
+}
+
+async function setupProcessedOrdersPanel() {
+  const template = document.getElementById('processedOrdersPanelTemplate');
+  if (!template) return;
+  const repo = await ensureOrderRepository();
+  if (!repo) return;
+
+  if (!processedOrdersUI.panel) {
+    const fragment = template.content.cloneNode(true);
+    const guide = document.getElementById('initialQuickGuide');
+    if (guide && guide.parentNode) {
+      guide.parentNode.insertBefore(fragment, guide.nextSibling);
+    } else {
+      const main = document.getElementById('mainContent');
+      if (main) main.appendChild(fragment);
+    }
+
+    processedOrdersUI.panel = document.getElementById('processedOrdersPanel');
+    processedOrdersUI.body = document.getElementById('processedOrdersBody');
+    processedOrdersUI.selectAll = document.getElementById('processedOrdersSelectAll');
+    processedOrdersUI.deleteButton = document.getElementById('processedOrdersDeleteButton');
+    processedOrdersUI.prev = document.getElementById('processedOrdersPrev');
+    processedOrdersUI.next = document.getElementById('processedOrdersNext');
+    processedOrdersUI.pageInfo = document.getElementById('processedOrdersPageInfo');
+    processedOrdersUI.empty = document.getElementById('processedOrdersEmpty');
+    processedOrdersUI.filter = document.getElementById('processedOrdersUnprintedOnly');
+    processedOrdersUI.headerCells = processedOrdersUI.panel ? Array.from(processedOrdersUI.panel.querySelectorAll('th.sortable')) : [];
+
+    if (processedOrdersUI.selectAll) {
+      processedOrdersUI.selectAll.addEventListener('change', handleProcessedOrdersSelectAll);
+    }
+    if (processedOrdersUI.filter) {
+      processedOrdersUI.filter.addEventListener('change', handleProcessedOrdersFilterChange);
+    }
+    if (processedOrdersUI.prev) {
+      processedOrdersUI.prev.addEventListener('click', handleProcessedOrdersPrevPage);
+    }
+    if (processedOrdersUI.next) {
+      processedOrdersUI.next.addEventListener('click', handleProcessedOrdersNextPage);
+    }
+    if (processedOrdersUI.deleteButton) {
+      processedOrdersUI.deleteButton.addEventListener('click', handleProcessedOrdersDelete);
+    }
+    processedOrdersUI.headerCells.forEach(cell => {
+      const key = cell.dataset.sort;
+      if (!key) return;
+      cell.addEventListener('click', () => handleProcessedOrdersSort(key));
+    });
+  }
+
+  if (processedOrdersUnsubscribe) {
+    processedOrdersUnsubscribe();
+    processedOrdersUnsubscribe = null;
+  }
+  processedOrdersUnsubscribe = repo.onUpdate(() => {
+    refreshProcessedOrdersPanel();
+  });
+
+  await refreshProcessedOrdersPanel();
+}
+
+function compareProcessedOrders(a, b) {
+  const dir = processedOrdersState.sortDirection === 'asc' ? 1 : -1;
+  let result = 0;
+  if (processedOrdersState.sortKey === 'paymentDate') {
+    const av = Number.isNaN(a.paymentDateValue) ? -Infinity : a.paymentDateValue;
+    const bv = Number.isNaN(b.paymentDateValue) ? -Infinity : b.paymentDateValue;
+    if (av < bv) result = -1;
+    else if (av > bv) result = 1;
+  } else if (processedOrdersState.sortKey === 'printedAt') {
+    const av = Number.isNaN(a.printedAtValue) ? -Infinity : a.printedAtValue;
+    const bv = Number.isNaN(b.printedAtValue) ? -Infinity : b.printedAtValue;
+    if (av < bv) result = -1;
+    else if (av > bv) result = 1;
+  } else {
+    result = a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
+  }
+  if (result === 0) {
+    result = a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
+  }
+  return result * dir;
+}
+
+async function refreshProcessedOrdersPanel() {
+  const repo = await ensureOrderRepository();
+  if (!repo || !processedOrdersUI.panel) return;
+
+  const records = repo.getAll();
+  const data = records.map(rec => {
+    const paymentRaw = rec && rec.row ? rec.row[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || '' : '';
+    const printedRaw = rec && rec.printedAt ? rec.printedAt : '';
+    return {
+      orderNumber: rec.orderNumber,
+      paymentDateRaw: paymentRaw,
+      paymentDateValue: parseDateToTimestamp(paymentRaw),
+      printedAtRaw: printedRaw,
+      printedAtValue: parseDateToTimestamp(printedRaw),
+      printed: !!printedRaw
+    };
+  }).filter(item => !!item.orderNumber);
+
+  const sorted = [...data].sort(compareProcessedOrders);
+  const filtered = processedOrdersState.unprintedOnly ? sorted.filter(item => !item.printed) : sorted;
+
+  processedOrdersState.totalItems = filtered.length;
+  processedOrdersState.totalPages = filtered.length === 0 ? 1 : Math.ceil(filtered.length / processedOrdersState.pageSize);
+  if (processedOrdersState.currentPage > processedOrdersState.totalPages) {
+    processedOrdersState.currentPage = processedOrdersState.totalPages;
+  }
+  if (filtered.length === 0) {
+    processedOrdersState.currentPage = 1;
+  }
+  const startIndex = (processedOrdersState.currentPage - 1) * processedOrdersState.pageSize;
+  const pageItems = filtered.slice(startIndex, startIndex + processedOrdersState.pageSize);
+  processedOrdersState.pageItems = pageItems;
+
+  const validKeys = new Set(data.map(item => item.orderNumber));
+  processedOrdersSelection.forEach(key => {
+    if (!validKeys.has(key)) processedOrdersSelection.delete(key);
+  });
+
+  if (processedOrdersUI.body) {
+    processedOrdersUI.body.textContent = '';
+    pageItems.forEach(item => {
+      const tr = document.createElement('tr');
+
+      const selectTd = document.createElement('td');
+      selectTd.className = 'col-select';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.dataset.orderNumber = item.orderNumber;
+      checkbox.checked = processedOrdersSelection.has(item.orderNumber);
+      checkbox.setAttribute('aria-label', `注文 ${item.orderNumber} を選択`);
+      checkbox.addEventListener('change', (ev) => {
+        handleProcessedOrdersRowSelection(item.orderNumber, ev.target.checked);
+      });
+      selectTd.appendChild(checkbox);
+      tr.appendChild(selectTd);
+
+      const orderTd = document.createElement('td');
+      const link = document.createElement('a');
+      link.href = `https://manage.booth.pm/orders/${encodeURIComponent(item.orderNumber)}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'order-link';
+      link.textContent = item.orderNumber;
+      orderTd.appendChild(link);
+      tr.appendChild(orderTd);
+
+      const paymentTd = document.createElement('td');
+      paymentTd.textContent = item.paymentDateRaw || '';
+      tr.appendChild(paymentTd);
+
+      const printedTd = document.createElement('td');
+      printedTd.textContent = item.printedAtRaw ? formatDateTime(item.printedAtRaw) : '';
+      tr.appendChild(printedTd);
+
+      processedOrdersUI.body.appendChild(tr);
+    });
+  }
+
+  if (processedOrdersUI.empty) {
+    if (filtered.length === 0) {
+      processedOrdersUI.empty.hidden = false;
+      processedOrdersUI.empty.textContent = processedOrdersState.unprintedOnly ? '未印刷の注文はありません。' : '保存されている注文はありません。';
+    } else {
+      processedOrdersUI.empty.hidden = true;
+    }
+  }
+
+  syncProcessedOrdersSelectAll(pageItems);
+  syncProcessedOrdersDeleteButton();
+  updateProcessedOrdersPagination(filtered.length);
+  updateProcessedOrdersSortIndicators();
+  updateProcessedOrdersVisibility();
+}
+
+function updateProcessedOrdersSortIndicators() {
+  if (!Array.isArray(processedOrdersUI.headerCells)) return;
+  processedOrdersUI.headerCells.forEach(cell => {
+    cell.classList.remove('sort-asc', 'sort-desc');
+    if (cell.dataset.sort === processedOrdersState.sortKey) {
+      cell.classList.add(processedOrdersState.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+}
+
+function syncProcessedOrdersSelectAll(pageItems) {
+  if (!processedOrdersUI.selectAll) return;
+  if (pageItems.length === 0) {
+    processedOrdersUI.selectAll.checked = false;
+    processedOrdersUI.selectAll.indeterminate = false;
+    processedOrdersUI.selectAll.disabled = processedOrdersState.totalItems === 0;
+    return;
+  }
+  const selectedCount = pageItems.filter(item => processedOrdersSelection.has(item.orderNumber)).length;
+  processedOrdersUI.selectAll.disabled = false;
+  processedOrdersUI.selectAll.checked = selectedCount === pageItems.length;
+  processedOrdersUI.selectAll.indeterminate = selectedCount > 0 && selectedCount < pageItems.length;
+}
+
+function syncProcessedOrdersDeleteButton() {
+  if (!processedOrdersUI.deleteButton) return;
+  const count = processedOrdersSelection.size;
+  processedOrdersUI.deleteButton.disabled = count === 0;
+  processedOrdersUI.deleteButton.textContent = count > 0 ? `選択した注文を削除 (${count})` : '選択した注文を削除';
+}
+
+function updateProcessedOrdersPagination(totalItems) {
+  if (processedOrdersUI.prev) {
+    processedOrdersUI.prev.disabled = processedOrdersState.currentPage <= 1 || totalItems === 0;
+  }
+  if (processedOrdersUI.next) {
+    processedOrdersUI.next.disabled = processedOrdersState.currentPage >= processedOrdersState.totalPages || totalItems === 0;
+  }
+  if (processedOrdersUI.pageInfo) {
+    if (totalItems === 0) {
+      processedOrdersUI.pageInfo.textContent = '0件';
+    } else {
+      processedOrdersUI.pageInfo.textContent = `${processedOrdersState.currentPage} / ${processedOrdersState.totalPages} ページ（全${totalItems}件）`;
+    }
+  }
+}
+
+function handleProcessedOrdersSort(key) {
+  if (!key) return;
+  if (processedOrdersState.sortKey === key) {
+    processedOrdersState.sortDirection = processedOrdersState.sortDirection === 'asc' ? 'desc' : 'asc';
+  } else {
+    processedOrdersState.sortKey = key;
+    processedOrdersState.sortDirection = key === 'orderNumber' ? 'asc' : 'desc';
+  }
+  processedOrdersState.currentPage = 1;
+  refreshProcessedOrdersPanel();
+}
+
+function handleProcessedOrdersSelectAll(event) {
+  const checked = event.target.checked;
+  processedOrdersState.pageItems.forEach(item => {
+    if (checked) processedOrdersSelection.add(item.orderNumber);
+    else processedOrdersSelection.delete(item.orderNumber);
+  });
+  if (processedOrdersUI.body) {
+    processedOrdersUI.body.querySelectorAll('input[type="checkbox"][data-order-number]').forEach(box => {
+      box.checked = processedOrdersSelection.has(box.dataset.orderNumber);
+    });
+  }
+  syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
+  syncProcessedOrdersDeleteButton();
+}
+
+function handleProcessedOrdersRowSelection(orderNumber, checked) {
+  if (!orderNumber) return;
+  if (checked) processedOrdersSelection.add(orderNumber);
+  else processedOrdersSelection.delete(orderNumber);
+  syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
+  syncProcessedOrdersDeleteButton();
+}
+
+function handleProcessedOrdersFilterChange(event) {
+  processedOrdersState.unprintedOnly = !!event.target.checked;
+  processedOrdersState.currentPage = 1;
+  refreshProcessedOrdersPanel();
+}
+
+function handleProcessedOrdersPrevPage() {
+  if (processedOrdersState.currentPage <= 1) return;
+  processedOrdersState.currentPage -= 1;
+  refreshProcessedOrdersPanel();
+}
+
+function handleProcessedOrdersNextPage() {
+  if (processedOrdersState.currentPage >= processedOrdersState.totalPages) return;
+  processedOrdersState.currentPage += 1;
+  refreshProcessedOrdersPanel();
+}
+
+async function handleProcessedOrdersDelete() {
+  if (processedOrdersSelection.size === 0) return;
+  const orderNumbers = Array.from(processedOrdersSelection);
+  if (!confirm(`選択した${orderNumbers.length}件の注文を削除しますか？`)) return;
+  try {
+    const repo = await ensureOrderRepository();
+    if (!repo) return;
+    await repo.deleteMany(orderNumbers);
+    processedOrdersSelection.clear();
+    alert('選択した注文を削除しました');
+  } catch (e) {
+    console.error('order delete error', e);
+    alert('注文の削除に失敗しました: ' + (e && e.message ? e.message : e));
+  }
+  refreshProcessedOrdersPanel();
+}
+
+function updateProcessedOrdersVisibility() {
+  if (!processedOrdersUI.panel) return;
+  const fileInput = document.getElementById('file');
+  const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
+  processedOrdersUI.panel.hidden = hasFile;
+}
+
 // CSVデータを処理して注文詳細とラベルを生成
 async function processCSVResults(results, config) {
   // --- Stage B: OrderRepository 利用 ---
-  const db = await StorageManager.ensureDatabase();
-  if (!window.orderRepository) {
-    if (typeof OrderRepository === 'undefined') {
-      console.error('OrderRepository 未読込');
-    } else {
-      window.orderRepository = new OrderRepository(db);
-      await window.orderRepository.init();
-    }
-  }
-  if (!window.orderRepository) return; // フェイルセーフ
+  const repo = await ensureOrderRepository();
+  if (!repo) return; // フェイルセーフ
 
   // 直近CSV保持（プレビュー再描画用）
   try {
@@ -555,6 +921,7 @@ async function processCSVResults(results, config) {
 
   // CSV の順序（= BOOTH ダウンロードの注文番号降順）を保持したまま repository に反映
   await window.orderRepository.bulkUpsert(results.data);
+  await refreshProcessedOrdersPanel();
   const csvOrderKeys = [];
   let debugValidOrderCount = 0;
   for (const row of results.data) {
@@ -1023,6 +1390,69 @@ function registerSettingChangeHandlers() {
 }
 
 // 現在の「読み込んだファイル全て表示」のON/OFFを返す
+
+function initializeShippingMessageTemplateUI(initialValue) {
+  const textarea = document.getElementById('shippingMessageTemplate');
+  const saveBtn = document.getElementById('saveShippingMessageTemplate');
+  const copyBtn = document.getElementById('copyShippingMessageTemplate');
+
+  if (textarea) {
+    textarea.value = initialValue || '';
+  }
+
+  if (initializeShippingMessageTemplateUI._initialized) {
+    return;
+  }
+  initializeShippingMessageTemplateUI._initialized = true;
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const value = textarea ? textarea.value : '';
+      try {
+        await StorageManager.set(StorageManager.KEYS.SHIPPING_MESSAGE_TEMPLATE, value);
+        settingsCache.shippingMessageTemplate = value;
+        alert('出荷連絡の定型文を保存しました');
+      } catch (e) {
+        console.error('shipping template save error', e);
+        alert('定型文の保存に失敗しました: ' + (e && e.message ? e.message : e));
+      }
+    });
+  }
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const value = textarea ? textarea.value : '';
+      if (!value) {
+        alert('コピーする定型文がありません。');
+        return;
+      }
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(value);
+        } else if (textarea) {
+          textarea.focus();
+          textarea.select();
+          const copied = document.execCommand ? document.execCommand('copy') : false;
+          if (!copied) {
+            throw new Error('copyCommandFailed');
+          }
+          if (window.getSelection) {
+            const selection = window.getSelection();
+            if (selection && selection.removeAllRanges) {
+              selection.removeAllRanges();
+            }
+          }
+        } else {
+          throw new Error('clipboardUnavailable');
+        }
+        alert('定型文をコピーしました');
+      } catch (e) {
+        console.error('shipping template copy error', e);
+        alert('コピーに失敗しました。ブラウザの許可設定を確認してください。');
+      }
+    });
+  }
+}
 
 // 既存のDOMからラベル部分だけ再生成（CSVデータはDBから復元）
 async function regenerateLabelsFromDB() {
@@ -2085,6 +2515,7 @@ document.getElementById("file").addEventListener("change", async function() {
       const shortName = fileName.length > 15 ? fileName.substring(0, 12) + '...' : fileName;
       fileSelectedInfoCompact.textContent = shortName;
       fileSelectedInfoCompact.classList.add('has-file');
+      updateProcessedOrdersVisibility();
   hideQuickGuide();
       
       // CSVファイルが選択されたら自動的に処理を実行
@@ -2093,6 +2524,7 @@ document.getElementById("file").addEventListener("change", async function() {
     } else {
       fileSelectedInfoCompact.textContent = '未選択';
       fileSelectedInfoCompact.classList.remove('has-file');
+      updateProcessedOrdersVisibility();
   showQuickGuide();
       
       // ファイルがクリアされた場合は結果もクリア

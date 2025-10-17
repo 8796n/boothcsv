@@ -135,6 +135,40 @@
       </details>
     </div>
   </section>
+  <template id="processedOrdersPanelTemplate">
+    <section id="processedOrdersPanel" class="processed-orders-panel no_print" hidden>
+      <div class="processed-orders-header">
+        <h3 class="processed-orders-title">処理済み注文一覧</h3>
+        <div class="processed-orders-actions">
+          <label class="processed-orders-filter">
+            <input type="checkbox" id="processedOrdersUnprintedOnly"> 未印刷のみ表示
+          </label>
+          <button type="button" id="processedOrdersDeleteButton" class="btn-base btn-danger btn-small" disabled>選択した注文を削除</button>
+        </div>
+      </div>
+      <div class="processed-orders-table-wrapper">
+        <table class="processed-orders-table">
+          <thead>
+            <tr>
+              <th class="col-select"><input type="checkbox" id="processedOrdersSelectAll" aria-label="全て選択"></th>
+              <th data-sort="orderNumber" class="sortable">注文番号</th>
+              <th data-sort="paymentDate" class="sortable sort-desc">支払い日時</th>
+              <th data-sort="printedAt" class="sortable">印刷日時</th>
+            </tr>
+          </thead>
+          <tbody id="processedOrdersBody"></tbody>
+        </table>
+        <div class="processed-orders-empty" id="processedOrdersEmpty" hidden>保存されている注文はありません。</div>
+      </div>
+      <div class="processed-orders-footer">
+        <div class="processed-orders-pagination">
+          <button type="button" id="processedOrdersPrev" class="btn-base btn-small" disabled>前へ</button>
+          <span id="processedOrdersPageInfo" class="processed-orders-page-info"></span>
+          <button type="button" id="processedOrdersNext" class="btn-base btn-small" disabled>次へ</button>
+        </div>
+      </div>
+    </section>
+  </template>
 </main> <!-- main-content 終了 -->
 <!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
 <div id="sidebarOverlay" class="sidebar-overlay no_print" hidden></div>
@@ -163,6 +197,18 @@
       </div>
       <p class="sidebar-note">変更は自動で適用され、プレビューが更新されます。</p>
   </section>
+    <section class="sidebar-section">
+      <h3 class="sidebar-title">発送通知コメント(コピペ用)</h3>
+      <div class="sidebar-group">
+        <label for="shippingMessageTemplate">定型文</label>
+        <textarea id="shippingMessageTemplate" rows="5" placeholder="発送通知に添えるメッセージを入力してください"></textarea>
+      </div>
+      <div class="sidebar-group sidebar-button-row">
+        <button type="button" id="saveShippingMessageTemplate" class="btn-base btn-success btn-small">保存</button>
+        <button type="button" id="copyShippingMessageTemplate" class="btn-base btn-info btn-small">コピー</button>
+      </div>
+      <p class="sidebar-note">保存すると次回以降も同じ定型文が表示されます。</p>
+    </section>
     <section class="sidebar-section">
       <h3 class="sidebar-title">注文明細用画像</h3>
   <div class="snap-anchor no_print" data-snap="image" aria-hidden="true"></div>

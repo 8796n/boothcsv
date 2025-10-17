@@ -186,6 +186,17 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
   padding: 6px 8px;
   font-size: 13px;
 }
+#appSidebar textarea {
+  border: 1px solid #ddd;
+  border-radius: calc(var(--sb-radius) - 4px);
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  box-sizing: border-box;
+}
 #appSidebar input[type="number"] { width: 100%; max-width: 160px; }
 
 /* 2桁想定の数値入力はコンパクトに（ラベルと同一行に収める） */
@@ -204,6 +215,9 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
   font-size: 13px;
   padding: 6px 10px;
 }
+
+.sidebar-button-row { display:flex; gap:8px; flex-wrap:wrap; }
+.sidebar-button-row .btn-base { flex:1 1 auto; }
 
 /* --- Custom labels in sidebar --- */
 #sidebarCustomLabelSection .multiple-custom-labels-config,

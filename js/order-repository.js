@@ -127,6 +127,22 @@
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
       rec.printedAt = null; await this.db.saveOrder(rec); this.emit(); return true;
     }
+    async deleteMany(orderNumbers){
+      if(!Array.isArray(orderNumbers) || orderNumbers.length===0) return 0;
+      const normalized = Array.from(new Set(orderNumbers.map(OrderRepository.normalize).filter(Boolean)));
+      if(normalized.length===0) return 0;
+      let deleted = 0;
+      if(this.db && typeof this.db.deleteOrders === 'function'){
+        try{ deleted = await this.db.deleteOrders(normalized); }
+        catch(e){ console.error('deleteOrders db error', e); throw e; }
+      } else if(typeof StorageManager !== 'undefined' && StorageManager && typeof StorageManager.deleteOrders === 'function'){
+        deleted = await StorageManager.deleteOrders(normalized);
+      }
+      let removedFromCache = 0;
+      normalized.forEach(key=>{ if(this.cache.delete(key)) removedFromCache++; });
+      if(removedFromCache>0) this.emit();
+      return deleted || removedFromCache;
+    }
     onUpdate(fn){ this.listeners.add(fn); return () => this.listeners.delete(fn); }
     emit(){ for(const fn of this.listeners) try{ fn(this.getAll()); }catch(e){ console.warn('OrderRepository listener error', e); } }
   }
