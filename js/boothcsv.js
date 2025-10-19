@@ -41,9 +41,9 @@ function showQuickGuide(){ const el = document.getElementById('initialQuickGuide
 
 // リアルタイム更新制御フラグ
 // isEditingCustomLabel は custom-labels.js で window プロパティとして定義される
-// 直近読み込んだCSV結果を保持してカスタムラベル編集時に再レンダリングへ再利用
-window.lastCSVResults = null; // { data: [...] }
-window.lastCSVBaseConfig = null; // { labelyn, labelskip, sortByPaymentDate }
+// 直近描画に使用した設定・注文番号を保持し、再プレビューへ再利用
+window.lastPreviewConfig = null; // { labelyn, labelskip, sortByPaymentDate, customLabelEnable, customLabels }
+window.lastOrderSelection = []; // [orderNumber, ...]
 let pendingUpdateTimer = null;
 
 const processedOrdersState = {
@@ -62,6 +62,7 @@ const processedOrdersUI = {
   body: null,
   selectAll: null,
   deleteButton: null,
+  previewButton: null,
   prev: null,
   next: null,
   pageInfo: null,
@@ -242,10 +243,10 @@ window.addEventListener("load", async function(){
   // 初回クイックガイド制御: 以下のいずれかなら非表示
   // 1) 既に CSV データがある 2) 起動時点でラベルシート(section.sheet)が存在 3) カスタムラベル設定が残っていて生成済み
   // まだ DOM 生成前の場合を考慮し、初回判定と遅延再判定を実施
-  const hasExistingCSV = !!(window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length);
+  const hasExistingSelection = Array.isArray(window.lastOrderSelection) && window.lastOrderSelection.length > 0;
   const hasSheetsNow = !!document.querySelector('section.sheet');
   // カスタムラベル設定有無だけでは非表示にしない（ユーザ要望）
-  if (hasExistingCSV || hasSheetsNow) {
+  if (hasExistingSelection || hasSheetsNow) {
     hideQuickGuide();
   } else {
     showQuickGuide();
@@ -507,10 +508,11 @@ async function updateCustomLabelsPreview() {
         customLabelEnable: settingsCache.customLabelEnable,
   customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(l=>l.enabled) : []
       };
-    const hasCSVLoaded = !!(window.lastCSVResults && window.lastCSVResults.data && window.lastCSVResults.data.length > 0);
+    window.lastPreviewConfig = sanitizePreviewConfig(config);
+    const hasSelection = Array.isArray(window.lastOrderSelection) && window.lastOrderSelection.length > 0;
 
     // CSV が読み込まれている場合: CSVラベル + (必要なら) カスタムラベル を再生成
-    if (hasCSVLoaded) {
+    if (hasSelection) {
       if (!config.labelyn) {
         // ラベル印刷OFFなら表示だけクリア
         clearPreviousResults();
@@ -519,9 +521,7 @@ async function updateCustomLabelsPreview() {
       }
       // 再生成（processCSVResults 内で clearPreviousResults していないので先に消す）
       clearPreviousResults();
-      // ベース構成を更新して再利用
-      window.lastCSVBaseConfig = { labelyn: config.labelyn, labelskip: config.labelskip, sortByPaymentDate: config.sortByPaymentDate };
-      await processCSVResults(window.lastCSVResults, config);
+      await renderPreviewFromRepository(window.lastOrderSelection, config);
       return; // ここで終了（CSV再表示 + カスタムラベル反映済）
     }
 
@@ -617,6 +617,7 @@ async function setupProcessedOrdersPanel() {
     processedOrdersUI.body = document.getElementById('processedOrdersBody');
     processedOrdersUI.selectAll = document.getElementById('processedOrdersSelectAll');
     processedOrdersUI.deleteButton = document.getElementById('processedOrdersDeleteButton');
+    processedOrdersUI.previewButton = document.getElementById('processedOrdersPreviewButton');
     processedOrdersUI.prev = document.getElementById('processedOrdersPrev');
     processedOrdersUI.next = document.getElementById('processedOrdersNext');
     processedOrdersUI.pageInfo = document.getElementById('processedOrdersPageInfo');
@@ -638,6 +639,9 @@ async function setupProcessedOrdersPanel() {
     }
     if (processedOrdersUI.deleteButton) {
       processedOrdersUI.deleteButton.addEventListener('click', handleProcessedOrdersDelete);
+    }
+    if (processedOrdersUI.previewButton) {
+      processedOrdersUI.previewButton.addEventListener('click', handleProcessedOrdersPreview);
     }
     processedOrdersUI.headerCells.forEach(cell => {
       const key = cell.dataset.sort;
@@ -767,7 +771,7 @@ async function refreshProcessedOrdersPanel() {
   }
 
   syncProcessedOrdersSelectAll(pageItems);
-  syncProcessedOrdersDeleteButton();
+  syncProcessedOrdersActionButtons();
   updateProcessedOrdersPagination(filtered.length);
   updateProcessedOrdersSortIndicators();
   updateProcessedOrdersVisibility();
@@ -797,11 +801,16 @@ function syncProcessedOrdersSelectAll(pageItems) {
   processedOrdersUI.selectAll.indeterminate = selectedCount > 0 && selectedCount < pageItems.length;
 }
 
-function syncProcessedOrdersDeleteButton() {
-  if (!processedOrdersUI.deleteButton) return;
+function syncProcessedOrdersActionButtons() {
   const count = processedOrdersSelection.size;
-  processedOrdersUI.deleteButton.disabled = count === 0;
-  processedOrdersUI.deleteButton.textContent = count > 0 ? `選択した注文を削除 (${count})` : '選択した注文を削除';
+  if (processedOrdersUI.deleteButton) {
+    processedOrdersUI.deleteButton.disabled = count === 0;
+    processedOrdersUI.deleteButton.textContent = count > 0 ? `選択した注文を削除 (${count})` : '選択した注文を削除';
+  }
+  if (processedOrdersUI.previewButton) {
+    processedOrdersUI.previewButton.disabled = count === 0;
+    processedOrdersUI.previewButton.textContent = count > 0 ? `選択した注文を印刷プレビュー (${count})` : '選択した注文を印刷プレビュー';
+  }
 }
 
 function updateProcessedOrdersPagination(totalItems) {
@@ -844,7 +853,7 @@ function handleProcessedOrdersSelectAll(event) {
     });
   }
   syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
-  syncProcessedOrdersDeleteButton();
+    syncProcessedOrdersActionButtons();
 }
 
 function handleProcessedOrdersRowSelection(orderNumber, checked) {
@@ -852,7 +861,7 @@ function handleProcessedOrdersRowSelection(orderNumber, checked) {
   if (checked) processedOrdersSelection.add(orderNumber);
   else processedOrdersSelection.delete(orderNumber);
   syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
-  syncProcessedOrdersDeleteButton();
+    syncProcessedOrdersActionButtons();
 }
 
 function handleProcessedOrdersFilterChange(event) {
@@ -871,6 +880,26 @@ function handleProcessedOrdersNextPage() {
   if (processedOrdersState.currentPage >= processedOrdersState.totalPages) return;
   processedOrdersState.currentPage += 1;
   refreshProcessedOrdersPanel();
+}
+
+async function handleProcessedOrdersPreview() {
+  if (processedOrdersSelection.size === 0) return;
+  try {
+    const orderNumbers = Array.from(processedOrdersSelection);
+    const config = {
+      labelyn: settingsCache.labelyn,
+      labelskip: settingsCache.labelskip,
+      sortByPaymentDate: settingsCache.sortByPaymentDate,
+      customLabelEnable: settingsCache.customLabelEnable,
+      customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(label => label.enabled) : []
+    };
+    clearPreviousResults();
+    hideQuickGuide();
+    await renderPreviewFromRepository(orderNumbers, config);
+  } catch (e) {
+    console.error('order preview error', e);
+    alert('プレビューの生成に失敗しました: ' + (e && e.message ? e.message : e));
+  }
 }
 
 async function handleProcessedOrdersDelete() {
@@ -897,128 +926,133 @@ function updateProcessedOrdersVisibility() {
   processedOrdersUI.panel.hidden = hasFile;
 }
 
-// CSVデータを処理して注文詳細とラベルを生成
-async function processCSVResults(results, config) {
-  // --- Stage B: OrderRepository 利用 ---
+async function persistCsvToRepository(results) {
   const repo = await ensureOrderRepository();
-  if (!repo) return; // フェイルセーフ
+  if (!repo) return { orderNumbers: [], totalRows: 0 };
 
-  // 直近CSV保持（プレビュー再描画用）
-  try {
-    window.lastCSVResults = { data: Array.isArray(results.data) ? results.data : [] };
-    window.lastCSVBaseConfig = { labelyn: config.labelyn, labelskip: config.labelskip, sortByPaymentDate: config.sortByPaymentDate };
-  } catch(e) { /* ignore */ }
+  const rows = results && Array.isArray(results.data) ? results.data : [];
 
-  // デバッグ: 先頭行の列キー確認（BOM混入/名称ズレ検出用）
-  if (DEBUG_MODE && results && Array.isArray(results.data)) {
-    const first = results.data[0];
+  if (DEBUG_MODE && rows.length > 0) {
+    const first = rows[0];
     if (first) {
-  debugLog('[csv] 先頭行キー一覧', Object.keys(first));
+      debugLog('[csv] 先頭行キー一覧', Object.keys(first));
     } else {
-  debugLog('[csv] CSVにデータ行がありません');
+      debugLog('[csv] CSVにデータ行がありません');
     }
   }
 
-  // CSV の順序（= BOOTH ダウンロードの注文番号降順）を保持したまま repository に反映
-  await window.orderRepository.bulkUpsert(results.data);
+  await repo.bulkUpsert(rows);
   await refreshProcessedOrdersPanel();
-  const csvOrderKeys = [];
+
+  const orderNumbers = [];
   let debugValidOrderCount = 0;
-  for (const row of results.data) {
-  const num = getOrderNumberFromCSVRow(row);
-    if (!num) continue;
-    csvOrderKeys.push(OrderRepository.normalize(num));
+  for (const row of rows) {
+    const raw = getOrderNumberFromCSVRow(row);
+    if (!raw) continue;
+    const normalized = OrderRepository.normalize(raw);
+    orderNumbers.push(normalized);
     debugValidOrderCount++;
     if (DEBUG_MODE) {
-      const normalized = OrderRepository.normalize(num);
-      const rec = window.orderRepository.get(normalized);
-  debugLog('[repo] 読み込み注文', { raw:num, normalized, exists: !!rec, printedAt: rec ? rec.printedAt : null });
+      const rec = repo.get(normalized);
+      debugLog('[repo] 読み込み注文', { raw, normalized, exists: !!rec, printedAt: rec ? rec.printedAt : null });
     }
   }
+
   if (DEBUG_MODE) {
-  debugLog('[csv] 行数サマリ', {
-      totalRows: results.data.length,
+    debugLog('[csv] 行数サマリ', {
+      totalRows: rows.length,
       withOrderNumber: debugValidOrderCount,
-      repositoryStored: window.orderRepository.getAll().length
+      repositoryStored: repo.getAll().length
     });
   }
-  // 表示対象は今回の CSV に含まれる注文のみ（従来挙動に合わせ、過去 CSV の注文は表示しない）
-  const orderObjs = csvOrderKeys.map(k => window.orderRepository.get(k)).filter(o => !!o);
-  const unprinted = orderObjs.filter(o => !o.printedAt);
-  let detailRows = orderObjs.map(o => o.row); // 表示用（CSV 順維持）
-  let labelRows = unprinted.map(o => o.row); // 未印刷のみ（CSV 順維持）
+
+  return { orderNumbers, totalRows: rows.length };
+}
+
+function sanitizePreviewConfig(config) {
+  const fallbackSkip = (config && typeof config.labelskip !== 'undefined') ? config.labelskip : settingsCache.labelskip;
+  return {
+    labelyn: !!config.labelyn,
+    labelskip: fallbackSkip,
+    sortByPaymentDate: !!config.sortByPaymentDate,
+    customLabelEnable: !!config.customLabelEnable,
+    customLabels: Array.isArray(config.customLabels) ? config.customLabels.map(label => ({
+      text: label.text,
+      html: label.html,
+      count: label.count,
+      fontSize: label.fontSize,
+      enabled: label.enabled !== false
+    })) : []
+  };
+}
+
+function normalizeOrderSelection(orderNumbers) {
+  if (!Array.isArray(orderNumbers)) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const num of orderNumbers) {
+    const key = OrderRepository.normalize(num);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(key);
+  }
+  return normalized;
+}
+
+async function renderPreviewFromRepository(orderNumbers, config) {
+  const repo = await ensureOrderRepository();
+  if (!repo) return;
+
+  const baseSelection = Array.isArray(orderNumbers) ? orderNumbers : (window.lastOrderSelection || []);
+  const selection = normalizeOrderSelection(baseSelection);
+  const sourceConfig = config && typeof config === 'object' ? config : (window.lastPreviewConfig || {});
+  const previewConfig = sanitizePreviewConfig(sourceConfig);
+  window.lastPreviewConfig = previewConfig;
+
+  const records = selection.map(num => repo.get(num)).filter(rec => !!rec && !!rec.row);
+  window.lastOrderSelection = records.map(rec => rec.orderNumber);
+
+  const detailRecords = [...records];
+  if (previewConfig.sortByPaymentDate) {
+    detailRecords.sort((a, b) => {
+      const timeA = (a.row && a.row[CONSTANTS.CSV.PAYMENT_DATE_COLUMN]) || '';
+      const timeB = (b.row && b.row[CONSTANTS.CSV.PAYMENT_DATE_COLUMN]) || '';
+      const cmp = timeA.localeCompare(timeB);
+      if (cmp !== 0) return cmp;
+      return a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
+    });
+  }
+
+  const detailRows = detailRecords.map(rec => rec.row).filter(Boolean);
+  const unprintedRecords = detailRecords.filter(rec => !rec.printedAt);
+  const labelRows = unprintedRecords.map(rec => rec.row).filter(Boolean);
+
+  window.currentDisplayedOrderNumbers = detailRecords.map(rec => rec.orderNumber);
+
   const csvRowCountForLabels = labelRows.length;
-  // 複数カスタムラベルの総面数を計算
-  const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
-  // 複数シート対応：1シートの制限を撤廃
-  // CSVデータとカスタムラベルの合計で必要なシート数を計算
-  const skipCount = parseInt(settingsCache.labelskip, 10) || 0;
+  const effectiveCustomLabels = previewConfig.customLabelEnable ? (previewConfig.customLabels || []) : [];
+  const enabledCustomLabels = effectiveCustomLabels.filter(label => label.enabled !== false);
+  const totalCustomLabelCount = enabledCustomLabels.reduce((sum, label) => sum + (parseInt(label.count, 10) || 0), 0);
+  const skipCount = parseInt(previewConfig.labelskip, 10) || 0;
   const totalLabelsNeeded = skipCount + csvRowCountForLabels + totalCustomLabelCount;
-  const requiredSheets = Math.ceil(totalLabelsNeeded / CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET);
+  const requiredSheets = csvRowCountForLabels === 0 && totalCustomLabelCount === 0
+    ? 0
+    : Math.ceil(totalLabelsNeeded / CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET);
 
-  // データの並び替え
-  if (config.sortByPaymentDate) {
-    // 支払い日時ソート有効時のみ上書き
-    labelRows.sort((a, b) => {
-      const timeA = a[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
-      const timeB = b[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
-      return timeA.localeCompare(timeB);
-    });
-    detailRows.sort((a, b) => {
-      const timeA = a[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
-      const timeB = b[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || "";
-      return timeA.localeCompare(timeB);
-    });
-  }
+  const labelSet = new Set(unprintedRecords.map(rec => rec.orderNumber));
 
-  // 注文明細の生成
-  // ラベル対象の注文番号セットを作成
-  // repository から未印刷を判定済みなので、labelRows に含まれる行の orderNumber を repository キャッシュから逆引き
-  const labelSet = new Set();
-  if (window.orderRepository) {
-    const all = window.orderRepository.getAll();
-    // row オブジェクト参照比較で対応（CSV parse 再利用時に新インスタンスなら fallback）
-    const rowToOrder = new Map();
-    for (const rec of all) {
-      if (rec.row) rowToOrder.set(rec.row, rec.orderNumber);
-    }
-    for (const r of labelRows) {
-  const num = rowToOrder.get(r) || getOrderNumberFromCSVRow(r);
-      if (num) labelSet.add(String(num).trim());
-    }
-  } else {
-    for (const r of labelRows) {
-  const num = getOrderNumberFromCSVRow(r);
-      if (num) labelSet.add(String(num).trim());
-    }
-  }
-  const baseLabelArr = Array(skipCount).fill("");
-  await generateOrderDetails(detailRows, baseLabelArr, labelSet);
+  await generateOrderDetails(detailRows, Array(skipCount).fill(''), labelSet);
 
-  // 各注文明細パネルはgenerateOrderDetails内で個別に更新済み
-
-  // ラベル生成（注文分＋カスタムラベル）- 複数シート対応
-  if (config.labelyn) {
-  let totalLabelArray = [...baseLabelArr];
-
-    // 明細表示順 (detailRows の順) に合わせて repository から未印刷のみ追加
-    const repo = window.orderRepository;
-    const numbersInOrder = detailRows
-  .map(r => getOrderNumberFromCSVRow(r))
-      .map(n => OrderRepository.normalize(n))
-      .filter(n => {
-        const rec = repo ? repo.get(n) : null; return rec && !rec.printedAt;
-      });
+  let totalLabelArray;
+  if (previewConfig.labelyn) {
+    totalLabelArray = new Array(skipCount).fill('');
+    const numbersInOrder = unprintedRecords.map(rec => rec.orderNumber);
     totalLabelArray.push(...numbersInOrder);
-    // 表示対象注文番号リストをグローバルに保持（再計算用）
-    window.currentDisplayedOrderNumbers = detailRows
-  .map(r => getOrderNumberFromCSVRow(r))
-      .map(n => OrderRepository.normalize(n));
 
-    // カスタムラベルが有効な場合は追加
-    if (config.customLabelEnable && config.customLabels.length > 0) {
-      for (const customLabel of config.customLabels) {
-        for (let i = 0; i < customLabel.count; i++) {
+    if (previewConfig.customLabelEnable && enabledCustomLabels.length > 0) {
+      for (const customLabel of enabledCustomLabels) {
+        const count = parseInt(customLabel.count, 10) || 0;
+        for (let i = 0; i < count; i++) {
           totalLabelArray.push({
             type: 'custom',
             content: customLabel.html || customLabel.text,
@@ -1029,33 +1063,41 @@ async function processCSVResults(results, config) {
     }
 
     if (totalLabelArray.length > 0) {
-  await generateLabels(totalLabelArray, { skipOnFirstSheet: skipCount });
+      await generateLabels(totalLabelArray, { skipOnFirstSheet: skipCount });
     }
   }
 
   if (DEBUG_MODE) {
-  debugLog('[label] ラベル生成サマリ', {
+    debugLog('[label] ラベル生成サマリ', {
       skipCount,
-      unprintedCount: unprinted.length,
+      unprintedCount: unprintedRecords.length,
       detailCount: detailRows.length,
       labelRowCount: labelRows.length,
       customLabelCount: totalCustomLabelCount,
-      totalLabelArrayLength: (typeof totalLabelArray !== 'undefined') ? totalLabelArray.length : 0,
+      totalLabelArrayLength: Array.isArray(totalLabelArray) ? totalLabelArray.length : 0,
       requiredSheets
     });
   }
 
-  // ラベル印刷がオフの場合はラベル枚数・カスタム面数ともに0を表示する
-  const labelSheetsForDisplay = config.labelyn ? requiredSheets : 0;
-  const customFacesForDisplay = (config.labelyn && config.customLabelEnable) ? totalCustomLabelCount : 0;
-  // 普通紙（注文明細）は未印刷のみ
-  updatePrintCountDisplay(unprinted.length, labelSheetsForDisplay, customFacesForDisplay);
+  const labelSheetsForDisplay = previewConfig.labelyn ? requiredSheets : 0;
+  const customFacesForDisplay = (previewConfig.labelyn && previewConfig.customLabelEnable)
+    ? totalCustomLabelCount
+    : 0;
 
-  // CSV処理完了後のカスタムラベルサマリー更新（複数シート対応）
+  updatePrintCountDisplay(unprintedRecords.length, labelSheetsForDisplay, customFacesForDisplay);
   await CustomLabels.updateSummary();
-
-  // ボタンの状態を更新
   CustomLabels.updateButtonStates();
+
+  return {
+    detailCount: detailRows.length,
+    unprintedCount: unprintedRecords.length
+  };
+}
+
+// CSVデータを処理して注文詳細とラベルを生成
+async function processCSVResults(results, config) {
+  const { orderNumbers } = await persistCsvToRepository(results);
+  return await renderPreviewFromRepository(orderNumbers, config);
 }
 
 // カスタムラベルのみを処理（CSV無し）
@@ -2529,6 +2571,9 @@ document.getElementById("file").addEventListener("change", async function() {
       
       // ファイルがクリアされた場合は結果もクリア
       clearPreviousResults();
+      window.lastOrderSelection = [];
+      window.lastPreviewConfig = null;
+      window.currentDisplayedOrderNumbers = [];
     }
   }
 });
@@ -2771,9 +2816,9 @@ async function updateSkipCount() {
     // settingsCacheも更新（CSV再読み込み時の不整合を防ぐ）
     settingsCache.labelskip = newSkipValue;
     
-    // lastCSVBaseConfigも更新（カスタムラベルプレビューの不整合を防ぐ）
-    if (window.lastCSVBaseConfig) {
-      window.lastCSVBaseConfig.labelskip = newSkipValue;
+    // lastPreviewConfigも更新（カスタムラベルプレビューの不整合を防ぐ）
+    if (window.lastPreviewConfig) {
+      window.lastPreviewConfig.labelskip = newSkipValue;
     }
     
     // カスタムラベルの上限も更新（エラーハンドリング付き）

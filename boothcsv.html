@@ -143,7 +143,10 @@
           <label class="processed-orders-filter">
             <input type="checkbox" id="processedOrdersUnprintedOnly"> 未印刷のみ表示
           </label>
-          <button type="button" id="processedOrdersDeleteButton" class="btn-base btn-danger btn-small" disabled>選択した注文を削除</button>
+            <div class="processed-orders-action-buttons">
+              <button type="button" id="processedOrdersPreviewButton" class="btn-base btn-primary btn-small" disabled>選択した注文を印刷プレビュー</button>
+              <button type="button" id="processedOrdersDeleteButton" class="btn-base btn-danger btn-small" disabled>選択した注文を削除</button>
+            </div>
         </div>
       </div>
       <div class="processed-orders-table-wrapper">

@@ -1112,6 +1112,11 @@ label[for="orderImageEnable"]:hover {
   gap: 12px;
   flex-wrap: wrap;
 }
+.processed-orders-action-buttons {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .processed-orders-filter {
   display: inline-flex;
   align-items: center;
