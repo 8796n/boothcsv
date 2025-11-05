@@ -19,8 +19,10 @@ const CONSTANTS = {
     PRODUCT_COLUMN: "商品ID / 数量 / 商品名",
     ORDER_NUMBER_COLUMN: "注文番号",
     PAYMENT_DATE_COLUMN: "支払い日時"
-  }
+  },  
 };
+// 他モジュールからも参照できるように露出
+window.CONSTANTS = CONSTANTS;
 
 // デバッグフラグの取得
 const DEBUG_MODE = (() => {
@@ -45,32 +47,6 @@ function showQuickGuide(){ const el = document.getElementById('initialQuickGuide
 window.lastPreviewConfig = null; // { labelyn, labelskip, sortByPaymentDate, customLabelEnable, customLabels }
 window.lastOrderSelection = []; // [orderNumber, ...]
 let pendingUpdateTimer = null;
-
-const processedOrdersState = {
-  sortKey: 'paymentDate',
-  sortDirection: 'desc',
-  currentPage: 1,
-  pageSize: 20,
-  unprintedOnly: false,
-  totalItems: 0,
-  totalPages: 1,
-  pageItems: []
-};
-const processedOrdersSelection = new Set();
-const processedOrdersUI = {
-  panel: null,
-  body: null,
-  selectAll: null,
-  deleteButton: null,
-  previewButton: null,
-  prev: null,
-  next: null,
-  pageInfo: null,
-  empty: null,
-  filter: null,
-  headerCells: []
-};
-let processedOrdersUnsubscribe = null;
 
 // デバッグログ用関数
 const DEBUG_FLAGS = {
@@ -578,352 +554,24 @@ async function ensureOrderRepository() {
   return repo;
 }
 
-function parseDateToTimestamp(value) {
-  if (!value) return NaN;
-  const direct = Date.parse(value);
-  if (!Number.isNaN(direct)) return direct;
-  const normalized = value.replace(/T/, ' ').replace(/-/g, '/');
-  const fallback = Date.parse(normalized);
-  return Number.isNaN(fallback) ? NaN : fallback;
-}
-
-function formatDateTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (!Number.isNaN(date.getTime())) return date.toLocaleString();
-  const normalized = value.replace(/T/, ' ').replace(/-/g, '/');
-  const fallback = new Date(normalized);
-  if (!Number.isNaN(fallback.getTime())) return fallback.toLocaleString();
-  return value;
-}
-
 async function setupProcessedOrdersPanel() {
-  const template = document.getElementById('processedOrdersPanelTemplate');
-  if (!template) return;
-  const repo = await ensureOrderRepository();
-  if (!repo) return;
-
-  if (!processedOrdersUI.panel) {
-    const fragment = template.content.cloneNode(true);
-    const guide = document.getElementById('initialQuickGuide');
-    if (guide && guide.parentNode) {
-      guide.parentNode.insertBefore(fragment, guide.nextSibling);
-    } else {
-      const main = document.getElementById('mainContent');
-      if (main) main.appendChild(fragment);
-    }
-
-    processedOrdersUI.panel = document.getElementById('processedOrdersPanel');
-    processedOrdersUI.body = document.getElementById('processedOrdersBody');
-    processedOrdersUI.selectAll = document.getElementById('processedOrdersSelectAll');
-    processedOrdersUI.deleteButton = document.getElementById('processedOrdersDeleteButton');
-    processedOrdersUI.previewButton = document.getElementById('processedOrdersPreviewButton');
-    processedOrdersUI.prev = document.getElementById('processedOrdersPrev');
-    processedOrdersUI.next = document.getElementById('processedOrdersNext');
-    processedOrdersUI.pageInfo = document.getElementById('processedOrdersPageInfo');
-    processedOrdersUI.empty = document.getElementById('processedOrdersEmpty');
-    processedOrdersUI.filter = document.getElementById('processedOrdersUnprintedOnly');
-    processedOrdersUI.headerCells = processedOrdersUI.panel ? Array.from(processedOrdersUI.panel.querySelectorAll('th.sortable')) : [];
-
-    if (processedOrdersUI.selectAll) {
-      processedOrdersUI.selectAll.addEventListener('change', handleProcessedOrdersSelectAll);
-    }
-    if (processedOrdersUI.filter) {
-      processedOrdersUI.filter.addEventListener('change', handleProcessedOrdersFilterChange);
-    }
-    if (processedOrdersUI.prev) {
-      processedOrdersUI.prev.addEventListener('click', handleProcessedOrdersPrevPage);
-    }
-    if (processedOrdersUI.next) {
-      processedOrdersUI.next.addEventListener('click', handleProcessedOrdersNextPage);
-    }
-    if (processedOrdersUI.deleteButton) {
-      processedOrdersUI.deleteButton.addEventListener('click', handleProcessedOrdersDelete);
-    }
-    if (processedOrdersUI.previewButton) {
-      processedOrdersUI.previewButton.addEventListener('click', handleProcessedOrdersPreview);
-    }
-    processedOrdersUI.headerCells.forEach(cell => {
-      const key = cell.dataset.sort;
-      if (!key) return;
-      cell.addEventListener('click', () => handleProcessedOrdersSort(key));
-    });
-  }
-
-  if (processedOrdersUnsubscribe) {
-    processedOrdersUnsubscribe();
-    processedOrdersUnsubscribe = null;
-  }
-  processedOrdersUnsubscribe = repo.onUpdate(() => {
-    refreshProcessedOrdersPanel();
+  if (!window.ProcessedOrdersPanel || typeof window.ProcessedOrdersPanel.init !== 'function') return;
+  await window.ProcessedOrdersPanel.init({
+    ensureOrderRepository,
+    clearPreviousResults,
+    hideQuickGuide,
+    renderPreview: renderPreviewFromRepository
   });
-
-  await refreshProcessedOrdersPanel();
-}
-
-function compareProcessedOrders(a, b) {
-  const dir = processedOrdersState.sortDirection === 'asc' ? 1 : -1;
-  let result = 0;
-  if (processedOrdersState.sortKey === 'paymentDate') {
-    const av = Number.isNaN(a.paymentDateValue) ? -Infinity : a.paymentDateValue;
-    const bv = Number.isNaN(b.paymentDateValue) ? -Infinity : b.paymentDateValue;
-    if (av < bv) result = -1;
-    else if (av > bv) result = 1;
-  } else if (processedOrdersState.sortKey === 'printedAt') {
-    const av = Number.isNaN(a.printedAtValue) ? -Infinity : a.printedAtValue;
-    const bv = Number.isNaN(b.printedAtValue) ? -Infinity : b.printedAtValue;
-    if (av < bv) result = -1;
-    else if (av > bv) result = 1;
-  } else {
-    result = a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
-  }
-  if (result === 0) {
-    result = a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
-  }
-  return result * dir;
 }
 
 async function refreshProcessedOrdersPanel() {
-  const repo = await ensureOrderRepository();
-  if (!repo || !processedOrdersUI.panel) return;
-
-  const records = repo.getAll();
-  const data = records.map(rec => {
-    const paymentRaw = rec && rec.row ? rec.row[CONSTANTS.CSV.PAYMENT_DATE_COLUMN] || '' : '';
-    const printedRaw = rec && rec.printedAt ? rec.printedAt : '';
-    return {
-      orderNumber: rec.orderNumber,
-      paymentDateRaw: paymentRaw,
-      paymentDateValue: parseDateToTimestamp(paymentRaw),
-      printedAtRaw: printedRaw,
-      printedAtValue: parseDateToTimestamp(printedRaw),
-      printed: !!printedRaw
-    };
-  }).filter(item => !!item.orderNumber);
-
-  const sorted = [...data].sort(compareProcessedOrders);
-  const filtered = processedOrdersState.unprintedOnly ? sorted.filter(item => !item.printed) : sorted;
-
-  processedOrdersState.totalItems = filtered.length;
-  processedOrdersState.totalPages = filtered.length === 0 ? 1 : Math.ceil(filtered.length / processedOrdersState.pageSize);
-  if (processedOrdersState.currentPage > processedOrdersState.totalPages) {
-    processedOrdersState.currentPage = processedOrdersState.totalPages;
-  }
-  if (filtered.length === 0) {
-    processedOrdersState.currentPage = 1;
-  }
-  const startIndex = (processedOrdersState.currentPage - 1) * processedOrdersState.pageSize;
-  const pageItems = filtered.slice(startIndex, startIndex + processedOrdersState.pageSize);
-  processedOrdersState.pageItems = pageItems;
-
-  const validKeys = new Set(data.map(item => item.orderNumber));
-  processedOrdersSelection.forEach(key => {
-    if (!validKeys.has(key)) processedOrdersSelection.delete(key);
-  });
-
-  if (processedOrdersUI.body) {
-    processedOrdersUI.body.textContent = '';
-    pageItems.forEach(item => {
-      const tr = document.createElement('tr');
-
-      const selectTd = document.createElement('td');
-      selectTd.className = 'col-select';
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.dataset.orderNumber = item.orderNumber;
-      checkbox.checked = processedOrdersSelection.has(item.orderNumber);
-      checkbox.setAttribute('aria-label', `注文 ${item.orderNumber} を選択`);
-      checkbox.addEventListener('change', (ev) => {
-        handleProcessedOrdersRowSelection(item.orderNumber, ev.target.checked);
-      });
-      selectTd.appendChild(checkbox);
-      tr.appendChild(selectTd);
-
-      const orderTd = document.createElement('td');
-      const link = document.createElement('a');
-      link.href = `https://manage.booth.pm/orders/${encodeURIComponent(item.orderNumber)}`;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      link.className = 'order-link';
-      link.textContent = item.orderNumber;
-      orderTd.appendChild(link);
-      tr.appendChild(orderTd);
-
-      const paymentTd = document.createElement('td');
-      paymentTd.textContent = item.paymentDateRaw || '';
-      tr.appendChild(paymentTd);
-
-      const printedTd = document.createElement('td');
-      printedTd.textContent = item.printedAtRaw ? formatDateTime(item.printedAtRaw) : '';
-      tr.appendChild(printedTd);
-
-      processedOrdersUI.body.appendChild(tr);
-    });
-  }
-
-  if (processedOrdersUI.empty) {
-    if (filtered.length === 0) {
-      processedOrdersUI.empty.hidden = false;
-      processedOrdersUI.empty.textContent = processedOrdersState.unprintedOnly ? '未印刷の注文はありません。' : '保存されている注文はありません。';
-    } else {
-      processedOrdersUI.empty.hidden = true;
-    }
-  }
-
-  syncProcessedOrdersSelectAll(pageItems);
-  syncProcessedOrdersActionButtons();
-  updateProcessedOrdersPagination(filtered.length);
-  updateProcessedOrdersSortIndicators();
-  updateProcessedOrdersVisibility();
-}
-
-function updateProcessedOrdersSortIndicators() {
-  if (!Array.isArray(processedOrdersUI.headerCells)) return;
-  processedOrdersUI.headerCells.forEach(cell => {
-    cell.classList.remove('sort-asc', 'sort-desc');
-    if (cell.dataset.sort === processedOrdersState.sortKey) {
-      cell.classList.add(processedOrdersState.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
-    }
-  });
-}
-
-function syncProcessedOrdersSelectAll(pageItems) {
-  if (!processedOrdersUI.selectAll) return;
-  if (pageItems.length === 0) {
-    processedOrdersUI.selectAll.checked = false;
-    processedOrdersUI.selectAll.indeterminate = false;
-    processedOrdersUI.selectAll.disabled = processedOrdersState.totalItems === 0;
-    return;
-  }
-  const selectedCount = pageItems.filter(item => processedOrdersSelection.has(item.orderNumber)).length;
-  processedOrdersUI.selectAll.disabled = false;
-  processedOrdersUI.selectAll.checked = selectedCount === pageItems.length;
-  processedOrdersUI.selectAll.indeterminate = selectedCount > 0 && selectedCount < pageItems.length;
-}
-
-function syncProcessedOrdersActionButtons() {
-  const count = processedOrdersSelection.size;
-  if (processedOrdersUI.deleteButton) {
-    processedOrdersUI.deleteButton.disabled = count === 0;
-    processedOrdersUI.deleteButton.textContent = count > 0 ? `選択した注文を削除 (${count})` : '選択した注文を削除';
-  }
-  if (processedOrdersUI.previewButton) {
-    processedOrdersUI.previewButton.disabled = count === 0;
-    processedOrdersUI.previewButton.textContent = count > 0 ? `選択した注文を印刷プレビュー (${count})` : '選択した注文を印刷プレビュー';
-  }
-}
-
-function updateProcessedOrdersPagination(totalItems) {
-  if (processedOrdersUI.prev) {
-    processedOrdersUI.prev.disabled = processedOrdersState.currentPage <= 1 || totalItems === 0;
-  }
-  if (processedOrdersUI.next) {
-    processedOrdersUI.next.disabled = processedOrdersState.currentPage >= processedOrdersState.totalPages || totalItems === 0;
-  }
-  if (processedOrdersUI.pageInfo) {
-    if (totalItems === 0) {
-      processedOrdersUI.pageInfo.textContent = '0件';
-    } else {
-      processedOrdersUI.pageInfo.textContent = `${processedOrdersState.currentPage} / ${processedOrdersState.totalPages} ページ（全${totalItems}件）`;
-    }
-  }
-}
-
-function handleProcessedOrdersSort(key) {
-  if (!key) return;
-  if (processedOrdersState.sortKey === key) {
-    processedOrdersState.sortDirection = processedOrdersState.sortDirection === 'asc' ? 'desc' : 'asc';
-  } else {
-    processedOrdersState.sortKey = key;
-    processedOrdersState.sortDirection = key === 'orderNumber' ? 'asc' : 'desc';
-  }
-  processedOrdersState.currentPage = 1;
-  refreshProcessedOrdersPanel();
-}
-
-function handleProcessedOrdersSelectAll(event) {
-  const checked = event.target.checked;
-  processedOrdersState.pageItems.forEach(item => {
-    if (checked) processedOrdersSelection.add(item.orderNumber);
-    else processedOrdersSelection.delete(item.orderNumber);
-  });
-  if (processedOrdersUI.body) {
-    processedOrdersUI.body.querySelectorAll('input[type="checkbox"][data-order-number]').forEach(box => {
-      box.checked = processedOrdersSelection.has(box.dataset.orderNumber);
-    });
-  }
-  syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
-    syncProcessedOrdersActionButtons();
-}
-
-function handleProcessedOrdersRowSelection(orderNumber, checked) {
-  if (!orderNumber) return;
-  if (checked) processedOrdersSelection.add(orderNumber);
-  else processedOrdersSelection.delete(orderNumber);
-  syncProcessedOrdersSelectAll(processedOrdersState.pageItems);
-    syncProcessedOrdersActionButtons();
-}
-
-function handleProcessedOrdersFilterChange(event) {
-  processedOrdersState.unprintedOnly = !!event.target.checked;
-  processedOrdersState.currentPage = 1;
-  refreshProcessedOrdersPanel();
-}
-
-function handleProcessedOrdersPrevPage() {
-  if (processedOrdersState.currentPage <= 1) return;
-  processedOrdersState.currentPage -= 1;
-  refreshProcessedOrdersPanel();
-}
-
-function handleProcessedOrdersNextPage() {
-  if (processedOrdersState.currentPage >= processedOrdersState.totalPages) return;
-  processedOrdersState.currentPage += 1;
-  refreshProcessedOrdersPanel();
-}
-
-async function handleProcessedOrdersPreview() {
-  if (processedOrdersSelection.size === 0) return;
-  try {
-    const orderNumbers = Array.from(processedOrdersSelection);
-    const config = {
-      labelyn: settingsCache.labelyn,
-      labelskip: settingsCache.labelskip,
-      sortByPaymentDate: settingsCache.sortByPaymentDate,
-      customLabelEnable: settingsCache.customLabelEnable,
-      customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(label => label.enabled) : []
-    };
-    clearPreviousResults();
-    hideQuickGuide();
-    await renderPreviewFromRepository(orderNumbers, config);
-  } catch (e) {
-    console.error('order preview error', e);
-    alert('プレビューの生成に失敗しました: ' + (e && e.message ? e.message : e));
-  }
-}
-
-async function handleProcessedOrdersDelete() {
-  if (processedOrdersSelection.size === 0) return;
-  const orderNumbers = Array.from(processedOrdersSelection);
-  if (!confirm(`選択した${orderNumbers.length}件の注文を削除しますか？`)) return;
-  try {
-    const repo = await ensureOrderRepository();
-    if (!repo) return;
-    await repo.deleteMany(orderNumbers);
-    processedOrdersSelection.clear();
-    alert('選択した注文を削除しました');
-  } catch (e) {
-    console.error('order delete error', e);
-    alert('注文の削除に失敗しました: ' + (e && e.message ? e.message : e));
-  }
-  refreshProcessedOrdersPanel();
+  if (!window.ProcessedOrdersPanel || typeof window.ProcessedOrdersPanel.refresh !== 'function') return;
+  await window.ProcessedOrdersPanel.refresh();
 }
 
 function updateProcessedOrdersVisibility() {
-  if (!processedOrdersUI.panel) return;
-  const fileInput = document.getElementById('file');
-  const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
-  processedOrdersUI.panel.hidden = hasFile;
+  if (!window.ProcessedOrdersPanel || typeof window.ProcessedOrdersPanel.updateVisibility !== 'function') return;
+  window.ProcessedOrdersPanel.updateVisibility();
 }
 
 async function persistCsvToRepository(results) {
