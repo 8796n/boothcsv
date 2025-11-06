@@ -691,10 +691,20 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
 
       // Positioning
       const rect=menu.getBoundingClientRect();
-      const vw=window.innerWidth, vh=window.innerHeight, scrollY=window.scrollY||window.pageYOffset, margin=10;
-      let ax=x, ay=y; if(ax+rect.width>vw) ax=vw-rect.width-margin; if(ax<margin) ax=margin; if(ay+rect.height>vh) ay=y-rect.height-margin; if(ay<scrollY+margin) ay=(y+rect.height<=vh? y: scrollY+margin);
-      ax=Math.max(margin, Math.min(ax, vw-rect.width-margin)); ay=Math.max(scrollY+margin, Math.min(ay, scrollY+vh-rect.height-margin));
-      menu.style.left=ax+'px'; menu.style.top=ay+'px'; menu.style.visibility='visible'; requestAnimationFrame(()=>{ menu.style.opacity='1'; });
+      const vw=window.innerWidth, vh=window.innerHeight, margin=10;
+      let ax=x, ay=y;
+
+      const maxX = Math.max(margin, vw - rect.width - margin);
+      const maxY = Math.max(margin, vh - rect.height - margin);
+      ax = Math.min(ax, maxX);
+      ay = Math.min(ay, maxY);
+      ax = Math.max(ax, margin);
+      ay = Math.max(ay, margin);
+
+      menu.style.left=ax+'px';
+      menu.style.top=ay+'px';
+      menu.style.visibility='visible';
+      requestAnimationFrame(()=>{ menu.style.opacity='1'; });
       return menu;
     }
   }
