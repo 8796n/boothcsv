@@ -2430,16 +2430,29 @@ async function updateSkipCount() {
     // 実際に使用したラベル面数を計算
     let totalUsedLabels = 0;
     
-    // CSV行数を取得（注文明細の数）
-    const orderPages = document.querySelectorAll(".page");
-    const csvRowCount = orderPages.length;
-    totalUsedLabels += csvRowCount;
+    // 未印刷の注文明細数を取得（印刷済みはスキップ面数に含めない）
+    let unprintedOrderCount = 0;
+    const repo = window.orderRepository || null;
+    if (repo && Array.isArray(window.currentDisplayedOrderNumbers)) {
+      for (const num of window.currentDisplayedOrderNumbers) {
+        const rec = repo.get(num);
+        if (rec && !rec.printedAt) unprintedOrderCount++;
+      }
+    } else {
+      const sections = document.querySelectorAll('section.sheet');
+      for (const section of sections) {
+        if (section.classList.contains('is-printed')) continue;
+        const id = section.id || '';
+        if (id.startsWith('order-')) unprintedOrderCount++;
+      }
+    }
+    totalUsedLabels += unprintedOrderCount;
     
     // 有効なカスタムラベル面数を取得
     if (document.getElementById("customLabelEnable").checked) {
   const customLabels = CustomLabels.getFromUI();
       const enabledCustomLabels = customLabels.filter(label => label.enabled);
-      const totalCustomCount = enabledCustomLabels.reduce((sum, label) => sum + label.count, 0);
+      const totalCustomCount = enabledCustomLabels.reduce((sum, label) => sum + (parseInt(label.count, 10) || 0), 0);
       totalUsedLabels += totalCustomCount;
     }
     
@@ -2451,8 +2464,8 @@ async function updateSkipCount() {
     
     console.log(`スキップ枚数更新計算:
       現在のスキップ: ${currentSkip}面
-      CSV行数: ${csvRowCount}面
-      カスタムラベル: ${totalUsedLabels - csvRowCount}面
+      未印刷注文明細: ${unprintedOrderCount}面
+      カスタムラベル: ${totalUsedLabels - unprintedOrderCount}面
       合計使用面数: ${totalUsedLabels}面
       総使用面数(スキップ含む): ${totalUsedWithSkip}面
       新しいスキップ値: ${newSkipValue}面`);
