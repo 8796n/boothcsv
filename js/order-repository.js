@@ -49,7 +49,7 @@
         if(!key) continue;
         const existing = this.cache.get(key);
         if(!existing){
-          const rec = { orderNumber: key, row, createdAt: new Date().toISOString(), printedAt: null };
+          const rec = { orderNumber: key, row, createdAt: new Date().toISOString(), printedAt: null, shippedAt: null };
           await this.db.saveOrder(rec);
           this.cache.set(key, rec);
           changed++;
@@ -78,7 +78,7 @@
       let rec = this.cache.get(key);
       if(!rec){
         // 存在しない注文に直接QRを設定するケースは通常無いが、必要なら作成
-        rec = { orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null };
+        rec = { orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null };
         this.cache.set(key, rec);
       }
       if(!qrData){
@@ -110,7 +110,7 @@
     async setOrderImage(orderNumber, image){
       const key=OrderRepository.normalize(orderNumber);
       let rec=this.cache.get(key);
-      if(!rec){ rec={ orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null }; this.cache.set(key, rec); }
+      if(!rec){ rec={ orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null }; this.cache.set(key, rec); }
       if(!image){ delete rec.image; }
       else {
         const { data, mimeType } = image; // data: ArrayBuffer, mimeType:string
@@ -123,9 +123,17 @@
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
       rec.printedAt = printedAt; await this.db.saveOrder(rec); this.emit(); return true;
     }
+    async markShipped(orderNumber, shippedAt = new Date().toISOString()){
+      const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
+      rec.shippedAt = shippedAt; await this.db.saveOrder(rec); this.emit(); return true;
+    }
     async clearPrinted(orderNumber){
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
       rec.printedAt = null; await this.db.saveOrder(rec); this.emit(); return true;
+    }
+    async clearShipped(orderNumber){
+      const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
+      rec.shippedAt = null; await this.db.saveOrder(rec); this.emit(); return true;
     }
     async deleteMany(orderNumbers){
       if(!Array.isArray(orderNumbers) || orderNumbers.length===0) return 0;

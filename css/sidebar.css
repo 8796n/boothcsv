@@ -180,11 +180,16 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
 /* 入力の統一 */
 #appSidebar input[type="number"],
 #appSidebar input[type="text"],
+#appSidebar select,
 #appSidebar input[type="file"] {
   border: 1px solid #ddd;
   border-radius: calc(var(--sb-radius) - 4px);
   padding: 6px 8px;
   font-size: 13px;
+}
+#appSidebar select {
+  width: 100%;
+  background: #fff;
 }
 #appSidebar textarea {
   border: 1px solid #ddd;
@@ -219,39 +224,130 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
 .sidebar-button-row { display:flex; gap:8px; flex-wrap:wrap; }
 .sidebar-button-row .btn-base { flex:1 1 auto; }
 
+#appSidebar .sidebar-fieldset {
+  border: 1px solid #e2e2e2;
+  border-radius: calc(var(--sb-radius) - 2px);
+  padding: 8px 10px 10px;
+}
+#appSidebar .sidebar-fieldset legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: #555;
+}
+#appSidebar .sidebar-fieldset label {
+  display: flex;
+  margin-top: 6px;
+}
+
 /* --- Custom labels in sidebar --- */
-#sidebarCustomLabelSection .multiple-custom-labels-config,
-#customLabelsBlock .multiple-custom-labels-config { max-width: 100%; width: 100%; padding: 8px; }
-#sidebarCustomLabelSection .custom-labels-header h4,
+#customLabelsBlock .multiple-custom-labels-config { padding: 8px; }
 #customLabelsBlock .custom-labels-header h4 { margin: 6px 0; font-size: 14px; }
-#sidebarCustomLabelSection .custom-labels-buttons,
 #customLabelsBlock .custom-labels-buttons { display:flex; gap:6px; flex-wrap:wrap; justify-content: center; }
 /* タイトルを省略した場合でもボタン群が中央に来るようにヘッダー自体を中央寄せ */
 #customLabelsBlock .custom-labels-header { justify-content: center !important; }
-#sidebarCustomLabelSection .custom-label-editor-row,
 #customLabelsBlock .custom-label-editor-row { flex-direction: column; gap: 6px; justify-content: flex-start; align-items: center; }
-#sidebarCustomLabelSection .custom-label-count-group,
 #customLabelsBlock .custom-label-count-group { order: -1; align-self: center; }
-#sidebarCustomLabelSection .rich-text-editor,
 #customLabelsBlock .rich-text-editor { margin: 0 auto; }
 /* カスタムラベルのサマリーは軽量表示（背景のみ） */
-#sidebarCustomLabelSection .custom-labels-summary,
 #customLabelsBlock .custom-labels-summary { margin-top: 8px; padding: 8px; font-size: 12px; color:#444; background:#fafafa; border: none; border-radius: calc(var(--sb-radius) - 4px); }
 
 /* カスタムラベル説明（省スペース表示） */
-#sidebarCustomLabelSection details.custom-labels-instructions,
 #customLabelsBlock details.custom-labels-instructions { margin: 6px 0; border: 1px dashed #ddd; border-radius: 6px; }
-#sidebarCustomLabelSection details.custom-labels-instructions > summary,
 #customLabelsBlock details.custom-labels-instructions > summary { cursor: pointer; padding: 6px 8px; font-size: 12px; color: #555; list-style: none; }
-#sidebarCustomLabelSection details.custom-labels-instructions > summary::before,
 #customLabelsBlock details.custom-labels-instructions > summary::before { content: '▶'; margin-right: 6px; font-size: 10px; color: #777; }
-#sidebarCustomLabelSection details.custom-labels-instructions[open] > summary::before,
 #customLabelsBlock details.custom-labels-instructions[open] > summary::before { content: '▼'; }
-#sidebarCustomLabelSection details.custom-labels-instructions[open] > summary,
 #customLabelsBlock details.custom-labels-instructions[open] > summary { border-bottom: 1px dashed #eee; }
-#sidebarCustomLabelSection details.custom-labels-instructions .instructions-content,
 #customLabelsBlock details.custom-labels-instructions .instructions-content { padding: 6px 8px; font-size: 12px; color: #666; }
-#sidebarCustomLabelSection details.custom-labels-instructions ul,
+
+#appSidebar .product-order-images-root {
+  margin-top: 10px;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+}
+
+#appSidebar .product-order-images-note {
+  margin-top: 0;
+}
+
+#appSidebar .product-order-images-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#appSidebar .product-order-images-summary {
+  font-size: 12px;
+  color: #555;
+}
+
+#appSidebar .product-order-images-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+#appSidebar .product-order-image-item {
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+#appSidebar .product-order-image-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#appSidebar .product-order-image-item-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+#appSidebar .product-order-image-item-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: #222;
+  word-break: break-all;
+}
+
+#appSidebar .product-order-image-item-name,
+#appSidebar .product-order-image-item-meta,
+#appSidebar .product-order-image-empty {
+  font-size: 12px;
+  color: #666;
+}
+
+#appSidebar .product-order-image-dropzone {
+  width: 100%;
+  min-height: 72px;
+}
+
+#appSidebar .product-order-image-dropzone .order-image-drop {
+  width: 100% !important;
+  height: 72px;
+  margin: 0;
+}
+
+#appSidebar .product-order-image-dropzone .order-image-drop p {
+  font-size: 11px;
+  padding: 8px;
+}
+
+#appSidebar .product-order-image-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+#appSidebar .product-order-image-empty {
+  padding: 8px 0;
+}
 #customLabelsBlock details.custom-labels-instructions ul { margin: 0 0 0 1em; padding: 0; }
 
 /* Accessibility helpers */
@@ -294,35 +390,6 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
 @media (max-width: 600px) {
   .sidebar { width: 88vw; }
 }
-
-/* Header flex styles */
-.fixed-header .fixed-header-content { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: nowrap; }
-.fixed-header-left { display: inline-flex; align-items: center; gap: 10px; }
-
-/* 修正: 本ファイル内の旧定義が固定ヘッダーを上書きしていたため、正規スタイルを再適用 */
-.fixed-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  z-index: 1000;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  padding: 8px 0;
-}
-.fixed-header-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap; /* ヘッダー全体は原則1行で維持 */
-  gap: 15px;
-}
-/* タイトルは既定のまま（boothcsv.css） */
-.main-content { margin-top: 80px; }
 
 /* --- Rich text editor (custom labels) inside sidebar --- */
 #appSidebar .rich-text-editor {

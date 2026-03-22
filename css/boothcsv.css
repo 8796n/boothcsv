@@ -1,4 +1,10 @@
 /* 注文番号リンクの印刷時スタイル調整 */
+:root {
+  --fixed-header-offset: 80px;
+  --content-panel-max-width: 960px;
+  --content-panel-gutter: 32px;
+}
+
 .qrlabel .ordernum a {
   color: #0366d6;
   text-decoration: underline;
@@ -94,10 +100,25 @@
 
 @media print {
     .no_print {
-    display: none;
+    display: none !important;
+    }
+    .preview-back-floating {
+      display: none !important;
     }
     .dropzone {
     display: none !important;
+    }
+    .order-print-info {
+      display: none !important;
+    }
+    .individual-order-image-zone {
+      display: none !important;
+    }
+    .fixed-header {
+      display: none !important;
+    }
+    .main-content {
+      margin-top: 0 !important;
     }
     /* 印刷済みの注文明細は印刷対象から除外 */
     section.sheet.is-printed {
@@ -130,6 +151,9 @@ template {
   flex-direction: column;
   height: 100%; /* @pageのサイズを継承 */
   overflow: hidden; /* はみ出し防止 */
+  font-family: 'Yu Gothic UI', 'Meiryo', sans-serif;
+  font-size: 12pt;
+  line-height: 1.35;
 }
 
 table.items {
@@ -151,6 +175,8 @@ table th {
     padding: 2.0mm;
     position: relative;
     overflow: hidden;
+  font-size: inherit;
+  line-height: 1.25;
 }
 
 table.items td.商品ID {
@@ -172,6 +198,7 @@ table.items td.spacerow {
     position: absolute;
     top: 0mm;
     right: 0mm;
+  font-size: 12pt;
 }
 
 /* 各注文明細の非印刷・印刷日時パネル */
@@ -197,10 +224,6 @@ table.items td.spacerow {
   width: auto !important;
 }
 
-@media print {
-  .order-print-info { display: none !important; }
-}
-
 .orderdetail {
     position: absolute;
     top: 5em;
@@ -215,6 +238,8 @@ table.orderdetail {
 
 table.orderdetail td {
     padding: 0 2mm;
+  font-size: inherit;
+  line-height: 1.25;
 }
 
 .title {
@@ -304,6 +329,22 @@ table.label44 td {
     color: rgb(255, 255, 255);
     text-shadow: 1px 1px 0 rgb(0, 0, 0);
 }
+
+  .dropzone.extension-qr-fetch-mode {
+    background-color: rgba(16, 24, 40, 0.08);
+    border: 1px dashed #98a2b3;
+    text-shadow: none;
+    cursor: pointer;
+  }
+
+  .dropzone.extension-qr-fetch-mode.is-busy {
+    cursor: progress;
+  }
+
+  .qr-fetch-placeholder-button {
+    pointer-events: none;
+    min-width: 0;
+  }
 /* ドラッグ＆ドロップ廃止により .dropzone.dropover は削除 */
 .displaynone {
     display: none !important;
@@ -393,7 +434,16 @@ table.label44 td {
 .individual-order-image-zone {
   font-size: 12px;
   border-radius: 5px;
-  margin: 5px 0;
+  margin: 10px 0;
+  text-align: center;
+  border: 2px dashed #ccc;
+  padding: 10px;
+}
+
+.individual-image-source-label {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  color: #555;
 }
 
 .individual-order-image-drop {
@@ -405,61 +455,9 @@ table.label44 td {
   background-color: #f0f0f0 !important;
 }
 
-@media print {
-  .individual-order-image-zone {
-    display: none !important;
-  }
-}
-
 /* 注文番号表示: JS は純粋な番号のみを埋め込み、ラベルは CSS で付与 */
 .注文番号::before {
   content: '注文番号 : ';
-}
-
-.btn-action {
-  display: inline-block;
-  padding: 10px 40px;
-  font-size: 16px;
-  font-weight: bold;
-  color: #fff;
-  background-color: #007bff; /* ブルー */
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  text-align: center;
-  transition: background-color 0.3s ease, transform 0.2s ease;
-}
-
-.btn-action:hover {
-  background-color: #0056b3; /* ホバー時の濃いブルー */
-}
-
-.btn-action:active {
-  transform: scale(0.95); /* 押したときの軽い縮小 */
-}
-
-.btn-action:focus {
-  outline: none;
-  box-shadow: 0 0 5px #007bff; /* フォーカス時の青い枠 */
-}
-
-.btn-action:disabled {
-  background-color: #cccccc; /* 無効時のグレー */
-  cursor: not-allowed; /* 無効時のカーソル */
-  color: #666666; /* 無効時の文字色 */
-}
-
-#customLabelOnlyButton {
-  background-color: #28a745; /* グリーン */
-  margin: 0 5px;
-}
-
-#customLabelOnlyButton:hover:not(:disabled) {
-  background-color: #218838; /* ホバー時の濃いグリーン */
-}
-
-#customLabelOnlyButton:focus {
-  box-shadow: 0 0 5px #28a745; /* フォーカス時の緑の枠 */
 }
 
 /* 旧フォーム用の .form-actions/.file-input-wrapper は廃止 */
@@ -478,14 +476,12 @@ table.label44 td {
 }
 
 .fixed-header-content {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   padding: 0 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 15px;
+  gap: 16px;
+  box-sizing: border-box;
 }
 
 .fixed-title {
@@ -494,40 +490,55 @@ table.label44 td {
   margin: 0;
   color: white;
   text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-  flex-shrink: 1; /* タイトルを縮めて省略表示を許可 */
-  min-width: 0;   /* flex 子のオーバーフロー抑止 */
-  /* 幅が足りない場合に「BOOTH宛名...」のように省略表示 */
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 40vw; /* 画面幅に応じて可変（右側の操作群にスペースを残す） */
 }
 
 .main-actions {
   display: flex;
   align-items: center;
-  gap: 12px;            /* ギャップを少し縮小 */
-  flex-wrap: nowrap;    /* 折り返さない */
-  overflow-x: auto;     /* はみ出す場合は横スクロール */
-  justify-content: flex-end; /* タイトルの余りを優先しつつ右側に寄せる */
-  flex: 1 1 auto;       /* 残り幅で伸縮 */
-  min-width: 0;         /* 子要素の最小幅計算を緩める */
+  gap: 14px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.header-action-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 /* 左側（ハンバーガー＋タイトル）コンテナで省略可にするための下限幅調整 */
-.fixed-header-left { min-width: 0; }
+.fixed-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
 
 /* 印刷枚数表示エリア */
 .print-count-display {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 12px;
   background: rgba(255,255,255,0.1);
   padding: 6px 12px;
   border-radius: 6px;
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.2);
+  flex: 0 0 auto;
 }
 
 .print-count-item {
@@ -560,6 +571,21 @@ table.label44 td {
   display: flex;
   gap: 8px;
   flex-wrap: nowrap; /* ボタン群は折り返さない */
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.preview-back-floating {
+  position: fixed;
+  top: calc(var(--fixed-header-offset) + 12px);
+  left: 16px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
 }
 
 /* コンパクトなファイル選択 */
@@ -572,31 +598,6 @@ table.label44 td {
   border-radius: 6px;
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-}
-
-.file-input-button-compact {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: 1px solid rgba(255,255,255,0.35);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .5px;
-  cursor: pointer;
-  transition: all .25s ease;
-  white-space: nowrap;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.18);
-}
-
-.file-input-button-compact:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-
-.file-input-button-compact:active {
-  transform: translateY(0);
-  filter: brightness(.95);
 }
 
 .file-selected-info-compact {
@@ -613,53 +614,16 @@ table.label44 td {
   font-weight: 500;
 }
 
-/* コンパクトボタンスタイル */
-.btn-compact {
-  padding: 8px 16px;
+.btn-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
+  line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.btn-compact:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-}
-
-.btn-compact:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-compact:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.btn-compact.btn-primary {
-  background: linear-gradient(45deg, #4CAF50, #45a049);
-  color: white;
-}
-
-.btn-compact.btn-success {
-  background: linear-gradient(45deg, #2196F3, #1976D2);
-  color: white;
-}
-
-.btn-compact.btn-secondary {
-  background: linear-gradient(45deg, #FF9800, #F57C00);
-  color: white;
-}
-
-.btn-compact.btn-download {
-  background: linear-gradient(45deg, #9C27B0, #7B1FA2);
-  color: white;
 }
 
 /* CSVダウンロードボタンのラッパー */
@@ -669,9 +633,79 @@ table.label44 td {
   gap: 8px;
 }
 
+#boothOrdersOpenWrapper[hidden],
+#csvFileInputWrapper[hidden],
+#extensionHeaderCsvControls[hidden],
+#previewBackButton[hidden],
+#extensionLabelPrintTools[hidden],
+#yamatoIssueSettingsSection[hidden] {
+  display: none !important;
+}
+
+.extension-label-print-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 12px;
+  padding: 12px;
+  border: 1px solid #dbe3f0;
+  border-radius: 8px;
+  background: #f7f9fc;
+}
+
+.extension-qr-controls {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.extension-qr-controls .btn-base {
+  flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.extension-qr-controls .sidebar-status {
+  display: block;
+  width: 100%;
+}
+
+.sidebar-subsection {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.sidebar-subtitle {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+body[data-app-mode="extension"] [data-app-mode="web"] {
+  display: none;
+}
+
+body[data-app-mode="extension"] [data-app-mode="file"] {
+  display: none;
+}
+
+body[data-app-mode="web"] [data-app-mode="extension"],
+body[data-app-mode="web"] [data-app-mode="file"],
+body[data-app-mode="file"] [data-app-mode="web"],
+body[data-app-mode="file"] [data-app-mode="extension"] {
+  display: none;
+}
+
+.quick-guide-action-dummy {
+  pointer-events: none;
+  opacity: .8;
+}
+
 /* メインコンテンツのスタイル調整 */
 .main-content {
-  margin-top: 80px; /* 固定ヘッダーの高さ分の余白 */
+  margin-top: var(--fixed-header-offset);
 }
 
 /* ユーティリティ */
@@ -685,7 +719,7 @@ table.label44 td {
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   .fixed-header-content {
-    flex-direction: column;
+    width: 100%;
     align-items: stretch;
     gap: 10px;
   }
@@ -694,18 +728,40 @@ table.label44 td {
     font-size: 16px;
     text-align: center;
   }
+
+  .fixed-header-left {
+    justify-content: space-between;
+    flex: 1 1 auto;
+  }
   
   .main-actions {
-    justify-content: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 10px;
+    flex: 1 1 100%;
+  }
+
+  .header-action-controls {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
   }
   
   .main-action-buttons {
-    justify-content: center;
+    justify-content: flex-start;
     gap: 6px;
+    margin-left: 0;
+  }
+
+  .preview-back-floating {
+    top: calc(var(--fixed-header-offset) + 10px);
+    left: 12px;
+    padding: 8px 10px;
   }
   
-  .btn-compact {
+  .btn-header {
     padding: 6px 12px;
     font-size: 12px;
   }
@@ -723,21 +779,6 @@ table.label44 td {
   .print-count-value {
   font-size: 12px; min-width: 16px; max-width: 38px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  
-  .main-content {
-  margin-top: 140px; /* 高さを増加 */
-  }
-}
-
-/* 印刷時は固定ヘッダーを非表示 */
-@media print {
-  .fixed-header {
-    display: none !important;
-  }
-  
-  .main-content {
-    margin-top: 0 !important;
-  }
 }
 
 /* テンプレート化した QR / 画像 説明（カスタムラベル説明はサイドバーで統一） */
@@ -745,89 +786,38 @@ table.label44 td {
 .order-image-default-msg { margin: 5px; font-size: 12px; color: #666; text-align: center; }
 /* フォント系のスタイルはサイドバーに集約（#appSidebar ...） */
 
-/* 注文明細の個別画像ゾーン */
-.individual-order-image-zone {
-  margin: 10px 0;
-  text-align: center;
-  border: 2px dashed #ccc;
-  padding: 10px;
-}
-
 /* 注文明細パネルのボタン左右マージン */
 .order-print-info .btn-base { margin-left: 6px; }
 
 /* 非表示ブロックの初期状態（JSで切替） */
-#customLabelRow,
-#orderImageRow,
 #dropZoneDefaultContent { display: none; }
 
+.content-card {
+  width: min(calc(100% - var(--content-panel-gutter)), var(--content-panel-max-width));
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-sizing: border-box;
+}
+
 /* --- Initial Quick Guide (初回表示ガイド) --- */
-.initial-quick-guide { max-width: 760px; margin: 140px auto 40px; background:#fff; border:1px solid #ddd; border-radius:12px; padding:32px 40px; box-shadow:0 4px 16px rgba(0,0,0,0.08); font-size:15px; line-height:1.6; }
+.initial-quick-guide { margin: 140px auto 40px; padding:32px 40px; font-size:15px; line-height:1.6; }
 .initial-quick-guide h2.quick-guide-title { margin-top:0; font-size:1.4rem; text-align:center; }
 .quick-guide-steps { list-style: none; padding:0; margin:24px 0; display:flex; flex-direction:column; gap:14px; }
 .quick-guide-steps li { background:#fafafa; border:1px solid #e2e2e2; border-radius:8px; padding:14px 16px; display:flex; align-items:center; gap:12px; font-weight:500; }
 .quick-guide-steps li button { cursor:pointer; }
 .quick-guide-note { margin:8px 0 0; font-size:0.9rem; color:#555; text-align:center; }
 .initial-quick-guide[hidden] { display:none !important; }
-/* ダミー印刷ボタン (初回ガイド内) */
-.quick-guide-print-dummy { pointer-events:none; opacity:.8; }
-.quick-guide-print-dummy {
-  background: linear-gradient(45deg, #FF5722, #FF7043);
-  color:#fff;
-  border:none;
-  border-radius:5px;
-  padding:6px 14px;
-  font-size:13px;
-  font-weight:600;
-  box-shadow:0 2px 4px rgba(0,0,0,0.2);
-}
 /* 初回ガイド内ボタンの統一余白調整 */
-.initial-quick-guide .quick-guide-steps button.btn-compact { padding:6px 14px; font-size:13px; }
+.initial-quick-guide .quick-guide-steps .btn-header { padding:6px 14px; font-size:13px; }
 .initial-quick-guide .quick-guide-steps li { line-height:1.4; }
-.initial-quick-guide .quick-guide-file-btn { /* 固定ヘッダーの file-input-button-compact と同一色味を再利用（class流用） */ margin-left:4px; }
-.file-input-button {
-  display: inline-block;
-  padding: 8px 20px;
-  font-size: 14px;
-  font-weight: bold;
-  color: #fff;
-  background-color: #007bff;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  text-align: center;
-  transition: background-color 0.3s ease, transform 0.2s ease;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.file-input-button:hover {
-  background-color: #0056b3;
-}
-
-.file-input-button:active {
-  transform: scale(0.95);
-}
-
-.file-input-button:focus {
-  outline: none;
-  box-shadow: 0 0 5px #007bff;
-}
-
-/* 実際のファイル入力要素を隠す */
-/* 旧 file input 隠しは削除（compact版で代替） */
-
-/* ファイル選択済み表示 */
-.file-selected-info {
-  margin-left: 10px;
-  font-size: 14px;
-  color: #666;
-  font-style: italic;
-}
-
-.file-selected-info.has-file {
-  color: #28a745;
-  font-weight: 500;
+.initial-quick-guide .quick-guide-file-btn { margin-left:4px; }
+.quick-guide-print-dummy {
+  pointer-events:none;
+  opacity:.8;
 }
 
 /* 共通ボタンベーススタイル */
@@ -913,6 +903,8 @@ table.label44 td {
 .btn-info:hover:not(:disabled) { background-color: #138496; }
 .btn-warning { background-color: #fd7e14; color: #fff; }
 .btn-warning:hover:not(:disabled) { background-color: #e36f0c; }
+.btn-download { background-color: #7c3aed; color: #fff; }
+.btn-download:hover:not(:disabled) { background-color: #6d28d9; }
 
 /* カスタムラベル設定カードの外観はサイドバーに集約（#customLabelsBlock .multiple-custom-labels-config） */
 
@@ -922,44 +914,14 @@ table.label44 td {
 
 /* 機能有効化チェックはサイドバーで統一 */
 
-/* 印刷ボタンのスタイル */
-#print-btn {
-  background: linear-gradient(45deg, #FF5722, #FF7043);
-  color: white;
-  border: none;
-  border-radius: 5px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.btn-print-accent {
+  background-color: #f97316;
+  color: #fff;
   min-width: 50px;
-  height: 36px;
-  white-space: nowrap;
 }
 
-#print-btn:hover:not(:disabled) {
-  background: linear-gradient(45deg, #E64A19, #FF5722);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-}
-
-#print-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-
-#print-btn:disabled {
-  background: #cccccc;
-  color: #666666;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none;
-  opacity: 0.6;
+.btn-print-accent:hover:not(:disabled) {
+  background-color: #ea580c;
 }
 
 /* 機能有効化ラベルのスタイル統一 */
@@ -1024,6 +986,8 @@ label[for="orderImageEnable"]:hover {
   font-weight: bold;
   font-size: 14px;
   color: #333;
+  margin: 0;
+  cursor: pointer;
 }
 
 .custom-label-input-group {
@@ -1085,13 +1049,8 @@ label[for="orderImageEnable"]:hover {
 
 /* 処理済み注文一覧 */
 .processed-orders-panel {
-  max-width: 960px;
   margin: 20px auto;
   padding: 16px;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  background-color: #fff;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 .processed-orders-header {
   display: flex;
@@ -1186,6 +1145,57 @@ label[for="orderImageEnable"]:hover {
 .processed-orders-table .order-link:hover {
   text-decoration: underline;
 }
+.processed-orders-order-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.processed-orders-table .order-preview-link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.processed-orders-order-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.processed-orders-icon,
+.processed-orders-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: #5b6470;
+  background: #eef2f6;
+}
+.processed-orders-icon-button {
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.processed-orders-icon-button:hover {
+  color: #1f5fbf;
+  background: #e3ecfb;
+  border-color: #c5d7f5;
+}
+.processed-orders-icon-svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+.processed-orders-icon-qr {
+  color: #0b6e4f;
+  background: #e5f5ee;
+}
+.processed-orders-icon-image {
+  color: #7a4b14;
+  background: #fdf0de;
+}
 .processed-orders-empty {
   padding: 20px;
   text-align: center;
@@ -1222,15 +1232,12 @@ label[for="orderImageEnable"]:hover {
   .processed-orders-table td {
     padding: 6px 8px;
   }
-}
-
-/* カスタムラベル設定エリア（旧版は削除または更新） */
-.custom-label-config {
-  padding: 15px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  background-color: #f9f9f9;
-  margin: 10px 0;
+  .processed-orders-order-cell {
+    gap: 6px;
+  }
+  .processed-orders-order-actions {
+    gap: 4px;
+  }
 }
 
 /* リッチテキストエディタ: サイドバー内に集約（#appSidebar .rich-text-editor） */
@@ -1267,26 +1274,7 @@ label[for="orderImageEnable"]:hover {
 /* フォームテーブルのスタイル改善 */
 /* 旧フォーム用の .form-table は廃止 */
 
-/* メインコンテナの幅制御 */
-.no_print {
-  min-width: 800px; /* 最小幅を確保 */
-  max-width: 1200px; /* 最大幅を制限 */
-  margin: 0 auto; /* 中央寄せ */
-}
-
-@media print {
-  /* 旧UIブロック（multiple-custom-labels-config/custom-label-config/customLabelRow/orderImageRow）は廃止 */
-}
-
 /* カスタムラベル説明はサイドバーの details.custom-labels-instructions に統一 */
-
-/* カスタムラベルのヘッダー部分 */
-.custom-label-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
 
 .custom-label-item-header-left {
   display: flex;
@@ -1296,13 +1284,6 @@ label[for="orderImageEnable"]:hover {
 
 .custom-label-enabled {
   margin: 0;
-}
-
-.custom-label-item-title {
-  font-weight: bold;
-  color: #333;
-  margin: 0;
-  cursor: pointer;
 }
 
 /* 注文画像表示OFF時の表示制御 */
@@ -1395,4 +1376,99 @@ label[for="orderImageEnable"]:hover {
   font-family: monospace;
   font-size: 12px;
   color: #495057;
+}
+
+.extension-automation-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+}
+
+.extension-automation-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.86);
+  white-space: nowrap;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.extension-automation-status:empty {
+  display: none;
+}
+
+.extension-automation-status.is-busy {
+  color: #dbeafe;
+}
+
+.extension-automation-status.is-error {
+  color: #ffe2e0;
+}
+
+.extension-automation-status.sidebar-status {
+  color: #5a6472;
+  max-width: none;
+}
+
+.extension-automation-status.sidebar-status.is-busy {
+  color: #1d4ed8;
+}
+
+.extension-automation-status.sidebar-status.is-error {
+  color: #b42318;
+}
+
+@media (max-width: 1200px) {
+  .fixed-header-content {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px 16px;
+  }
+
+  .fixed-header-left {
+    flex: 1 1 100%;
+  }
+
+  .main-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .print-count-display {
+    margin-left: auto;
+  }
+
+  .header-action-controls {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .main-action-buttons {
+    margin-left: 0;
+  }
+}
+
+body.sidebar-docked .preview-back-floating {
+  left: calc(var(--sidebar-width) + 16px);
+}
+
+@media (max-width: 900px) {
+  body.sidebar-docked .preview-back-floating {
+    left: 12px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .extension-automation-controls {
+    width: auto;
+    max-width: 100%;
+  }
 }

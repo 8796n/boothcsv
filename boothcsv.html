@@ -7,9 +7,9 @@
   <meta name="description" content="BOOTH宛名CSVをラベル/注文明細として印刷用に整形するローカル実行ツール">
   
   <!-- Favicon (relative path for file:// and http:// both) -->
-  <link rel="icon" href="favicon.ico">
+  <link rel="icon" href="./docs/images/favicon.svg" type="image/svg+xml">
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/paper-css/0.4.1/paper.css">
+  <link rel="stylesheet" href="./css/paper.css">
 
   <link rel="stylesheet" href="./css/boothcsv.css">
   <!-- Sidebar styles -->
@@ -54,27 +54,37 @@
           <span class="print-count-unit">面</span>
         </div>
       </div>
-      <!-- CSVダウンロード -->
-      <div class="csv-download-wrapper">
-        <button type="button" class="btn-compact btn-download" title="BOOTHの注文一覧へ飛びます" onclick="window.open('https://manage.booth.pm/orders?state=paid', '_blank')">
-          📥 CSVをダウンロード
-        </button>
-      </div>
-      <!-- ファイル選択 -->
-      <div class="file-input-wrapper-compact">
-  <button type="button" class="file-input-button-compact" onclick="document.getElementById('file').click()">
-          📁 CSVファイルを選択
-        </button>
-  <input type="file" id="file" name="csvfile" accept=".csv" class="hidden" aria-label="CSVファイル選択">
-        <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
-      </div>
-      <!-- 主要アクションボタン -->
-      <div class="main-action-buttons">
-        <button id="print-btn" type="button" title="印刷">印刷</button>
+      <div class="header-action-controls">
+        <!-- CSVダウンロード -->
+        <div class="csv-download-wrapper" id="boothOrdersOpenWrapper">
+          <button type="button" id="boothOrdersOpenButton" class="btn-base btn-header btn-download" title="BOOTHの注文一覧へ飛びます">
+            📥 CSVをダウンロード
+          </button>
+        </div>
+        <!-- ファイル選択 -->
+        <div class="file-input-wrapper-compact" id="csvFileInputWrapper">
+    <button type="button" id="selectCsvFileButton" class="btn-base btn-header btn-primary">
+            📁 CSVファイルを選択
+          </button>
+    <input type="file" id="file" name="csvfile" accept=".csv" class="hidden" aria-label="CSVファイル選択">
+          <span class="file-selected-info-compact" id="fileSelectedInfoCompact">未選択</span>
+        </div>
+        <div id="extensionHeaderCsvControls" class="extension-automation-controls no_print" hidden>
+          <button type="button" id="extensionFetchCsvButton" class="btn-base btn-header btn-download" title="ログイン済みBOOTHからCSVを取得します">
+            ⚙ CSV取得
+          </button>
+          <span id="extensionFetchCsvStatus" class="extension-automation-status" aria-live="polite"></span>
+        </div>
+        <!-- 主要アクションボタン -->
+        <div class="main-action-buttons">
+          <button id="print-btn" class="btn-base btn-header btn-print-accent" type="button" title="印刷">印刷</button>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<button id="previewBackButton" class="btn-base btn-info btn-medium preview-back-floating no_print" type="button" title="処理済み注文一覧に戻る" hidden>← 一覧に戻る</button>
 
 <!-- メインコンテンツ（既存の内容） -->
 <main class="main-content" id="mainContent">
@@ -82,12 +92,17 @@
   <!-- Screenshot snap anchors (no_print, invisible) -->
   <div class="snap-anchor no_print" data-snap="main-top" aria-hidden="true"></div>
   <!-- 初回ガイド: CSV未読み込み時のみ表示（JSで非表示制御） -->
-  <section id="initialQuickGuide" class="initial-quick-guide no_print" aria-live="polite">
+  <section id="initialQuickGuide" class="initial-quick-guide content-card no_print" aria-live="polite">
     <h2 class="quick-guide-title">最初の操作は 3 ステップ</h2>
-    <ol class="quick-guide-steps">
-      <li>① BOOTHで <button type="button" class="btn-compact btn-download" onclick="window.open('https://manage.booth.pm/orders?state=paid','_blank')">📥 CSVをダウンロード</button>して</li>
-  <li>② ダウンロードしたファイルを <button type="button" class="file-input-button-compact quick-guide-file-btn" onclick="document.getElementById('file').click()">📁 CSVファイルを選択</button>する</li>
-      <li>③ プレビューを確認し <button type="button" class="btn-compact quick-guide-print-dummy" aria-hidden="true" tabindex="-1">印刷</button> を押す</li>
+    <ol class="quick-guide-steps" data-app-mode="web">
+        <li>① BOOTHで <button type="button" id="quickGuideDownloadCsvButton" class="btn-base btn-header btn-download">📥 CSVをダウンロード</button>して</li>
+      <li>② ダウンロードしたファイルを <button type="button" id="quickGuideSelectCsvButton" class="btn-base btn-header btn-primary quick-guide-file-btn">📁 CSVファイルを選択</button>する</li>
+      <li>③ プレビューを確認し <button type="button" class="btn-base btn-header btn-print-accent quick-guide-print-dummy" aria-hidden="true" tabindex="-1">印刷</button> を押す</li>
+    </ol>
+    <ol class="quick-guide-steps" data-app-mode="extension">
+      <li>① ヘッダーの <button type="button" class="btn-base btn-header btn-download quick-guide-action-dummy" aria-hidden="true" tabindex="-1">⚙ CSV取得</button> を押す</li>
+      <li>② ラベルが必要なときはラベルシールも印刷するをオンにして発送コード発行設定を確認後、<button type="button" class="btn-base btn-primary btn-small quick-guide-action-dummy" aria-hidden="true" tabindex="-1">QR一括取得</button> を押す</li>
+      <li>③ プレビューを確認し <button type="button" class="btn-base btn-header btn-print-accent quick-guide-print-dummy" aria-hidden="true" tabindex="-1">印刷</button> を押す</li>
     </ol>
     <p class="quick-guide-note">詳しい説明はサイドバー右上の「使い方ガイド」リンクから確認できます。</p>
     <!-- ファイルプロトコル警告（JSで条件表示） -->
@@ -136,15 +151,19 @@
     </div>
   </section>
   <template id="processedOrdersPanelTemplate">
-    <section id="processedOrdersPanel" class="processed-orders-panel no_print" hidden>
+    <section id="processedOrdersPanel" class="processed-orders-panel content-card no_print" hidden>
       <div class="processed-orders-header">
         <h3 class="processed-orders-title">処理済み注文一覧</h3>
         <div class="processed-orders-actions">
           <label class="processed-orders-filter">
             <input type="checkbox" id="processedOrdersUnprintedOnly"> 未印刷のみ表示
           </label>
+          <label class="processed-orders-filter">
+            <input type="checkbox" id="processedOrdersUnshippedOnly"> 未発送のみ表示
+          </label>
             <div class="processed-orders-action-buttons">
               <button type="button" id="processedOrdersPreviewButton" class="btn-base btn-primary btn-small" disabled>選択した注文を印刷プレビュー</button>
+              <button type="button" id="processedOrdersShipButton" class="btn-base btn-info btn-small" disabled>選択した注文を発送通知</button>
               <button type="button" id="processedOrdersDeleteButton" class="btn-base btn-danger btn-small" disabled>選択した注文を削除</button>
             </div>
         </div>
@@ -157,6 +176,7 @@
               <th data-sort="orderNumber" class="sortable">注文番号</th>
               <th data-sort="paymentDate" class="sortable sort-desc">支払い日時</th>
               <th data-sort="printedAt" class="sortable">印刷日時</th>
+              <th data-sort="shippedAt" class="sortable">発送日時</th>
             </tr>
           </thead>
           <tbody id="processedOrdersBody"></tbody>
@@ -191,6 +211,54 @@
       <div class="sidebar-group">
         <label for="labelyn"><input type="checkbox" id="labelyn" name="labelprint"> ラベルシールも印刷する</label>
       </div>
+      <div id="extensionLabelPrintTools" class="extension-label-print-tools" hidden>
+        <div class="sidebar-group sidebar-subsection extension-only-settings" id="yamatoIssueSettingsSection" hidden>
+          <h4 class="sidebar-title sidebar-subtitle">発送コード発行設定</h4>
+          <div class="sidebar-group">
+            <label for="yamatoPackageSizeId">サイズ</label>
+            <select id="yamatoPackageSizeId" aria-label="発送コード発行サイズ">
+              <option value="16">ネコポス</option>
+              <option value="17">宅急便コンパクト</option>
+              <option value="18">60サイズ</option>
+              <option value="19">80サイズ</option>
+              <option value="20">100サイズ</option>
+              <option value="21">120サイズ</option>
+              <option value="22">140サイズ</option>
+              <option value="23">160サイズ</option>
+              <option value="26">180サイズ</option>
+              <option value="27">200サイズ</option>
+            </select>
+          </div>
+          <div class="sidebar-group">
+            <label for="yamatoCodeType">発送場所</label>
+            <select id="yamatoCodeType" aria-label="発送コード受け取り場所">
+              <option value="0">ファミリーマート・ヤマト営業所・宅配便ロッカー</option>
+              <option value="1">セブン-イレブン</option>
+            </select>
+          </div>
+          <div class="sidebar-group">
+            <label for="yamatoDescription">品名</label>
+            <input type="text" id="yamatoDescription" maxlength="8" placeholder="8文字以内で入力" list="yamatoDescriptionHistory">
+            <datalist id="yamatoDescriptionHistory"></datalist>
+          </div>
+          <div class="sidebar-group">
+            <label for="yamatoIncludeOrderNumber"><input type="checkbox" id="yamatoIncludeOrderNumber"> 品名に注文番号を記載する</label>
+          </div>
+          <fieldset class="sidebar-group sidebar-fieldset">
+            <legend>荷扱い</legend>
+            <label for="yamatoHandlingPrecisionEquipment"><input type="checkbox" id="yamatoHandlingPrecisionEquipment" data-handling-code="precision_equipment"> 精密機器</label>
+            <label for="yamatoHandlingFragile"><input type="checkbox" id="yamatoHandlingFragile" data-handling-code="fragile"> ワレモノ</label>
+            <label for="yamatoHandlingDoNotStack"><input type="checkbox" id="yamatoHandlingDoNotStack" data-handling-code="do_not_stack"> 下積厳禁</label>
+            <label for="yamatoHandlingDoNotTurnOver"><input type="checkbox" id="yamatoHandlingDoNotTurnOver" data-handling-code="do_not_turn_over"> 天地無用</label>
+            <label for="yamatoHandlingRawFood"><input type="checkbox" id="yamatoHandlingRawFood" data-handling-code="raw_food"> ナマモノ</label>
+          </fieldset>
+          <p class="sidebar-note">拡張機能から発送コードを発行するときに、この値を BOOTH のフォームへ反映します。</p>
+        </div>
+        <div class="sidebar-group sidebar-button-row extension-qr-controls">
+          <button type="button" id="extensionSyncQrButton" class="btn-base btn-primary btn-small" title="保存済み注文のQRコードを一括取得します">QR一括取得</button>
+          <span id="extensionQrStatus" class="extension-automation-status sidebar-status" aria-live="polite"></span>
+        </div>
+      </div>
       <div class="sidebar-group">
         <label for="labelskipnum">ラベルをスキップする面数：</label>
         <input type="number" min="0" max="43" id="labelskipnum" name="labelskip" value="0" aria-label="ラベルをスキップする面数">
@@ -201,7 +269,7 @@
       <p class="sidebar-note">変更は自動で適用され、プレビューが更新されます。</p>
   </section>
     <section class="sidebar-section">
-      <h3 class="sidebar-title">発送通知コメント(コピペ用)</h3>
+      <h3 class="sidebar-title">発送通知コメント</h3>
       <div class="sidebar-group">
         <label for="shippingMessageTemplate">定型文</label>
         <textarea id="shippingMessageTemplate" rows="5" placeholder="発送通知に添えるメッセージを入力してください"></textarea>
@@ -210,7 +278,9 @@
         <button type="button" id="saveShippingMessageTemplate" class="btn-base btn-success btn-small">保存</button>
         <button type="button" id="copyShippingMessageTemplate" class="btn-base btn-info btn-small">コピー</button>
       </div>
-      <p class="sidebar-note">保存すると次回以降も同じ定型文が表示されます。</p>
+      <p class="sidebar-note" data-app-mode="extension">拡張機能の発送通知では、この定型文を BOOTH の発送通知コメントへ自動入力します。必要ならコピーもできます。</p>
+      <p class="sidebar-note" data-app-mode="web">保存すると次回以降も同じ定型文が表示されます。必要に応じて BOOTH へコピーして使えます。</p>
+      <p class="sidebar-note" data-app-mode="file">保存すると次回以降も同じ定型文が表示されます。必要に応じて BOOTH へコピーして使えます。</p>
     </section>
     <section class="sidebar-section">
       <h3 class="sidebar-title">注文明細用画像</h3>
@@ -221,6 +291,17 @@
       </div>
       <div class="sidebar-group">
         <div id="imageDropZone" class="dropzone-container text-center"></div>
+      </div>
+      <div id="productOrderImagesBlock" class="product-order-images-root" hidden>
+        <div class="sidebar-group">
+          <p class="sidebar-note product-order-images-note">個別画像がない注文では、最初に一致した商品IDの画像を使います。商品ID画像も無ければ全体画像を使います。</p>
+        </div>
+        <div class="sidebar-group product-order-images-summary-row">
+          <span id="productOrderImagesSummary" class="product-order-images-summary">商品ID画像: 0件</span>
+        </div>
+        <div class="sidebar-group">
+          <div id="productOrderImagesContainer" class="product-order-images-container"></div>
+        </div>
       </div>
     </section>
     <section class="sidebar-section">
@@ -247,7 +328,7 @@
           <!-- カスタムフォント設定セクション -->
           <div class="custom-font-section">
             <div class="snap-anchor no_print" data-snap="custom-fonts" aria-hidden="true"></div>
-            <h4 onclick="toggleFontSection()" id="fontSectionHeader">
+            <h4 id="fontSectionHeader" role="button" tabindex="0" aria-controls="fontSectionContent" aria-expanded="true">
               <span id="fontSectionArrow">▼</span>
               カスタムフォント設定
             </h4>
@@ -353,6 +434,9 @@
 <template id="qrDropPlaceholderHttp">
   <p class="qr-drop-placeholder">QR画像をここにドロップ or ペースト (Ctrl+V)</p>
 </template>
+<template id="qrFetchPlaceholderExtension">
+  <button type="button" class="btn-base btn-primary btn-small qr-fetch-placeholder-button" aria-hidden="true" tabindex="-1">QR取得</button>
+</template>
 <template id="orderImageDropDefault">
   <p class="order-image-default-msg">注文明細の余白に表示したい画像をここにドロップ or クリックでファイルを選択</p>
 </template>
@@ -440,6 +524,7 @@
       <!-- 個別注文画像ドロップゾーン -->
   <div class="individual-order-image-zone">
         <small>この注文専用の画像（グローバル画像より優先されます）</small>
+        <div class="individual-image-source-label" aria-live="polite">適用画像: なし</div>
         <div class="individual-image-dropzone"></div>
       </div>
       <!-- 画像表示用のコンテナを追加 -->
@@ -459,7 +544,9 @@
 <script src="./js/custom-labels.js"></script>
 <script src="./js/custom-labels-font.js"></script>
 <script src="./js/processed-orders-panel.js"></script>
+<script src="./js/extension-bridge.js"></script>
 <script src="./js/boothcsv.js"></script>
+<script src="./js/docs-capture.js"></script>
 </body>
 
 </html>

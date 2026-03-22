@@ -1,0 +1,215 @@
+[
+  {
+    "id": "main-interface",
+    "output": "docs/images/main-interface.png",
+    "viewport": { "width": 1300, "height": 700 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": false,
+      "clearFile": true,
+      "clearResults": true
+    },
+    "capture": { "mode": "viewport" }
+  },
+  {
+    "id": "custom-labels",
+    "output": "docs/images/custom-labels.png",
+    "viewport": { "width": 1300, "height": 700 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": true,
+      "orderImage": false,
+      "labelSkip": 1
+    },
+    "fixtures": [
+      {
+        "type": "custom-labels",
+        "labels": [
+          {
+            "html": "<div><b>【サンプル商品】</b></div><div>アクリルキーホルダー</div><div style=\"color: #666;\">商品コード: AKH-001</div>",
+            "count": 1,
+            "enabled": true,
+            "fontSize": "12pt"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      { "type": "set-checkbox", "id": "customLabelEnable", "value": true },
+      { "type": "collapse-font-section" },
+      { "type": "show-custom-label-context-menu", "itemIndex": 0, "selector": "b" }
+    ],
+    "capture": { "mode": "crop", "padding": 6, "includeSelectors": [".custom-label-context-menu"] },
+    "target": { "snap": "custom-labels", "selector": ".sidebar-section", "scroll": "center" }
+  },
+  {
+    "id": "custom-labels-sheet",
+    "output": "docs/images/custom-labels-sheet.png",
+    "viewport": { "width": 1300, "height": 1280 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "closed",
+      "labelyn": true,
+      "customLabel": true,
+      "orderImage": false,
+      "labelSkip": 1
+    },
+    "fixtures": [
+      {
+        "type": "custom-labels",
+        "labels": [
+          {
+            "html": "<div><b>【サンプル商品】</b></div><div>アクリルキーホルダー</div><div style=\"color: #666;\">商品コード: AKH-001</div>",
+            "count": 4,
+            "enabled": true,
+            "fontSize": "12pt"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      { "type": "close-custom-label-context-menu" }
+    ],
+    "target": { "snap": "label-sheet", "selector": "section.sheet", "scroll": "start", "padding": 8 },
+    "capture": { "mode": "crop", "hideFixedHeader": true, "padding": 10 }
+  },
+  {
+    "id": "custom-fonts",
+    "output": "docs/images/custom-fonts.png",
+    "viewport": { "width": 1300, "height": 900 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": true,
+      "orderImage": false
+    },
+    "fixtures": [
+      {
+        "type": "custom-labels",
+        "labels": [
+          {
+            "html": "<div>フォント確認用</div>",
+            "count": 1,
+            "enabled": true,
+            "fontSize": "12pt"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      { "type": "expand-font-section" }
+    ],
+    "target": { "selector": ".custom-font-section", "scroll": "center" },
+    "capture": { "mode": "crop", "padding": 6 }
+  },
+  {
+    "id": "image-function",
+    "output": "docs/images/image-function.png",
+    "viewport": { "width": 1300, "height": 700 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": true,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" }
+    ],
+    "target": { "snap": "image", "selector": ".sidebar-section", "scroll": "center" },
+    "capture": { "mode": "crop", "padding": 6 }
+  },
+  {
+    "id": "image-dropzone",
+    "output": "docs/images/image-dropzone.png",
+    "viewport": { "width": 1300, "height": 700 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": true,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" },
+      { "type": "global-image", "path": "sample/footersample.png", "mimeType": "image/png" }
+    ],
+    "target": { "snap": "image", "selector": ".sidebar-section", "scroll": "center" },
+    "capture": { "mode": "crop", "padding": 6 }
+  },
+  {
+    "id": "csv-labels",
+    "output": "docs/images/csv-labels.png",
+    "viewport": { "width": 1300, "height": 1280 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "closed",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": true,
+      "labelSkip": 1,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" },
+      { "type": "qr-to-first-label", "path": "sample/qrcodedsample.png", "mimeType": "image/png" }
+    ],
+    "target": { "snap": "label-sheet", "selector": "section.sheet", "scroll": "start", "padding": 8 },
+    "capture": { "mode": "crop", "hideFixedHeader": true, "padding": 10 }
+  },
+  {
+    "id": "csv-orders",
+    "output": "docs/images/csv-orders.png",
+    "viewport": { "width": 1300, "height": 1280 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "closed",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": true,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
+      { "type": "global-image", "path": "sample/footersample.png", "mimeType": "image/png" },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" }
+    ],
+    "target": { "snap": "order-page", "selector": "section.sheet", "scroll": "start", "padding": 8 },
+    "capture": { "mode": "crop", "hideFixedHeader": true, "padding": 10 }
+  },
+  {
+    "id": "processed-orders-list",
+    "output": "docs/images/processed-orders-list.png",
+    "viewport": { "width": 1440, "height": 960 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "closed",
+      "labelyn": true,
+      "customLabel": false,
+      "orderImage": true,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" },
+      { "type": "qr-to-first-label", "path": "sample/qrcodedsample.png", "mimeType": "image/png" },
+      { "type": "order-image", "path": "sample/footersample.png", "mimeType": "image/png", "orderIndex": 1 }
+    ],
+    "actions": [
+      { "type": "show-processed-orders-panel" }
+    ],
+    "target": { "selector": "#processedOrdersPanel", "scroll": "start", "padding": 8 },
+    "capture": { "mode": "viewport", "hideFixedHeader": true }
+  }
+]

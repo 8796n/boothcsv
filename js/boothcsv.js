@@ -30,12 +30,48 @@ const DEBUG_MODE = (() => {
   return urlParams.get('debug') === '1';
 })();
 
-// プロトコル判定ユーティリティ
+function getForcedAppMode() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const appMode = (urlParams.get('appMode') || '').trim().toLowerCase();
+  return ['extension', 'web', 'file'].includes(appMode) ? appMode : '';
+}
+
+function isRealChromeExtensionApp() {
+  return window.location.protocol === 'chrome-extension:' && !!(window.chrome && chrome.runtime && chrome.runtime.id);
+}
+
+function detectActualAppMode() {
+  if (isRealChromeExtensionApp()) return 'extension';
+  if (window.location.protocol === 'file:') return 'file';
+  return 'web';
+}
+
+function resolveAppMode() {
+  return getForcedAppMode() || detectActualAppMode();
+}
+
+function getAppMode() {
+  return resolveAppMode();
+}
+
+function canUseExtensionBridge() {
+  return isRealChromeExtensionApp();
+}
+
+// プロトコル/能力判定ユーティリティ
 const PROTOCOL_UTILS = {
-  isFileProtocol: () => window.location.protocol === 'file:',
-  isHttpProtocol: () => window.location.protocol === 'http:' || window.location.protocol === 'https:',
-  canDragFromExternalSites: () => !PROTOCOL_UTILS.isFileProtocol()
+  isFileProtocol: () => detectActualAppMode() === 'file',
+  isHttpProtocol: () => detectActualAppMode() === 'web',
+  canDragFromExternalSites: () => detectActualAppMode() !== 'file'
 };
+
+window.BoothCSVAppRuntime = Object.assign(window.BoothCSVAppRuntime || {}, {
+  getForcedAppMode,
+  detectActualAppMode,
+  getAppMode: resolveAppMode,
+  canUseExtensionBridge,
+  isRealChromeExtensionApp
+});
 
 // 初回クイックガイド表示制御（グローバルからどこでも呼べるユーティリティ）
 function hideQuickGuide(){ const el = document.getElementById('initialQuickGuide'); if(el) el.hidden = true; }
@@ -46,6 +82,7 @@ function showQuickGuide(){ const el = document.getElementById('initialQuickGuide
 // 直近描画に使用した設定・注文番号を保持し、再プレビューへ再利用
 window.lastPreviewConfig = null; // { labelyn, labelskip, sortByPaymentDate, customLabelEnable, customLabels }
 window.lastOrderSelection = []; // [orderNumber, ...]
+window.currentPreviewSource = ''; // '', 'processed-orders'
 let pendingUpdateTimer = null;
 
 // デバッグログ用関数
@@ -108,6 +145,98 @@ function isValidOrderNumber(orderNumber){
   return !!(orderNumber && String(orderNumber).trim());
 }
 
+function updateSelectedSourceInfo(label, hasData = false) {
+  const fileSelectedInfoCompact = document.getElementById('fileSelectedInfoCompact');
+  if (!fileSelectedInfoCompact) return;
+  fileSelectedInfoCompact.textContent = label || '未選択';
+  fileSelectedInfoCompact.classList.toggle('has-file', !!hasData);
+}
+
+function getRenderedSheetState() {
+  const allSheets = document.querySelectorAll('section.sheet');
+  const labelSheets = document.querySelectorAll('section.sheet.label-sheet');
+  const hasAnySheets = allSheets.length > 0;
+  const hasLabelSheets = labelSheets.length > 0;
+  const hasOrderSheets = allSheets.length > labelSheets.length;
+  return {
+    hasAnySheets,
+    hasLabelSheets,
+    hasOrderSheets
+  };
+}
+
+function hasEnabledCustomLabelContent(config = null) {
+  const source = config && typeof config === 'object' ? config : buildCurrentPreviewConfig(null);
+  if (!source.labelyn || !source.customLabelEnable) return false;
+  return Array.isArray(source.customLabels)
+    && source.customLabels.some(label => label && label.enabled !== false && (parseInt(label.count, 10) || 0) > 0 && String(label.text || '').trim() !== '');
+}
+
+function updatePreviewReturnButtonVisibility() {
+  const button = document.getElementById('previewBackButton');
+  if (!button) return;
+  const hasCurrentPreview = Array.isArray(window.currentDisplayedOrderNumbers)
+    && window.currentDisplayedOrderNumbers.length > 0;
+  const { hasOrderSheets } = getRenderedSheetState();
+  button.hidden = !(hasCurrentPreview || hasOrderSheets);
+}
+
+function setPreviewSource(source) {
+  window.currentPreviewSource = source || '';
+  updatePreviewReturnButtonVisibility();
+}
+
+function updateExtensionUIVisibility() {
+  const appMode = getAppMode();
+  const isExtensionMode = appMode === 'extension';
+  document.body.dataset.appMode = appMode;
+  document.body.classList.toggle('is-extension-app', isExtensionMode);
+  document.body.classList.toggle('is-web-app', appMode === 'web');
+  document.body.classList.toggle('is-file-app', appMode === 'file');
+  const labelEnabled = !!document.getElementById('labelyn')?.checked;
+  const csvDownloadWrapper = document.getElementById('boothOrdersOpenWrapper');
+  const csvFileInputWrapper = document.getElementById('csvFileInputWrapper');
+  const extensionHeaderCsvControls = document.getElementById('extensionHeaderCsvControls');
+  const extensionLabelPrintTools = document.getElementById('extensionLabelPrintTools');
+  const yamatoSection = document.getElementById('yamatoIssueSettingsSection');
+
+  if (csvDownloadWrapper) csvDownloadWrapper.hidden = isExtensionMode;
+  if (csvFileInputWrapper) csvFileInputWrapper.hidden = isExtensionMode;
+  if (extensionHeaderCsvControls) extensionHeaderCsvControls.hidden = !isExtensionMode;
+  if (extensionLabelPrintTools) extensionLabelPrintTools.hidden = !(isExtensionMode && labelEnabled);
+  if (yamatoSection) yamatoSection.hidden = !(isExtensionMode && labelEnabled);
+}
+
+function initializeFixedHeaderOffset() {
+  const header = document.querySelector('.fixed-header');
+  if (!header) return;
+
+  const updateOffset = function() {
+    const rect = header.getBoundingClientRect();
+    const nextOffset = Math.max(0, Math.ceil(rect.height));
+    document.documentElement.style.setProperty('--fixed-header-offset', `${nextOffset}px`);
+  };
+
+  updateOffset();
+  window.addEventListener('resize', updateOffset, { passive: true });
+
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(updateOffset);
+    observer.observe(header);
+  }
+}
+
+function buildCurrentPreviewConfig(file = null) {
+  return {
+    file,
+    labelyn: settingsCache.labelyn,
+    labelskip: settingsCache.labelskip,
+    sortByPaymentDate: settingsCache.sortByPaymentDate,
+    customLabelEnable: settingsCache.customLabelEnable,
+    customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(label => label.enabled) : []
+  };
+}
+
 // CSV解析ユーティリティ
 class CSVAnalyzer {
   // CSVファイルの行数を取得（非同期）
@@ -167,8 +296,24 @@ window.settingsCache = {
   sortByPaymentDate: false,
   customLabelEnable: false,
   orderImageEnable: false,
-  shippingMessageTemplate: ''
+  shippingMessageTemplate: '',
+  yamatoPackageSizeId: '16',
+  yamatoCodeType: '0',
+  yamatoDescription: '',
+  yamatoDescriptionHistory: [],
+  yamatoIncludeOrderNumber: true,
+  yamatoHandlingCodes: []
 };
+
+const YAMATO_DESCRIPTION_HISTORY_LIMIT = 10;
+
+const YAMATO_HANDLING_CHECKBOXES = [
+  'yamatoHandlingPrecisionEquipment',
+  'yamatoHandlingFragile',
+  'yamatoHandlingDoNotStack',
+  'yamatoHandlingDoNotTurnOver',
+  'yamatoHandlingRawFood'
+];
 
 window.addEventListener("load", async function(){
   // プロトコル判定とファイルプロトコル警告の表示
@@ -197,6 +342,17 @@ window.addEventListener("load", async function(){
   const elImg = document.getElementById("orderImageEnable"); if (elImg) elImg.checked = settings.orderImageEnable;
   const elShippingTemplate = document.getElementById("shippingMessageTemplate");
   if (elShippingTemplate) elShippingTemplate.value = settings.shippingMessageTemplate || '';
+  const elYamatoSize = document.getElementById('yamatoPackageSizeId'); if (elYamatoSize) elYamatoSize.value = settings.yamatoPackageSizeId || '16';
+  const elYamatoCodeType = document.getElementById('yamatoCodeType'); if (elYamatoCodeType) elYamatoCodeType.value = settings.yamatoCodeType || '0';
+  const elYamatoDescription = document.getElementById('yamatoDescription'); if (elYamatoDescription) elYamatoDescription.value = settings.yamatoDescription || '';
+  renderYamatoDescriptionHistory(settings.yamatoDescriptionHistory || []);
+  const elYamatoIncludeOrderNumber = document.getElementById('yamatoIncludeOrderNumber'); if (elYamatoIncludeOrderNumber) elYamatoIncludeOrderNumber.checked = settings.yamatoIncludeOrderNumber !== false;
+  YAMATO_HANDLING_CHECKBOXES.forEach(function(id) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const code = input.dataset.handlingCode;
+    input.checked = Array.isArray(settings.yamatoHandlingCodes) && settings.yamatoHandlingCodes.includes(code);
+  });
 
   Object.assign(window.settingsCache, {
     labelyn: settings.labelyn,
@@ -204,13 +360,21 @@ window.addEventListener("load", async function(){
     sortByPaymentDate: settings.sortByPaymentDate,
     customLabelEnable: settings.customLabelEnable,
     orderImageEnable: settings.orderImageEnable,
-    shippingMessageTemplate: settings.shippingMessageTemplate || ''
+    shippingMessageTemplate: settings.shippingMessageTemplate || '',
+    yamatoPackageSizeId: settings.yamatoPackageSizeId || '16',
+    yamatoCodeType: settings.yamatoCodeType || '0',
+    yamatoDescription: settings.yamatoDescription || '',
+    yamatoDescriptionHistory: normalizeYamatoDescriptionHistory(settings.yamatoDescriptionHistory),
+    yamatoIncludeOrderNumber: settings.yamatoIncludeOrderNumber !== false,
+    yamatoHandlingCodes: Array.isArray(settings.yamatoHandlingCodes) ? settings.yamatoHandlingCodes.slice() : []
   });
 
   initializeShippingMessageTemplateUI(settings.shippingMessageTemplate || '');
+  initializeYamatoIssueSettingsUI(settings);
 
   await setupProcessedOrdersPanel();
   updateProcessedOrdersVisibility();
+  updateExtensionUIVisibility();
 
   toggleCustomLabelRow(settings.customLabelEnable);
   toggleOrderImageRow(settings.orderImageEnable);
@@ -227,6 +391,8 @@ window.addEventListener("load", async function(){
   } else {
     showQuickGuide();
   }
+
+  initializeFixedHeaderOffset();
   // カスタムラベル初期化 / シート生成後の再チェック（0ms + 300ms 両方）
   setTimeout(() => {
     if (document.querySelector('section.sheet')) hideQuickGuide();
@@ -280,15 +446,13 @@ window.addEventListener("load", async function(){
     setTimeout(initGlobalDropZone, 100);
     setTimeout(initGlobalDropZone, 300);
   }
+  await renderProductOrderImagesManager();
   // 画像表示トグルとドロップゾーンの表示を同期
   try {
-    const dzHost = document.getElementById('imageDropZone');
-    const group = dzHost ? dzHost.closest('.sidebar-group') || dzHost : null;
     const cb = document.getElementById('orderImageEnable');
-    const apply = (on) => { if (group) group.style.display = on ? '' : 'none'; };
     if (cb) {
-      apply(cb.checked);
-      cb.addEventListener('change', () => apply(cb.checked));
+      toggleOrderImageRow(cb.checked);
+      cb.addEventListener('change', () => toggleOrderImageRow(cb.checked));
     }
   } catch {}
 
@@ -419,6 +583,7 @@ async function autoProcessCSV() {
         console.log('ファイルが選択されていません。自動処理をスキップします。');
         updateProcessedOrdersVisibility();
         try {
+          await renderProductOrderImagesManager();
           await updateCustomLabelsPreview();
           resolve();
         } catch (e) {
@@ -435,16 +600,10 @@ async function autoProcessCSV() {
       }
       
       console.log('自動CSV処理を開始します...');
+      setPreviewSource('');
       clearPreviousResults();
       updateProcessedOrdersVisibility();
-    const config = {
-      file: document.getElementById('file').files[0],
-      labelyn: settingsCache.labelyn,
-      labelskip: settingsCache.labelskip,
-      sortByPaymentDate: settingsCache.sortByPaymentDate,
-      customLabelEnable: settingsCache.customLabelEnable,
-  customLabels: settingsCache.customLabelEnable ? CustomLabels.getFromUI().filter(l=>l.enabled) : []
-    };
+    const config = buildCurrentPreviewConfig(document.getElementById('file').files[0]);
       
       Papa.parse(config.file, {
         header: true,
@@ -467,6 +626,63 @@ async function autoProcessCSV() {
   });
 }
 
+async function importCSVText(csvText, options = {}) {
+  const sourceName = options.sourceName || 'BOOTH CSV';
+  if (typeof csvText !== 'string' || !csvText.trim()) {
+    throw new Error('CSVテキストが空です');
+  }
+
+  CustomLabels.updateButtonStates();
+  await CustomLabels.updateSummary();
+  updateSelectedSourceInfo(sourceName, true);
+  updateProcessedOrdersVisibility();
+  hideQuickGuide();
+  setPreviewSource('');
+  clearPreviousResults();
+
+  const config = buildCurrentPreviewConfig(null);
+  return await new Promise((resolve, reject) => {
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async function(results) {
+        try {
+          await processCSVResults(results, config);
+          resolve({
+            rowCount: Array.isArray(results.data) ? results.data.length : 0,
+            sourceName
+          });
+        } catch (error) {
+          reject(error);
+        }
+      },
+      error: reject
+    });
+  });
+}
+
+function syncPreviewSurfaceState() {
+  const { hasAnySheets, hasOrderSheets } = getRenderedSheetState();
+  const hasCurrentPreview = Array.isArray(window.currentDisplayedOrderNumbers)
+    && window.currentDisplayedOrderNumbers.length > 0;
+  const hasSelection = Array.isArray(window.lastOrderSelection)
+    && window.lastOrderSelection.length > 0;
+
+  if (!hasOrderSheets && !hasCurrentPreview) {
+    window.currentDisplayedOrderNumbers = [];
+    if (!hasSelection) {
+      setPreviewSource('');
+    }
+  }
+
+  if (!hasAnySheets && !hasCurrentPreview && !hasSelection) {
+    setPreviewSource('');
+  }
+
+  updatePreviewReturnButtonVisibility();
+  updateProcessedOrdersVisibility();
+}
+
 // カスタムラベルのリアルタイムプレビュー更新
 async function updateCustomLabelsPreview() {
   // 編集中は更新をスキップ
@@ -487,18 +703,12 @@ async function updateCustomLabelsPreview() {
     window.lastPreviewConfig = sanitizePreviewConfig(config);
     const hasSelection = Array.isArray(window.lastOrderSelection) && window.lastOrderSelection.length > 0;
 
-    // CSV が読み込まれている場合: CSVラベル + (必要なら) カスタムラベル を再生成
+    // 選択済み注文プレビューがある場合: ラベルON/OFFに関わらず注文明細を再生成する
     if (hasSelection) {
-      if (!config.labelyn) {
-        // ラベル印刷OFFなら表示だけクリア
-        clearPreviousResults();
-        updatePrintCountDisplay(0, 0, 0);
-        return;
-      }
-      // 再生成（processCSVResults 内で clearPreviousResults していないので先に消す）
+      // 再生成（renderPreviewFromRepository が labelyn を見てラベル出力の有無を切り替える）
       clearPreviousResults();
       await renderPreviewFromRepository(window.lastOrderSelection, config);
-      return; // ここで終了（CSV再表示 + カスタムラベル反映済）
+      return;
     }
 
     // CSV が無い場合 (カスタムラベル単独プレビュー)
@@ -523,6 +733,8 @@ async function updateCustomLabelsPreview() {
     }
   } catch (error) {
     console.error('カスタムラベルプレビュー更新エラー:', error);
+  } finally {
+    syncPreviewSurfaceState();
   }
 }
 
@@ -533,6 +745,33 @@ function clearPreviousResults() {
   
   // 印刷枚数表示もクリア
   clearPrintCountDisplay();
+  updatePreviewReturnButtonVisibility();
+}
+
+async function returnToProcessedOrdersPanel() {
+  clearPreviousResults();
+
+  const fileInput = document.getElementById('file');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+
+  updateSelectedSourceInfo('未選択', false);
+  window.currentDisplayedOrderNumbers = [];
+  window.lastOrderSelection = [];
+  const customLabelOnlyConfig = buildCurrentPreviewConfig(null);
+  window.lastPreviewConfig = hasEnabledCustomLabelContent(customLabelOnlyConfig)
+    ? sanitizePreviewConfig(customLabelOnlyConfig)
+    : null;
+  setPreviewSource('');
+  await renderProductOrderImagesManager();
+
+  if (hasEnabledCustomLabelContent(customLabelOnlyConfig)) {
+    await processCustomLabelsOnly(customLabelOnlyConfig, true);
+  }
+
+  await refreshProcessedOrdersPanel();
+  syncPreviewSurfaceState();
 }
 
 async function ensureOrderRepository() {
@@ -560,7 +799,9 @@ async function setupProcessedOrdersPanel() {
     ensureOrderRepository,
     clearPreviousResults,
     hideQuickGuide,
-    renderPreview: renderPreviewFromRepository
+    renderPreview: renderPreviewFromRepository,
+    setPreviewSource,
+    notifyShipment: notifySelectedOrdersShipment
   });
 }
 
@@ -572,6 +813,89 @@ async function refreshProcessedOrdersPanel() {
 function updateProcessedOrdersVisibility() {
   if (!window.ProcessedOrdersPanel || typeof window.ProcessedOrdersPanel.updateVisibility !== 'function') return;
   window.ProcessedOrdersPanel.updateVisibility();
+}
+
+async function notifySelectedOrdersShipment(orderNumbers) {
+  const repo = await ensureOrderRepository();
+  if (!repo) throw new Error('注文データを読み込めませんでした');
+
+  const selectedOrderNumbers = normalizeOrderSelection(orderNumbers);
+  if (selectedOrderNumbers.length === 0) return;
+
+  if (!canUseExtensionBridge()) {
+    const shippedAt = new Date().toISOString();
+    for (const orderNumber of selectedOrderNumbers) {
+      await repo.markShipped(orderNumber, shippedAt);
+    }
+    await refreshProcessedOrdersPanel();
+    alert('発送日時を記録しました。\nBOOTHの注文詳細で発送完了を通知してください。');
+    return;
+  }
+
+  const bridge = window.BoothCSVExtensionBridge;
+  if (!bridge || typeof bridge.collectOrderShipmentStatus !== 'function' || typeof bridge.notifyOrderShipment !== 'function') {
+    throw new Error('Chrome拡張との連携が初期化されていません');
+  }
+
+  const updated = [];
+  const pending = [];
+  const failed = [];
+  const submitted = [];
+  const shippingMessageTemplate = (settingsCache && typeof settingsCache.shippingMessageTemplate === 'string')
+    ? settingsCache.shippingMessageTemplate
+    : '';
+
+  for (const orderNumber of selectedOrderNumbers) {
+    try {
+      const response = await bridge.collectOrderShipmentStatus(orderNumber);
+      const shippedAtValue = response && response.ok ? (response.shippedAt || response.shippedAtRaw || '') : '';
+      if (response && response.ok && shippedAtValue) {
+        await repo.markShipped(orderNumber, shippedAtValue);
+        updated.push({ orderNumber, shippedAt: response.shippedAtRaw || response.shippedAt || shippedAtValue });
+      } else if (response && response.ok) {
+        const notifyResponse = await bridge.notifyOrderShipment(orderNumber, shippingMessageTemplate);
+        const notifiedShippedAt = notifyResponse ? (notifyResponse.shippedAt || notifyResponse.shippedAtRaw || '') : '';
+        if (notifyResponse && notifyResponse.ok && notifiedShippedAt) {
+          await repo.markShipped(orderNumber, notifiedShippedAt);
+          updated.push({ orderNumber, shippedAt: notifyResponse.shippedAtRaw || notifyResponse.shippedAt || notifiedShippedAt });
+          if (notifyResponse.submitted) {
+            submitted.push(orderNumber);
+          }
+        } else {
+          const diagnostic = notifyResponse && notifyResponse.diagnosticsSummary ? ` (${notifyResponse.diagnosticsSummary})` : '';
+          pending.push(`${orderNumber}${diagnostic}`);
+        }
+      } else {
+        const diagnostic = response && response.diagnosticsSummary ? ` | ${response.diagnosticsSummary}` : '';
+        failed.push(`${orderNumber}: ${response && response.error ? response.error : '発送状態の取得に失敗しました'}${diagnostic}`);
+      }
+    } catch (error) {
+      failed.push(`${orderNumber}: ${error && error.message ? error.message : '発送状態の取得に失敗しました'}`);
+    }
+  }
+
+  await refreshProcessedOrdersPanel();
+
+  const messages = [];
+  if (updated.length > 0) {
+    messages.push(`発送日時を反映: ${updated.length}件`);
+  }
+  if (submitted.length > 0) {
+    messages.push(`発送通知を送信: ${submitted.length}件`);
+  }
+  if (pending.length > 0) {
+    messages.push(`未発送または発送日時未取得: ${pending.length}件`);
+    messages.push('発送通知後の状態確認が完了しなかった注文があります。必要に応じて BOOTH の注文詳細を確認してください。');
+    messages.push(pending.slice(0, 3).join('\n'));
+  }
+  if (failed.length > 0) {
+    messages.push(`取得失敗: ${failed.length}件`);
+    messages.push(failed.slice(0, 3).join('\n'));
+  }
+  if (messages.length === 0) {
+    messages.push('発送日時を反映できる注文はありませんでした。');
+  }
+  alert(messages.join('\n'));
 }
 
 async function persistCsvToRepository(results) {
@@ -676,6 +1000,7 @@ async function renderPreviewFromRepository(orderNumbers, config) {
   const labelRows = unprintedRecords.map(rec => rec.row).filter(Boolean);
 
   window.currentDisplayedOrderNumbers = detailRecords.map(rec => rec.orderNumber);
+  await renderProductOrderImagesManager();
 
   const csvRowCountForLabels = labelRows.length;
   const effectiveCustomLabels = previewConfig.customLabelEnable ? (previewConfig.customLabels || []) : [];
@@ -735,6 +1060,8 @@ async function renderPreviewFromRepository(orderNumbers, config) {
   updatePrintCountDisplay(unprintedRecords.length, labelSheetsForDisplay, customFacesForDisplay);
   await CustomLabels.updateSummary();
   CustomLabels.updateButtonStates();
+  updatePreviewReturnButtonVisibility();
+  updateProcessedOrdersVisibility();
 
   return {
     detailCount: detailRows.length,
@@ -926,7 +1253,7 @@ async function generateOrderDetails(data, labelarr, labelSet = null, printedAtMa
     processProductItems(cOrder, row);
     
     // 画像表示の処理
-    await displayOrderImage(cOrder, orderNumber);
+    await displayOrderImage(cOrder, orderNumber, row);
     
     // 追加前にルートsectionを特定
     const rootSection = cOrder.querySelector('section.sheet');
@@ -1036,6 +1363,7 @@ function registerSettingChangeHandlers() {
     { id: 'sortByPaymentDate', key: 'SORT_BY_PAYMENT', type: 'checkbox' },
     { id: 'orderImageEnable', key: 'ORDER_IMAGE_ENABLE', type: 'checkbox', sideEffects: [
         (val) => toggleOrderImageRow(val),
+        async (val) => { if (val) await renderProductOrderImagesManager(); },
         (val) => { 
           // CSSクラスをトグルするだけで再描画はしない
           document.body.classList.toggle('order-image-hidden', !val);
@@ -1062,6 +1390,7 @@ function registerSettingChangeHandlers() {
         case 'orderImageEnable': settingsCache.orderImageEnable = value; break;
       }
       if (def.id === 'labelskipnum') { CustomLabels.updateButtonStates(); }
+      if (def.id === 'labelyn') { updateExtensionUIVisibility(); }
       if (Array.isArray(def.sideEffects)) {
         for (const fx of def.sideEffects) {
           try { await fx(value); } catch(e) { console.error('sideEffect error', def.id, e); }
@@ -1141,6 +1470,194 @@ function initializeShippingMessageTemplateUI(initialValue) {
         alert('コピーに失敗しました。ブラウザの許可設定を確認してください。');
       }
     });
+  }
+}
+
+function getYamatoHandlingCodesFromUI() {
+  return YAMATO_HANDLING_CHECKBOXES.map(function(id) {
+    const input = document.getElementById(id);
+    if (!input || !input.checked) return null;
+    return input.dataset.handlingCode || null;
+  }).filter(Boolean);
+}
+
+function normalizeYamatoDescriptionHistory(history) {
+  const normalized = Array.isArray(history)
+    ? history.map(function(value) { return String(value || '').trim(); }).filter(Boolean)
+    : [];
+  return Array.from(new Set(normalized)).slice(0, YAMATO_DESCRIPTION_HISTORY_LIMIT);
+}
+
+function mergeYamatoDescriptionHistory(value, history) {
+  const normalizedValue = String(value || '').trim();
+  const normalizedHistory = normalizeYamatoDescriptionHistory(history).filter(function(entry) {
+    return entry !== normalizedValue;
+  });
+  return normalizedValue
+    ? [normalizedValue].concat(normalizedHistory).slice(0, YAMATO_DESCRIPTION_HISTORY_LIMIT)
+    : normalizedHistory;
+}
+
+function renderYamatoDescriptionHistory(history) {
+  const datalist = document.getElementById('yamatoDescriptionHistory');
+  if (!datalist) return;
+  datalist.innerHTML = '';
+  normalizeYamatoDescriptionHistory(history).forEach(function(entry) {
+    const option = document.createElement('option');
+    option.value = entry;
+    datalist.appendChild(option);
+  });
+}
+
+function getCurrentYamatoIssueSettingsFromUI() {
+  return {
+    packageSizeId: document.getElementById('yamatoPackageSizeId')?.value || settingsCache.yamatoPackageSizeId || '',
+    codeType: document.getElementById('yamatoCodeType')?.value || settingsCache.yamatoCodeType || '',
+    description: (document.getElementById('yamatoDescription')?.value || settingsCache.yamatoDescription || '').trim(),
+    includeOrderNumber: !!document.getElementById('yamatoIncludeOrderNumber')?.checked,
+    handlingCodes: getYamatoHandlingCodesFromUI()
+  };
+}
+
+async function persistYamatoIssueSettings(settings, options = {}) {
+  const normalized = {
+    packageSizeId: String(settings.packageSizeId || '').trim(),
+    codeType: String(settings.codeType || '').trim(),
+    description: String(settings.description || '').trim(),
+    includeOrderNumber: settings.includeOrderNumber !== false,
+    handlingCodes: Array.isArray(settings.handlingCodes) ? Array.from(new Set(settings.handlingCodes.filter(Boolean))) : []
+  };
+
+  await StorageManager.set(StorageManager.KEYS.YAMATO_PACKAGE_SIZE_ID, normalized.packageSizeId);
+  await StorageManager.set(StorageManager.KEYS.YAMATO_CODE_TYPE, normalized.codeType);
+  await StorageManager.set(StorageManager.KEYS.YAMATO_DESCRIPTION, normalized.description);
+  await StorageManager.set(StorageManager.KEYS.YAMATO_INCLUDE_ORDER_NUMBER, normalized.includeOrderNumber);
+  await StorageManager.set(StorageManager.KEYS.YAMATO_HANDLING_CODES, normalized.handlingCodes);
+
+  settingsCache.yamatoPackageSizeId = normalized.packageSizeId;
+  settingsCache.yamatoCodeType = normalized.codeType;
+  settingsCache.yamatoDescription = normalized.description;
+  settingsCache.yamatoIncludeOrderNumber = normalized.includeOrderNumber;
+  settingsCache.yamatoHandlingCodes = normalized.handlingCodes.slice();
+
+  if (options.updateHistory && normalized.description) {
+    const nextHistory = mergeYamatoDescriptionHistory(normalized.description, settingsCache.yamatoDescriptionHistory);
+    await StorageManager.set(StorageManager.KEYS.YAMATO_DESCRIPTION_HISTORY, nextHistory);
+    settingsCache.yamatoDescriptionHistory = nextHistory;
+    renderYamatoDescriptionHistory(nextHistory);
+  }
+
+  return normalized;
+}
+
+function focusElementById(elementId) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.focus();
+  if (typeof element.scrollIntoView === 'function') {
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
+function validateYamatoIssueSettings(settings) {
+  const packageSizeId = typeof settings.packageSizeId === 'string' ? settings.packageSizeId.trim() : '';
+  const codeType = typeof settings.codeType === 'string' ? settings.codeType.trim() : '';
+  const description = typeof settings.description === 'string' ? settings.description.trim() : '';
+  const handlingCodes = Array.isArray(settings.handlingCodes) ? Array.from(new Set(settings.handlingCodes.filter(Boolean))) : [];
+
+  const packageSizeOptions = Array.from(document.getElementById('yamatoPackageSizeId')?.options || []).map(function(option) { return option.value; });
+  if (!packageSizeId || !packageSizeOptions.includes(packageSizeId)) {
+    focusElementById('yamatoPackageSizeId');
+    throw new Error('発送コード発行設定の「サイズ」を選択してください');
+  }
+
+  const codeTypeOptions = Array.from(document.getElementById('yamatoCodeType')?.options || []).map(function(option) { return option.value; });
+  if (!codeType || !codeTypeOptions.includes(codeType)) {
+    focusElementById('yamatoCodeType');
+    throw new Error('発送コード発行設定の「発送場所」を選択してください');
+  }
+
+  if (!description) {
+    focusElementById('yamatoDescription');
+    throw new Error('発送コード発行設定の「品名」を入力してください');
+  }
+
+  if (description.length > 8) {
+    focusElementById('yamatoDescription');
+    throw new Error('発送コード発行設定の「品名」は8文字以内で入力してください');
+  }
+
+  if (handlingCodes.length > 2) {
+    focusElementById('yamatoHandlingPrecisionEquipment');
+    throw new Error('発送コード発行設定の「荷扱い」は2つまで選択できます');
+  }
+
+  return {
+    packageSizeId,
+    codeType,
+    description,
+    includeOrderNumber: settings.includeOrderNumber !== false,
+    handlingCodes
+  };
+}
+
+function initializeYamatoIssueSettingsUI(initialSettings) {
+  if (initializeYamatoIssueSettingsUI._initialized) {
+    return;
+  }
+  initializeYamatoIssueSettingsUI._initialized = true;
+
+  const definitions = [
+    { id: 'yamatoPackageSizeId', key: StorageManager.KEYS.YAMATO_PACKAGE_SIZE_ID, getValue: function(el) { return el.value || '16'; }, cacheKey: 'yamatoPackageSizeId' },
+    { id: 'yamatoCodeType', key: StorageManager.KEYS.YAMATO_CODE_TYPE, getValue: function(el) { return el.value || '0'; }, cacheKey: 'yamatoCodeType' },
+    { id: 'yamatoDescription', key: StorageManager.KEYS.YAMATO_DESCRIPTION, getValue: function(el) { return (el.value || '').trim(); }, cacheKey: 'yamatoDescription' },
+    { id: 'yamatoIncludeOrderNumber', key: StorageManager.KEYS.YAMATO_INCLUDE_ORDER_NUMBER, getValue: function(el) { return !!el.checked; }, cacheKey: 'yamatoIncludeOrderNumber' }
+  ];
+
+  definitions.forEach(function(def) {
+    const element = document.getElementById(def.id);
+    if (!element) return;
+    if (def.id === 'yamatoDescription') {
+      element.addEventListener('input', async function() {
+        const value = def.getValue(element);
+        settingsCache[def.cacheKey] = value;
+        await StorageManager.set(def.key, value);
+      });
+      element.addEventListener('change', async function() {
+        const value = def.getValue(element);
+        settingsCache[def.cacheKey] = value;
+        await StorageManager.set(def.key, value);
+        const nextHistory = mergeYamatoDescriptionHistory(value, settingsCache.yamatoDescriptionHistory);
+        await StorageManager.set(StorageManager.KEYS.YAMATO_DESCRIPTION_HISTORY, nextHistory);
+        settingsCache.yamatoDescriptionHistory = nextHistory;
+        renderYamatoDescriptionHistory(nextHistory);
+      });
+      return;
+    }
+    element.addEventListener('change', async function() {
+      const value = def.getValue(element);
+      await StorageManager.set(def.key, value);
+      settingsCache[def.cacheKey] = value;
+    });
+  });
+
+  YAMATO_HANDLING_CHECKBOXES.forEach(function(id) {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener('change', async function() {
+      let handlingCodes = getYamatoHandlingCodesFromUI();
+      if (input.checked && handlingCodes.length > 2) {
+        input.checked = false;
+        handlingCodes = getYamatoHandlingCodesFromUI();
+        alert('荷扱いは2つまで選択できます');
+      }
+      await StorageManager.set(StorageManager.KEYS.YAMATO_HANDLING_CODES, handlingCodes);
+      settingsCache.yamatoHandlingCodes = handlingCodes;
+    });
+  });
+
+  if (initialSettings && Array.isArray(initialSettings.yamatoHandlingCodes)) {
+    settingsCache.yamatoHandlingCodes = initialSettings.yamatoHandlingCodes.slice();
   }
 }
 
@@ -1247,20 +1764,246 @@ async function createIndividualImageDropZone(cOrder, orderNumber) {
   }
 }
 
+function createObjectUrlFromBinary(data, mimeType = 'image/png') {
+  if (!(data instanceof ArrayBuffer) || data.byteLength === 0) return null;
+  try {
+    return URL.createObjectURL(new Blob([data], { type: mimeType || 'image/png' }));
+  } catch (error) {
+    console.error('画像Blob URL生成失敗', error);
+    return null;
+  }
+}
+
+function extractProductItemsFromCSVRow(row) {
+  if (!row || !row[CONSTANTS.CSV.PRODUCT_COLUMN]) return [];
+  const items = [];
+  for (const itemrow of String(row[CONSTANTS.CSV.PRODUCT_COLUMN]).split('\n')) {
+    const productInfo = parseProductItemData(itemrow);
+    if (productInfo.itemId && productInfo.quantity) {
+      items.push(productInfo);
+    }
+  }
+  return items;
+}
+
+function getOrderImageSourceLabel(resolved) {
+  if (!resolved) return '適用画像: なし';
+  switch (resolved.sourceType) {
+    case 'individual':
+      return '適用画像: 個別';
+    case 'product':
+      return `適用画像: 商品ID ${resolved.productId}`;
+    case 'global':
+      return '適用画像: 全体';
+    default:
+      return '適用画像: なし';
+  }
+}
+
+function updateOrderImageSourceLabel(cOrder, resolved) {
+  const labelEl = cOrder.querySelector('.individual-image-source-label');
+  if (labelEl) {
+    labelEl.textContent = getOrderImageSourceLabel(resolved);
+  }
+}
+
+function renderOrderImageIntoContainer(container, imageUrl) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (!imageUrl) return;
+  const imageDiv = document.createElement('div');
+  imageDiv.classList.add('order-image');
+  const img = document.createElement('img');
+  img.src = imageUrl;
+  imageDiv.appendChild(img);
+  container.appendChild(imageDiv);
+}
+
+async function resolveOrderImageSource(orderNumber, row = null) {
+  const normalizedOrderNumber = orderNumber == null ? '' : String(orderNumber).trim();
+  const repositoryRecord = normalizedOrderNumber && window.orderRepository ? window.orderRepository.get(normalizedOrderNumber) : null;
+  const sourceRow = row || (repositoryRecord ? repositoryRecord.row : null);
+
+  if (repositoryRecord && repositoryRecord.image && repositoryRecord.image.data instanceof ArrayBuffer) {
+    return {
+      sourceType: 'individual',
+      imageUrl: createObjectUrlFromBinary(repositoryRecord.image.data, repositoryRecord.image.mimeType),
+      orderNumber: normalizedOrderNumber
+    };
+  }
+
+  const products = extractProductItemsFromCSVRow(sourceRow);
+  for (const product of products) {
+    try {
+      const productImage = await StorageManager.getProductOrderImage(product.itemId);
+      if (productImage) {
+        return {
+          sourceType: 'product',
+          imageUrl: createObjectUrlFromBinary(productImage.data, productImage.mimeType),
+          productId: product.itemId,
+          productName: product.productName || productImage.productName || ''
+        };
+      }
+    } catch (error) {
+      console.error('商品ID画像取得失敗', product.itemId, error);
+    }
+  }
+
+  const globalImage = await getGlobalOrderImage();
+  if (globalImage) {
+    return {
+      sourceType: 'global',
+      imageUrl: globalImage
+    };
+  }
+
+  return {
+    sourceType: 'none',
+    imageUrl: null
+  };
+}
+
+function buildProductImageCandidateMap(orderNumbers) {
+  const map = new Map();
+  const repo = window.orderRepository;
+  if (!repo) return map;
+  let sequence = 0;
+
+  for (const orderNumber of orderNumbers) {
+    const rec = repo.get(orderNumber);
+    if (!rec || !rec.row) continue;
+    const seenInOrder = new Set();
+    for (const product of extractProductItemsFromCSVRow(rec.row)) {
+      const productId = product.itemId;
+      if (!productId) continue;
+      let entry = map.get(productId);
+      if (!entry) {
+        entry = {
+          productId,
+          productName: product.productName || '',
+          count: 0,
+          sequence: sequence++
+        };
+        map.set(productId, entry);
+      }
+      if (!entry.productName && product.productName) {
+        entry.productName = product.productName;
+      }
+      if (!seenInOrder.has(productId)) {
+        entry.count += 1;
+        seenInOrder.add(productId);
+      }
+    }
+  }
+  return map;
+}
+
+async function collectProductImageCandidates() {
+  const repo = await ensureOrderRepository();
+  const sourceNumbers = Array.isArray(window.currentDisplayedOrderNumbers) && window.currentDisplayedOrderNumbers.length > 0
+    ? window.currentDisplayedOrderNumbers
+    : (repo ? repo.getAll().map(rec => rec.orderNumber) : []);
+  const candidateMap = buildProductImageCandidateMap(sourceNumbers);
+  const savedImages = await StorageManager.getAllProductOrderImages();
+
+  for (const savedImage of savedImages) {
+    if (!savedImage || !savedImage.productId) continue;
+    if (!candidateMap.has(savedImage.productId)) {
+      candidateMap.set(savedImage.productId, {
+        productId: savedImage.productId,
+        productName: savedImage.productName || '',
+        count: 0,
+        sequence: Number.MAX_SAFE_INTEGER
+      });
+    } else if (!candidateMap.get(savedImage.productId).productName && savedImage.productName) {
+      candidateMap.get(savedImage.productId).productName = savedImage.productName;
+    }
+  }
+
+  return Array.from(candidateMap.values()).sort((a, b) => {
+    if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+    return a.productId.localeCompare(b.productId, 'ja', { numeric: true, sensitivity: 'base' });
+  });
+}
+
+async function renderProductOrderImagesManager() {
+  const block = document.getElementById('productOrderImagesBlock');
+  const container = document.getElementById('productOrderImagesContainer');
+  const summary = document.getElementById('productOrderImagesSummary');
+  if (!block || !container || !summary) return;
+
+  const enabled = !!settingsCache.orderImageEnable;
+  block.hidden = !enabled;
+  if (!enabled) return;
+
+  const [candidates, savedImages] = await Promise.all([
+    collectProductImageCandidates(),
+    StorageManager.getAllProductOrderImages()
+  ]);
+  const savedMap = new Map(savedImages.map(item => [item.productId, item]));
+  summary.textContent = `商品ID画像: ${savedImages.length}件`;
+
+  container.innerHTML = '';
+  if (candidates.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'product-order-image-empty';
+    empty.textContent = 'CSVを読み込むと商品IDごとの画像設定欄がここに表示されます。';
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const candidate of candidates) {
+    const item = document.createElement('div');
+    item.className = 'product-order-image-item';
+
+    const header = document.createElement('div');
+    header.className = 'product-order-image-item-header';
+
+    const title = document.createElement('div');
+    title.className = 'product-order-image-item-title';
+
+    const idLine = document.createElement('div');
+    idLine.className = 'product-order-image-item-id';
+    idLine.textContent = `商品ID: ${candidate.productId}`;
+    title.appendChild(idLine);
+
+    if (candidate.productName) {
+      const nameLine = document.createElement('div');
+      nameLine.className = 'product-order-image-item-name';
+      nameLine.textContent = candidate.productName;
+      title.appendChild(nameLine);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'product-order-image-item-meta';
+    meta.textContent = candidate.count > 0 ? `現在の注文で ${candidate.count} 件に出現` : '保存済み設定';
+    title.appendChild(meta);
+    header.appendChild(title);
+    item.appendChild(header);
+
+    const saved = savedMap.get(candidate.productId);
+    const dropzoneHost = document.createElement('div');
+    dropzoneHost.className = 'product-order-image-dropzone';
+    const dropzone = await createProductOrderImageDropZone(candidate.productId, candidate.productName || (saved && saved.productName) || '');
+    if (dropzone && dropzone.element) {
+      dropzoneHost.appendChild(dropzone.element);
+    }
+
+    item.appendChild(dropzoneHost);
+    container.appendChild(item);
+  }
+}
+
 // 注文の商品アイテムリストを処理してHTMLに追加
 function processProductItems(cOrder, row) {
   const tItems = cOrder.querySelector('#商品');
   const trSpace = cOrder.querySelector('.spacerow');
   
-  if (row[CONSTANTS.CSV.PRODUCT_COLUMN]) {
-    for (let itemrow of row[CONSTANTS.CSV.PRODUCT_COLUMN].split('\n')) {
-      const cItem = document.importNode(tItems.content, true);
-      const productInfo = parseProductItemData(itemrow);
-      
-      if (productInfo.itemId && productInfo.quantity) {
-        setProductItemElements(cItem, productInfo);
-        trSpace.parentNode.parentNode.insertBefore(cItem, trSpace.parentNode);
-      }
+  for (const productInfo of extractProductItemsFromCSVRow(row)) {
+    const cItem = document.importNode(tItems.content, true);
+    if (productInfo.itemId && productInfo.quantity) {
+      setProductItemElements(cItem, productInfo);
+      trSpace.parentNode.parentNode.insertBefore(cItem, trSpace.parentNode);
     }
   }
 }
@@ -1294,38 +2037,10 @@ function setProductItemElements(cItem, productInfo) {
 }
 
 // 注文明細に注文画像を表示
-async function displayOrderImage(cOrder, orderNumber) {
-  // 表示/非表示はCSSクラスで制御するため、ここでは常に画像データを取得・表示する。
-
-  let imageToShow = null;
-  if (isValidOrderNumber(orderNumber)) {
-    // 注文番号を正規化
-  const normalizedOrderNumber = (orderNumber == null) ? '' : String(orderNumber).trim();
-    
-    // 個別画像: repository から
-    let individualImage = null;
-    if (window.orderRepository) {
-      const rec = window.orderRepository.get(normalizedOrderNumber);
-      if (rec && rec.image && rec.image.data instanceof ArrayBuffer) {
-        try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); individualImage = URL.createObjectURL(blob); } catch {}
-      }
-    }
-    if (individualImage) imageToShow = individualImage; else imageToShow = await getGlobalOrderImage();
-  }
-
-  if (imageToShow) {
-    const imageDiv = document.createElement('div');
-    imageDiv.classList.add('order-image');
-
-    const img = document.createElement('img');
-    img.src = imageToShow;
-
-    imageDiv.appendChild(img);
-    const container = cOrder.querySelector('.order-image-container');
-    if (container) {
-      container.appendChild(imageDiv);
-    }
-  }
+async function displayOrderImage(cOrder, orderNumber, row = null) {
+  const resolved = await resolveOrderImageSource(orderNumber, row);
+  updateOrderImageSourceLabel(cOrder, resolved);
+  renderOrderImageIntoContainer(cOrder.querySelector('.order-image-container'), resolved.imageUrl);
 }
 
 // ラベルシートを生成してDOMに追加
@@ -1427,8 +2142,47 @@ function cloneTemplate(id) {
 }
 // QRペーストプレースホルダを template から生成（プロトコルに応じて適切なテンプレートを選択）
 function buildQRPastePlaceholder() {
+  if (getAppMode() === 'extension') {
+    return cloneTemplate('qrFetchPlaceholderExtension');
+  }
   const templateId = PROTOCOL_UTILS.canDragFromExternalSites() ? 'qrDropPlaceholderHttp' : 'qrDropPlaceholder';
   return cloneTemplate(templateId);
+}
+
+function setExtensionQrFetchState(dropzone, isBusy) {
+  if (!dropzone) return;
+  const button = dropzone.querySelector('.qr-fetch-placeholder-button');
+  if (!button) return;
+  button.textContent = isBusy ? '取得中...' : 'QR取得';
+  button.disabled = !!isBusy;
+  dropzone.classList.toggle('is-busy', !!isBusy);
+}
+
+function setupExtensionQrFetchEvents(dropzone) {
+  dropzone.addEventListener('click', async function(event) {
+    if (event.target.tagName === 'IMG') return;
+
+    const td = dropzone.closest('td');
+    const orderNumber = getOrderNumberFromLabelCell(td);
+    if (!orderNumber) {
+      alert('注文番号を特定できないため、QR取得を実行できません');
+      return;
+    }
+
+    const bridge = window.BoothCSVExtensionBridge;
+    if (!bridge || typeof bridge.collectOrderQRCode !== 'function') {
+      alert('Chrome拡張のQR取得機能を利用できません');
+      return;
+    }
+
+    setExtensionQrFetchState(dropzone, true);
+    try {
+      await bridge.collectOrderQRCode(orderNumber);
+    } catch (error) {
+      alert(error && error.message ? error.message : 'QR取得に失敗しました');
+      setExtensionQrFetchState(dropzone, false);
+    }
+  });
 }
 
 // ペーストゾーンにクリップボード画像ペーストイベントを設定
@@ -1557,9 +2311,14 @@ function setupPasteZoneEvents(dropzone) {
 function createDropzone(div){ // 互換のため名称維持（内部はペースト専用）
   const divDrop = createDiv('dropzone');
   divDrop.appendChild(buildQRPastePlaceholder());
-  divDrop.setAttribute("contenteditable", "true");
-  // ペースト専用イベントを設定
-  setupPasteZoneEvents(divDrop);
+  if (getAppMode() === 'extension') {
+    divDrop.classList.add('extension-qr-fetch-mode');
+    setupExtensionQrFetchEvents(divDrop);
+  } else {
+    divDrop.setAttribute("contenteditable", "true");
+    // ペースト専用イベントを設定
+    setupPasteZoneEvents(divDrop);
+  }
   
   div.appendChild(divDrop);
 }
@@ -1629,6 +2388,197 @@ async function createLabel(labelData=""){
   return tdLabel;
 }
 
+function computeQRHash(content) {
+  let hash = 0;
+  if (!content) return hash.toString();
+  for (let i = 0; i < content.length; i++) {
+    const ch = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + ch;
+    hash &= hash;
+  }
+  return hash.toString();
+}
+
+async function rasterizeQRCodeImageSource(imageSource) {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = async function() {
+      try {
+        const canv = document.createElement('canvas');
+        const context = canv.getContext('2d');
+        canv.width = img.width;
+        canv.height = img.height;
+        context.drawImage(img, 0, 0, canv.width, canv.height);
+
+        const blob = await new Promise(resolveBlob => canv.toBlob(resolveBlob, 'image/png'));
+        let arrayBuffer = null;
+        if (blob) {
+          arrayBuffer = await blob.arrayBuffer();
+        } else {
+          const tmpB64 = canv.toDataURL('image/png');
+          const bin = atob(tmpB64.split(',')[1]);
+          const len = bin.length;
+          const u8 = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            u8[i] = bin.charCodeAt(i);
+          }
+          arrayBuffer = u8.buffer;
+        }
+
+        resolve({
+          arrayBuffer,
+          imageData: context.getImageData(0, 0, canv.width, canv.height),
+          width: canv.width,
+          height: canv.height,
+          qrimageType: 'image/png'
+        });
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    img.onerror = function() {
+      reject(new Error('画像の読み込みに失敗しました'));
+    };
+
+    img.src = imageSource instanceof HTMLImageElement ? imageSource.src : imageSource;
+  });
+}
+
+async function decodeQRCodeImageSource(imageSource) {
+  const rasterized = await rasterizeQRCodeImageSource(imageSource);
+  const barcode = jsQR(rasterized.imageData.data, rasterized.imageData.width, rasterized.imageData.height);
+  if (!barcode) {
+    throw new Error('QRコードを読み取れませんでした');
+  }
+
+  const parts = String(barcode.data).replace(/^\s+|\s+$/g, '').replace(/ +/g, ' ').split(' ');
+  if (parts.length !== CONSTANTS.QR.EXPECTED_PARTS) {
+    throw new Error('QRコードの形式が正しくありません');
+  }
+
+  return {
+    barcodeData: barcode.data,
+    receiptnum: parts[1],
+    receiptpassword: parts[2],
+    qrimage: rasterized.arrayBuffer,
+    qrimageType: rasterized.qrimageType,
+    qrhash: computeQRHash(barcode.data)
+  };
+}
+
+async function buildQRCodeDataFromMetadata(imageSource, options = {}) {
+  const rasterized = await rasterizeQRCodeImageSource(imageSource);
+  const receiptnum = options.receiptnum ? String(options.receiptnum).trim() : '';
+  const receiptpassword = options.receiptpassword ? String(options.receiptpassword).trim() : '';
+  if (!receiptnum || !receiptpassword) {
+    throw new Error('受付番号またはパスワードが不足しています');
+  }
+
+  const barcodeData = options.barcodeData
+    ? String(options.barcodeData)
+    : `issued ${receiptnum} ${receiptpassword}`;
+
+  return {
+    barcodeData,
+    receiptnum,
+    receiptpassword,
+    qrimage: rasterized.arrayBuffer,
+    qrimageType: rasterized.qrimageType,
+    qrhash: computeQRHash(barcodeData)
+  };
+}
+
+function updateLabelCellWithQR(orderNumber, qrData) {
+  const normalized = OrderRepository.normalize(orderNumber);
+  const orderLink = Array.from(document.querySelectorAll('.ordernum a')).find(link => OrderRepository.normalize(link.textContent) === normalized);
+  if (!orderLink) return false;
+
+  const td = orderLink.closest('td');
+  if (!td) return false;
+
+  const qrDiv = td.querySelector('.qr');
+  const yamatoDiv = td.querySelector('.yamato');
+  if (!qrDiv || !yamatoDiv) return false;
+
+  qrDiv.innerHTML = '';
+  yamatoDiv.innerHTML = '';
+
+  const image = document.createElement('img');
+  const blob = new Blob([qrData.qrimage], { type: qrData.qrimageType || 'image/png' });
+  image.src = URL.createObjectURL(blob);
+  qrDiv.appendChild(image);
+  addP(yamatoDiv, qrData.receiptnum);
+  addP(yamatoDiv, qrData.receiptpassword);
+  addEventQrReset(image);
+  return true;
+}
+
+async function saveQRCodeForOrder(orderNumber, imageSource, options = {}) {
+  const normalized = OrderRepository.normalize(orderNumber);
+  if (!normalized) throw new Error('注文番号が不正です');
+
+  let qrData;
+  try {
+    qrData = await decodeQRCodeImageSource(imageSource);
+  } catch (error) {
+    if (!options.receiptnum || !options.receiptpassword) {
+      throw error;
+    }
+    qrData = await buildQRCodeDataFromMetadata(imageSource, options);
+  }
+  const duplicates = window.orderRepository
+    ? await window.orderRepository.checkQRDuplicate(qrData.barcodeData, normalized)
+    : [];
+
+  if (duplicates.length > 0 && !options.allowDuplicate) {
+    throw new Error(`既に他の注文で使われているQRコードです: ${duplicates.join(', ')}`);
+  }
+
+  if (window.orderRepository) {
+    await window.orderRepository.setOrderQRData(normalized, qrData);
+  }
+  updateLabelCellWithQR(normalized, qrData);
+  return {
+    orderNumber: normalized,
+    receiptnum: qrData.receiptnum,
+    receiptpassword: qrData.receiptpassword,
+    duplicates
+  };
+}
+
+function getPendingQrOrderNumbers() {
+  const sourceNumbers = Array.isArray(window.currentDisplayedOrderNumbers) && window.currentDisplayedOrderNumbers.length > 0
+    ? window.currentDisplayedOrderNumbers
+    : (window.lastOrderSelection || []);
+  const normalized = normalizeOrderSelection(sourceNumbers);
+  if (!window.orderRepository) return normalized;
+  return normalized.filter(orderNumber => {
+    const record = window.orderRepository.get(orderNumber);
+    return !!record && !record.qr;
+  });
+}
+
+function getOrderNumberFromLabelCell(td) {
+  if (!td) return null;
+  const orderNumberContainer = td.querySelector('.ordernum');
+  if (!orderNumberContainer) return null;
+
+  const orderLink = orderNumberContainer.querySelector('a');
+  if (orderLink && orderLink.textContent) {
+    return String(orderLink.textContent).trim();
+  }
+
+  const orderParagraph = orderNumberContainer.querySelector('p');
+  if (orderParagraph && orderParagraph.textContent) {
+    return String(orderParagraph.textContent).trim();
+  }
+
+  const text = orderNumberContainer.textContent;
+  return text ? String(text).trim() : null;
+}
+
 // QRコード画像にクリックでリセット機能を追加
 function addEventQrReset(elImage){
     elImage.addEventListener('click', async function(event) {
@@ -1640,8 +2590,7 @@ function addEventQrReset(elImage){
       
       if (td) {
         // 注文番号を取得
-        const ordernumDiv = td.querySelector('.ordernum p');
-  const orderNumber = ordernumDiv ? String(ordernumDiv.textContent || '').trim() : null;
+  const orderNumber = getOrderNumberFromLabelCell(td);
         
         // 保存されたQRデータを削除
         if (orderNumber) {
@@ -1650,6 +2599,7 @@ function addEventQrReset(elImage){
               await window.orderRepository.clearOrderQRData(orderNumber);
             }
             console.log(`QRデータを削除しました: ${orderNumber}`);
+            updateProcessedOrdersVisibility();
           } catch (error) {
             console.error('QRデータ削除エラー:', error);
           }
@@ -1674,118 +2624,69 @@ function addEventQrReset(elImage){
 // 画像からQRコードを読み取り、伝票データを抽出
 async function readQR(elImage){
   try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = elImage.src;
-    
-    img.onload = async function() {
-      try {
-        const canv = document.createElement("canvas");
-        const context = canv.getContext("2d");
-        canv.width = img.width;
-        canv.height = img.height;
-        context.drawImage(img, 0, 0, canv.width, canv.height);
-        // Canvas から直接 ArrayBuffer を取得（データURLは非採用）
-        const blobPromise = new Promise(resolve => canv.toBlob(resolve, 'image/png'));
-        const blob = await blobPromise;
-        let arrayBuffer = null;
-        if (blob) {
-          arrayBuffer = await blob.arrayBuffer();
+    const orderNumElem = elImage.closest("td").querySelector(".ordernum a");
+    const rawOrderNum = orderNumElem ? orderNumElem.textContent : null;
+    const ordernum = (rawOrderNum == null) ? '' : String(rawOrderNum).trim();
+    const decoded = await decodeQRCodeImageSource(elImage);
+
+    const duplicates = window.orderRepository ? await window.orderRepository.checkQRDuplicate(decoded.barcodeData, ordernum) : [];
+    if (duplicates.length > 0) {
+      const duplicateList = duplicates.join(', ');
+      const confirmMessage = `警告: このQRコードは既に以下の注文で使用されています:\n${duplicateList}\n\n同じQRコードを使用すると配送ミスの原因となる可能性があります。\n続行しますか？`;
+
+      if (!confirm(confirmMessage)) {
+        console.log('QRコード登録がキャンセルされました');
+        const parentQr = elImage.parentNode;
+        const dropzone = parentQr.querySelector('.dropzone, div[class="dropzone"]');
+
+        if (dropzone) {
+          dropzone.classList.add('dropzone');
+          dropzone.style.zIndex = '99';
+          dropzone.innerHTML = '';
+          dropzone.appendChild(buildQRPastePlaceholder());
+          dropzone.style.display = 'block';
         } else {
-          console.warn('QR: canvas toBlob が取得できませんでした。フォールバックとして dataURL を ArrayBuffer 化');
-          const tmpB64 = canv.toDataURL('image/png');
-          const bin = atob(tmpB64.split(',')[1]);
-            const len = bin.length; const u8 = new Uint8Array(len); for (let i=0;i<len;i++){u8[i]=bin.charCodeAt(i);} arrayBuffer = u8.buffer;
+          const newDropzone = document.createElement('div');
+          newDropzone.className = 'dropzone';
+          newDropzone.contentEditable = 'true';
+          newDropzone.setAttribute('effectallowed', 'move');
+          newDropzone.style.zIndex = '99';
+          newDropzone.innerHTML = '';
+          newDropzone.appendChild(buildQRPastePlaceholder());
+          parentQr.appendChild(newDropzone);
+          setupPasteZoneEvents(newDropzone);
         }
-        
-        const imageData = context.getImageData(0, 0, canv.width, canv.height);
-        const barcode = jsQR(imageData.data, imageData.width, imageData.height);
-        
-        if(barcode){
-          const b = String(barcode.data).replace(/^\s+|\s+$/g,'').replace(/ +/g,' ').split(" ");
-          
-          if(b.length === CONSTANTS.QR.EXPECTED_PARTS){
-            // 注文番号リンク化対応: .ordernum a から取得
-            const orderNumElem = elImage.closest("td").querySelector(".ordernum a");
-            const rawOrderNum = orderNumElem ? orderNumElem.textContent : null;
-            const ordernum = (rawOrderNum == null) ? '' : String(rawOrderNum).trim();
-            
-            // 重複チェック
-            const duplicates = window.orderRepository ? await window.orderRepository.checkQRDuplicate(barcode.data, ordernum) : [];
-            if (duplicates.length > 0) {
-              const duplicateList = duplicates.join(', ');
-              const confirmMessage = `警告: このQRコードは既に以下の注文で使用されています:\n${duplicateList}\n\n同じQRコードを使用すると配送ミスの原因となる可能性があります。\n続行しますか？`;
-              
-              if (!confirm(confirmMessage)) {
-                console.log('QRコード登録がキャンセルされました');
-                // 画像を削除して元の状態に戻す
-                const parentQr = elImage.parentNode;
-                const dropzone = parentQr.querySelector('.dropzone, div[class="dropzone"]');
-                
-                if (dropzone) {
-                  // 既存のドロップゾーンを復元
-                  dropzone.classList.add('dropzone');
-                  dropzone.style.zIndex = '99';
-                  dropzone.innerHTML = '';
-                  dropzone.appendChild(buildQRPastePlaceholder());
-                  dropzone.style.display = 'block';
-                } else {
-                  // ドロップゾーンが見つからない場合は新しく作成
-                  const newDropzone = document.createElement('div');
-                  newDropzone.className = 'dropzone';
-                  newDropzone.contentEditable = 'true';
-                  newDropzone.setAttribute('effectallowed', 'move');
-                  newDropzone.style.zIndex = '99';
-                  newDropzone.innerHTML = '';
-                  newDropzone.appendChild(buildQRPastePlaceholder());
-                  parentQr.appendChild(newDropzone);
-                  
-                  // ドロップゾーンのイベントリスナーを再設定
-                  setupPasteZoneEvents(newDropzone);
-                }
-                
-                // 画像を削除
-                elImage.parentNode.removeChild(elImage);
-                return;
-              }
-            }
-            
-            const d = elImage.closest("td").querySelector(".yamato");
-            d.innerHTML = "";
-            
-            for(let i = 1; i < CONSTANTS.QR.EXPECTED_PARTS; i++){
-              const p = document.createElement("p");
-              p.innerText = b[i];
-              d.appendChild(p);
-            }
-            
-            const qrData = {
-              receiptnum: b[1],
-              receiptpassword: b[2],
-              qrimage: arrayBuffer,
-              qrimageType: 'image/png',
-              qrhash: (function(content){ let hash=0; if(!content) return hash.toString(); for(let i=0;i<content.length;i++){ const ch=content.charCodeAt(i); hash=((hash<<5)-hash)+ch; hash&=hash; } return hash.toString(); })(barcode.data)
-            };
-            if (window.orderRepository) {
-              await window.orderRepository.setOrderQRData(ordernum, qrData);
-            }
-          } else {
-            console.warn('QRコードの形式が正しくありません');
-          }
-        }
-      } catch (error) {
-        console.error('QRコード処理エラー:', error);
+
+        elImage.parentNode.removeChild(elImage);
+        return;
       }
-    };
-    
-    img.onerror = function() {
-      console.error('画像の読み込みに失敗しました');
-      alert('画像の取得に失敗しました。外部画像の場合はCORS制限の可能性があります。Ctrl+Vで貼り付けるか、ローカル画像を使用してください。');
-    };
+    }
+
+    await saveQRCodeForOrder(ordernum, elImage, { allowDuplicate: true });
   } catch (error) {
     console.error('QR読み取り関数エラー:', error);
+    alert(error && error.message ? error.message : 'QRコードの処理に失敗しました');
   }
 }
+
+window.BoothCSVExtensionBridge = Object.assign(window.BoothCSVExtensionBridge || {}, {
+  importCSVText,
+  importOrderQRCodeImage: saveQRCodeForOrder,
+  getPendingQrOrderNumbers,
+  getCurrentOrderNumbers: () => normalizeOrderSelection(window.currentDisplayedOrderNumbers || window.lastOrderSelection || []),
+  getValidatedYamatoIssueSettings: () => validateYamatoIssueSettings(getCurrentYamatoIssueSettingsFromUI()),
+  prepareYamatoIssueSettings: async () => {
+    const validated = validateYamatoIssueSettings(getCurrentYamatoIssueSettingsFromUI());
+    return await persistYamatoIssueSettings(validated, { updateHistory: true });
+  },
+  getYamatoIssueSettings: () => ({
+    packageSizeId: getCurrentYamatoIssueSettingsFromUI().packageSizeId || '16',
+    codeType: getCurrentYamatoIssueSettingsFromUI().codeType || '0',
+    description: getCurrentYamatoIssueSettingsFromUI().description || '',
+    includeOrderNumber: getCurrentYamatoIssueSettingsFromUI().includeOrderNumber !== false,
+    handlingCodes: getCurrentYamatoIssueSettingsFromUI().handlingCodes
+  })
+});
 
 // QRコード用ペーストゾーンのみドラッグ&ドロップを抑止し、他領域（注文画像/フォント等）は従来どおり許可
 // ...existing code...
@@ -1844,11 +2745,13 @@ async function createBaseImageDropZone(options = {}) {
   const {
     isIndividual = false,
     orderNumber = null,
+    productId = null,
+    productName = '',
     containerClass = 'order-image-drop',
     defaultMessage = '画像をドロップ or クリックで選択'
   } = options;
 
-  debugLog(`画像ドロップゾーン作成: 個別=${isIndividual} 注文番号=${orderNumber||'-'}`);
+  debugLog(`画像ドロップゾーン作成: 個別=${isIndividual} 注文番号=${orderNumber||'-'} 商品ID=${productId||'-'}`);
 
   const dropZone = document.createElement('div');
   dropZone.classList.add(containerClass);
@@ -1868,8 +2771,18 @@ async function createBaseImageDropZone(options = {}) {
       try { const blob = new Blob([rec.image.data], { type: rec.image.mimeType || 'image/png' }); savedImage = URL.createObjectURL(blob); } catch(e){ console.error('保存画像Blob生成失敗', e); }
     }
   }
+  if (productId && !savedImage) {
+    try {
+      const rec = await StorageManager.getProductOrderImage(productId);
+      if (rec && rec.data instanceof ArrayBuffer) {
+        savedImage = createObjectUrlFromBinary(rec.data, rec.mimeType);
+      }
+    } catch (e) {
+      console.error('商品ID画像復元失敗', e);
+    }
+  }
   // グローバル（非個別）時は settings から復元
-  if (!orderNumber && !isIndividual && !savedImage) {
+  if (!orderNumber && !productId && !isIndividual && !savedImage) {
     try { savedImage = await getGlobalOrderImage(); if (savedImage) debugLog('[image] 初期グローバル画像復元'); } catch(e){ console.error('初期グローバル画像取得失敗', e); }
   }
   if (savedImage) {
@@ -1916,27 +2829,10 @@ async function createBaseImageDropZone(options = {}) {
       // 個別画像があるかチェック（個別画像を最優先）
       let imageToShow = null;
       if (orderNumber) {
-        let individualImage = null;
-        if (window.orderRepository) {
-          const r = window.orderRepository.get(orderNumber);
-          if (r && r.image && r.image.data instanceof ArrayBuffer) {
-            try { const blob = new Blob([r.image.data], { type: r.image.mimeType || 'image/png' }); individualImage = URL.createObjectURL(blob); } catch(e){ console.error('個別画像Blob生成失敗', e); }
-          }
-  }
-  const globalImage = await getGlobalOrderImage();
-        
-        debugLog(`注文番号: ${orderNumber}`);
-        debugLog(`個別画像: ${individualImage ? 'あり' : 'なし'}`);
-        debugLog(`グローバル画像: ${globalImage ? 'あり' : 'なし'}`);
-        
-        if (individualImage) {
-          debugLog(`個別画像を優先使用: ${orderNumber}`);
-          imageToShow = individualImage;
-        } else {
-          // 個別画像がない場合のみグローバル画像を使用
-          debugLog(`個別画像なし、グローバル画像を使用: ${orderNumber}`);
-          imageToShow = globalImage;
-        }
+        const r = window.orderRepository ? window.orderRepository.get(orderNumber) : null;
+        const resolved = await resolveOrderImageSource(orderNumber, r ? r.row : null);
+        imageToShow = resolved.imageUrl;
+        updateOrderImageSourceLabel(orderSection, resolved);
       } else {
         // 注文番号がない場合はグローバル画像を使用
   const globalImage = await getGlobalOrderImage();
@@ -1945,15 +2841,7 @@ async function createBaseImageDropZone(options = {}) {
       }
 
       // 画像コンテナを更新
-      imageContainer.innerHTML = '';
-      if (imageToShow) {
-        const imageDiv = document.createElement('div');
-        imageDiv.classList.add('order-image');
-        const img = document.createElement('img');
-        img.src = imageToShow;
-        imageDiv.appendChild(img);
-        imageContainer.appendChild(imageDiv);
-      }
+      renderOrderImageIntoContainer(imageContainer, imageToShow);
     }
   }
 
@@ -1969,6 +2857,9 @@ async function createBaseImageDropZone(options = {}) {
         // 個別注文画像保存
         try { await window.orderRepository.setOrderImage(orderNumber, { data: arrayBuffer, mimeType }); }
         catch(e){ console.error('画像保存失敗', e); }
+      } else if (productId) {
+        try { await StorageManager.setProductOrderImage(productId, { data: arrayBuffer, mimeType, productName }); }
+        catch(e){ console.error('商品ID画像保存失敗', e); }
       } else if (!isIndividual) {
         // グローバル画像保存
   debugLog('[image] グローバル画像保存開始 isIndividual=' + isIndividual + ' orderNumber=' + orderNumber + ' size=' + arrayBuffer.byteLength + ' mime=' + mimeType);
@@ -1994,7 +2885,10 @@ async function createBaseImageDropZone(options = {}) {
 
     // 個別画像の場合は即座に表示を更新
     if (isIndividual && orderNumber) {
-      await updateOrderImageDisplay(imageUrl);
+      await updateOrderImageDisplay();
+    } else if (productId && arrayBuffer instanceof ArrayBuffer) {
+      await updateAllOrderImages();
+      await renderProductOrderImagesManager();
     } else if (!isIndividual) {
       // グローバル画像の場合は全ての注文明細の画像を更新
       await updateAllOrderImages();
@@ -2005,6 +2899,8 @@ async function createBaseImageDropZone(options = {}) {
       e.stopPropagation();
       if (isIndividual && orderNumber && window.orderRepository) {
         try { await window.orderRepository.clearOrderImage(orderNumber); } catch(e){ console.error('画像削除失敗', e); }
+      } else if (productId) {
+        try { await StorageManager.clearProductOrderImage(productId); } catch(e){ console.error('商品ID画像削除失敗', e); }
       } else if (!isIndividual) {
         // グローバル画像クリア（0バイトは保存せず null を保存）
         try { await StorageManager.clearGlobalOrderImageBinary(); } catch(e){ console.error('グローバル画像削除失敗', e); }
@@ -2020,7 +2916,14 @@ async function createBaseImageDropZone(options = {}) {
   const node = cloneTemplate('orderImageDropDefault');
         node.textContent = defaultMessage;
         dropZone.appendChild(node);
-  await updateOrderImageDisplay(null);
+      await updateOrderImageDisplay();
+        } else if (productId) {
+      dropZone.innerHTML = '';
+      const node = cloneTemplate('orderImageDropDefault');
+        node.textContent = defaultMessage;
+        dropZone.appendChild(node);
+        await updateAllOrderImages();
+        await renderProductOrderImagesManager();
       } else {
   dropZone.innerHTML = '';
   dropZone.appendChild(cloneTemplate('orderImageDropDefault'));
@@ -2030,7 +2933,7 @@ async function createBaseImageDropZone(options = {}) {
   }
 
   // 個別画像用の表示更新関数
-  async function updateOrderImageDisplay(imageUrl) {
+  async function updateOrderImageDisplay() {
     // 注文画像表示機能が無効の場合は何もしない
     const settings = await StorageManager.getSettingsAsync();
     if (!settings.orderImageEnable) {
@@ -2042,28 +2945,11 @@ async function createBaseImageDropZone(options = {}) {
 
     const imageContainer = orderSection.querySelector('.order-image-container');
     if (!imageContainer) return;
-
-    imageContainer.innerHTML = '';
-
-    if (imageUrl) {
-      const imageDiv = document.createElement('div');
-      imageDiv.classList.add('order-image');
-      const img = document.createElement('img');
-      img.src = imageUrl;
-      imageDiv.appendChild(img);
-      imageContainer.appendChild(imageDiv);
-    } else {
-      // 個別画像がない場合はグローバル画像を表示
-      const globalImage = await getGlobalOrderImage();
-      if (globalImage) {
-        const imageDiv = document.createElement('div');
-        imageDiv.classList.add('order-image');
-        const img = document.createElement('img');
-        img.src = globalImage;
-        imageDiv.appendChild(img);
-        imageContainer.appendChild(imageDiv);
-      }
-    }
+    const sectionOrderNumber = (orderSection.id && orderSection.id.startsWith('order-')) ? orderSection.id.substring(6) : orderNumber;
+    const rec = window.orderRepository && sectionOrderNumber ? window.orderRepository.get(sectionOrderNumber) : null;
+    const resolved = await resolveOrderImageSource(sectionOrderNumber, rec ? rec.row : null);
+    updateOrderImageSourceLabel(orderSection, resolved);
+    renderOrderImageIntoContainer(imageContainer, resolved.imageUrl);
   }
 
   // 共通のイベントリスナー設定
@@ -2176,6 +3062,19 @@ async function createOrderImageDropZone() {
   });
 }
 
+async function createProductOrderImageDropZone(productId, productName = '') {
+  const defaultMessage = PROTOCOL_UTILS.canDragFromExternalSites()
+    ? 'この商品ID用の画像を設定'
+    : 'この商品ID用の画像を選択';
+
+  return await createBaseImageDropZone({
+    productId,
+    productName,
+    containerClass: 'order-image-drop',
+    defaultMessage
+  });
+}
+
 // 個別注文用の画像ドロップゾーンを作成する関数（リファクタリング済み）
 async function createIndividualOrderImageDropZone(orderNumber) {
   const defaultMessage = PROTOCOL_UTILS.canDragFromExternalSites() 
@@ -2197,24 +3096,22 @@ document.getElementById("file").addEventListener("change", async function() {
   
   // 固定ヘッダーのファイル選択状態を更新
   const fileInput = this;
-  const fileSelectedInfoCompact = document.getElementById('fileSelectedInfoCompact');
-  if (fileSelectedInfoCompact) {
-    if (fileInput.files && fileInput.files.length > 0) {
+  if (fileInput.files && fileInput.files.length > 0) {
       const fileName = fileInput.files[0].name;
       // コンパクト表示用に短縮
       const shortName = fileName.length > 15 ? fileName.substring(0, 12) + '...' : fileName;
-      fileSelectedInfoCompact.textContent = shortName;
-      fileSelectedInfoCompact.classList.add('has-file');
+      updateSelectedSourceInfo(shortName, true);
       updateProcessedOrdersVisibility();
+  setPreviewSource('');
   hideQuickGuide();
       
       // CSVファイルが選択されたら自動的に処理を実行
       console.log('CSVファイルが選択されました。自動処理を開始します:', fileName);
       await autoProcessCSV();
-    } else {
-      fileSelectedInfoCompact.textContent = '未選択';
-      fileSelectedInfoCompact.classList.remove('has-file');
+  } else {
+      updateSelectedSourceInfo('未選択', false);
       updateProcessedOrdersVisibility();
+  setPreviewSource('');
   showQuickGuide();
       
       // ファイルがクリアされた場合は結果もクリア
@@ -2222,7 +3119,6 @@ document.getElementById("file").addEventListener("change", async function() {
       window.lastOrderSelection = [];
       window.lastPreviewConfig = null;
       window.currentDisplayedOrderNumbers = [];
-    }
   }
 });
 
@@ -2260,6 +3156,11 @@ function toggleCustomLabelRow(enabled) {
 function toggleOrderImageRow(enabled) {
   const orderImageRow = document.getElementById('orderImageRow');
   if (orderImageRow) orderImageRow.style.display = enabled ? 'table-row' : 'none';
+  const imageDropZone = document.getElementById('imageDropZone');
+  const imageDropGroup = imageDropZone ? imageDropZone.closest('.sidebar-group') || imageDropZone : null;
+  if (imageDropGroup) imageDropGroup.style.display = enabled ? '' : 'none';
+  const productBlock = document.getElementById('productOrderImagesBlock');
+  if (productBlock) productBlock.hidden = !enabled;
 }
 
 // 全ての注文明細の画像表示可視性を更新
@@ -2294,9 +3195,58 @@ function verifyRequiredTemplates() {
 document.addEventListener('DOMContentLoaded', function() {
   // 必須 template の存在確認（不足時は起動中断）
   verifyRequiredTemplates();
+  const fileInput = document.getElementById('file');
+  const boothOrdersOpenButton = document.getElementById('boothOrdersOpenButton');
+  const selectCsvFileButton = document.getElementById('selectCsvFileButton');
+  const quickGuideDownloadCsvButton = document.getElementById('quickGuideDownloadCsvButton');
+  const quickGuideSelectCsvButton = document.getElementById('quickGuideSelectCsvButton');
+  const fontSectionHeader = document.getElementById('fontSectionHeader');
   const printButton = document.getElementById('printButton');
   const printButtonCompact = document.getElementById('printButtonCompact');
   const printBtn = document.getElementById('print-btn'); // 新しい印刷ボタン
+  const previewBackButton = document.getElementById('previewBackButton');
+
+  function openBoothOrdersPage() {
+    window.open('https://manage.booth.pm/orders?state=paid', '_blank', 'noopener');
+  }
+
+  function openCsvFilePicker() {
+    if (fileInput) {
+      fileInput.click();
+    }
+  }
+
+  [boothOrdersOpenButton, quickGuideDownloadCsvButton].forEach(function(button) {
+    if (!button) return;
+    button.addEventListener('click', openBoothOrdersPage);
+  });
+
+  [selectCsvFileButton, quickGuideSelectCsvButton].forEach(function(button) {
+    if (!button) return;
+    button.addEventListener('click', openCsvFilePicker);
+  });
+
+  if (fontSectionHeader) {
+    fontSectionHeader.addEventListener('click', function() {
+      toggleFontSection();
+    });
+    fontSectionHeader.addEventListener('keydown', function(event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleFontSection();
+    });
+  }
+
+  if (previewBackButton) {
+    previewBackButton.addEventListener('click', function() {
+      returnToProcessedOrdersPanel().catch(error => {
+        console.error('一覧への戻り処理エラー:', error);
+        alert(error && error.message ? error.message : '処理済み注文一覧への戻りに失敗しました');
+      });
+    });
+  }
+
+  updatePreviewReturnButtonVisibility();
   
   // 既存の印刷ボタンがある場合
   if (printButton) {
@@ -2524,21 +3474,10 @@ async function updateSkipCount() {
       // プレビュー更新エラーは致命的ではないので、処理を継続
     }
     
-    // CSVファイルが読み込まれている場合は、CSV印刷プレビューも再生成
-    const fileInput = document.getElementById("file");
-    if (fileInput && fileInput.files && fileInput.files.length > 0) {
-      try {
-        console.log('📄 CSVファイルが読み込まれているため、印刷プレビューを再生成します...');
-        await autoProcessCSV();
-        console.log('✅ スキップ枚数更新後のCSV印刷プレビューを更新しました');
-      } catch (csvError) {
-        console.error('⚠️ CSV印刷プレビュー更新エラー:', csvError);
-        // CSV更新エラーは致命的ではないので、処理を継続
-      }
-    }
-    
     // 更新完了メッセージ
     alert(`次回のスキップ枚数を ${newSkipValue} 面に更新しました。\n\n詳細:\n・印刷前スキップ: ${currentSkip}面\n・今回使用: ${totalUsedLabels}面\n・合計: ${totalUsedWithSkip}面\n・次回スキップ: ${newSkipValue}面`);
+
+    await returnToProcessedOrdersPanel();
     
   } catch (error) {
     console.error('スキップ枚数更新エラー:', error);

@@ -7,6 +7,7 @@
     currentPage: 1,
     pageSize: 20,
     unprintedOnly: false,
+    unshippedOnly: false,
     totalItems: 0,
     totalPages: 1,
     pageItems: []
@@ -20,11 +21,13 @@
     selectAll: null,
     deleteButton: null,
     previewButton: null,
+    shipButton: null,
     prev: null,
     next: null,
     pageInfo: null,
     empty: null,
     filter: null,
+    shippedFilter: null,
     headerCells: []
   };
 
@@ -33,7 +36,9 @@
     ensureOrderRepository: null,
     clearPreviousResults: null,
     hideQuickGuide: null,
-    renderPreview: null
+    renderPreview: null,
+    setPreviewSource: null,
+    notifyShipment: null
   };
 
   function assignDependencies(options){
@@ -41,6 +46,8 @@
     dependencies.clearPreviousResults = options.clearPreviousResults || dependencies.clearPreviousResults;
     dependencies.hideQuickGuide = options.hideQuickGuide || dependencies.hideQuickGuide;
     dependencies.renderPreview = options.renderPreview || dependencies.renderPreview;
+    dependencies.setPreviewSource = options.setPreviewSource || dependencies.setPreviewSource;
+    dependencies.notifyShipment = options.notifyShipment || dependencies.notifyShipment;
   }
 
   async function ensureRepository(){
@@ -83,6 +90,78 @@
     };
   }
 
+  function createSvgIcon(name){
+    const namespace = 'http://www.w3.org/2000/svg';
+    const svg = global.document.createElementNS(namespace, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('processed-orders-icon-svg');
+
+    if (name === 'booth'){
+      const path = global.document.createElementNS(namespace, 'path');
+      path.setAttribute('d', 'M3 3h4v2H5v6h6V9h2v4H3V3zm6 0h4v4h-2V6.41L8.7 8.7 7.3 7.3 9.59 5H9V3z');
+      path.setAttribute('fill', 'currentColor');
+      svg.appendChild(path);
+      return svg;
+    }
+
+    if (name === 'qr'){
+      const path = global.document.createElementNS(namespace, 'path');
+      path.setAttribute('d', 'M2 2h5v5H2V2zm1.5 1.5v2h2v-2h-2zM9 2h5v5H9V2zm1.5 1.5v2h2v-2h-2zM2 9h5v5H2V9zm1.5 1.5v2h2v-2h-2zM9 9h1.5v1.5H9V9zm1.5 1.5H12V12h-1.5v-1.5zM12 9h2v2h-2V9zm-3 3h2v2H9v-2zm3 1h2v1h-2v-1z');
+      path.setAttribute('fill', 'currentColor');
+      svg.appendChild(path);
+      return svg;
+    }
+
+    const path = global.document.createElementNS(namespace, 'path');
+    path.setAttribute('d', 'M2 3h12v10H2V3zm1.2 1.2v7.6h9.6V4.2H3.2zm1.1 6.3 2.2-2.4 1.6 1.8 1.7-2.1 2.4 2.7H4.3zm1-4.3a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z');
+    path.setAttribute('fill', 'currentColor');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function createStatusIcon(name, label){
+    const icon = global.document.createElement('span');
+    icon.className = `processed-orders-icon processed-orders-icon-${name}`;
+    icon.title = label;
+    icon.setAttribute('aria-label', label);
+    icon.appendChild(createSvgIcon(name));
+    return icon;
+  }
+
+  function createBoothLink(orderNumber){
+    const link = global.document.createElement('a');
+    link.href = `https://manage.booth.pm/orders/${encodeURIComponent(orderNumber)}`;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.className = 'processed-orders-icon-button processed-orders-icon-button-booth';
+    link.title = 'BOOTHの注文詳細を開く';
+    link.setAttribute('aria-label', `注文 ${orderNumber} を BOOTH で開く`);
+    link.appendChild(createSvgIcon('booth'));
+    return link;
+  }
+
+  async function openOrderPreview(orderNumber){
+    if (!orderNumber) return;
+    if (typeof dependencies.clearPreviousResults === 'function'){
+      dependencies.clearPreviousResults();
+    }
+    if (typeof dependencies.hideQuickGuide === 'function'){
+      dependencies.hideQuickGuide();
+    }
+    if (typeof dependencies.renderPreview !== 'function') return;
+    const config = buildPreviewConfig();
+    try {
+      await dependencies.renderPreview([orderNumber], config);
+      if (typeof dependencies.setPreviewSource === 'function') {
+        dependencies.setPreviewSource('processed-orders');
+      }
+    } catch (e){
+      console.error('single order preview error', e);
+      global.alert('プレビューの生成に失敗しました: ' + (e && e.message ? e.message : e));
+    }
+  }
+
   function updateSortIndicators(){
     if (!Array.isArray(ui.headerCells)) return;
     ui.headerCells.forEach(cell => {
@@ -117,6 +196,10 @@
       ui.previewButton.disabled = count === 0;
       ui.previewButton.textContent = count > 0 ? `選択した注文を印刷プレビュー (${count})` : '選択した注文を印刷プレビュー';
     }
+    if (ui.shipButton){
+      ui.shipButton.disabled = count === 0;
+      ui.shipButton.textContent = count > 0 ? `選択した注文を発送通知 (${count})` : '選択した注文を発送通知';
+    }
   }
 
   function updatePagination(totalItems){
@@ -146,6 +229,11 @@
       const bv = Number.isNaN(b.printedAtValue) ? -Infinity : b.printedAtValue;
       if (av < bv) result = -1;
       else if (av > bv) result = 1;
+    } else if (state.sortKey === 'shippedAt'){
+      const av = Number.isNaN(a.shippedAtValue) ? -Infinity : a.shippedAtValue;
+      const bv = Number.isNaN(b.shippedAtValue) ? -Infinity : b.shippedAtValue;
+      if (av < bv) result = -1;
+      else if (av > bv) result = 1;
     } else {
       result = a.orderNumber.localeCompare(b.orderNumber, 'ja', { numeric: true, sensitivity: 'base' });
     }
@@ -169,18 +257,28 @@
     const data = records.map(rec => {
       const paymentRaw = rec && rec.row ? rec.row[constants.CSV.PAYMENT_DATE_COLUMN] || '' : '';
       const printedRaw = rec && rec.printedAt ? rec.printedAt : '';
+      const shippedRaw = rec && rec.shippedAt ? rec.shippedAt : '';
       return {
         orderNumber: rec.orderNumber,
         paymentDateRaw: paymentRaw,
         paymentDateValue: parseDateToTimestamp(paymentRaw),
         printedAtRaw: printedRaw,
         printedAtValue: parseDateToTimestamp(printedRaw),
-        printed: !!printedRaw
+        shippedAtRaw: shippedRaw,
+        shippedAtValue: parseDateToTimestamp(shippedRaw),
+        hasQr: !!(rec && rec.qr),
+        hasImage: !!(rec && rec.image),
+        printed: !!printedRaw,
+        shipped: !!shippedRaw
       };
     }).filter(item => !!item.orderNumber);
 
     const sorted = [...data].sort(compareEntries);
-    const filtered = state.unprintedOnly ? sorted.filter(item => !item.printed) : sorted;
+    const filtered = sorted.filter(item => {
+      if (state.unprintedOnly && item.printed) return false;
+      if (state.unshippedOnly && item.shipped) return false;
+      return true;
+    });
 
     state.totalItems = filtered.length;
     state.totalPages = filtered.length === 0 ? 1 : Math.ceil(filtered.length / state.pageSize);
@@ -217,13 +315,32 @@
         tr.appendChild(selectTd);
 
         const orderTd = global.document.createElement('td');
-        const link = global.document.createElement('a');
-        link.href = `https://manage.booth.pm/orders/${encodeURIComponent(item.orderNumber)}`;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.className = 'order-link';
-        link.textContent = item.orderNumber;
-        orderTd.appendChild(link);
+        const orderCell = global.document.createElement('div');
+        orderCell.className = 'processed-orders-order-cell';
+
+        const previewButton = global.document.createElement('button');
+        previewButton.type = 'button';
+        previewButton.className = 'order-link order-preview-link';
+        previewButton.textContent = item.orderNumber;
+        previewButton.title = `注文 ${item.orderNumber} の印刷プレビューを表示`;
+        previewButton.setAttribute('aria-label', `注文 ${item.orderNumber} の印刷プレビューを表示`);
+        previewButton.addEventListener('click', () => {
+          openOrderPreview(item.orderNumber).catch(err => console.error('single order preview error', err));
+        });
+        orderCell.appendChild(previewButton);
+
+        const actions = global.document.createElement('span');
+        actions.className = 'processed-orders-order-actions';
+        actions.appendChild(createBoothLink(item.orderNumber));
+        if (item.hasQr) {
+          actions.appendChild(createStatusIcon('qr', 'QRコードあり'));
+        }
+        if (item.hasImage) {
+          actions.appendChild(createStatusIcon('image', '個別画像あり'));
+        }
+        orderCell.appendChild(actions);
+
+        orderTd.appendChild(orderCell);
         tr.appendChild(orderTd);
 
         const paymentTd = global.document.createElement('td');
@@ -234,6 +351,10 @@
         printedTd.textContent = item.printedAtRaw ? formatDateTime(item.printedAtRaw) : '';
         tr.appendChild(printedTd);
 
+        const shippedTd = global.document.createElement('td');
+        shippedTd.textContent = item.shippedAtRaw ? formatDateTime(item.shippedAtRaw) : '';
+        tr.appendChild(shippedTd);
+
         ui.body.appendChild(tr);
       });
     }
@@ -241,7 +362,15 @@
     if (ui.empty){
       if (filtered.length === 0){
         ui.empty.hidden = false;
-        ui.empty.textContent = state.unprintedOnly ? '未印刷の注文はありません。' : '保存されている注文はありません。';
+        if (state.unprintedOnly && state.unshippedOnly) {
+          ui.empty.textContent = '未印刷かつ未発送の注文はありません。';
+        } else if (state.unprintedOnly) {
+          ui.empty.textContent = '未印刷の注文はありません。';
+        } else if (state.unshippedOnly) {
+          ui.empty.textContent = '未発送の注文はありません。';
+        } else {
+          ui.empty.textContent = '保存されている注文はありません。';
+        }
       } else {
         ui.empty.hidden = true;
       }
@@ -295,6 +424,12 @@
     refresh().catch(err => console.error('processed orders refresh error', err));
   }
 
+  function handleShippedFilterChange(event){
+    state.unshippedOnly = !!event.target.checked;
+    state.currentPage = 1;
+    refresh().catch(err => console.error('processed orders refresh error', err));
+  }
+
   function handlePrevPage(){
     if (state.currentPage <= 1) return;
     state.currentPage -= 1;
@@ -320,6 +455,9 @@
     const config = buildPreviewConfig();
     try {
       await dependencies.renderPreview(orderNumbers, config);
+      if (typeof dependencies.setPreviewSource === 'function') {
+        dependencies.setPreviewSource('processed-orders');
+      }
     } catch (e){
       console.error('order preview error', e);
       global.alert('プレビューの生成に失敗しました: ' + (e && e.message ? e.message : e));
@@ -343,11 +481,26 @@
     await refresh();
   }
 
+  async function handleShipNotification(){
+    if (selection.size === 0) return;
+    if (typeof dependencies.notifyShipment !== 'function') return;
+    try {
+      await dependencies.notifyShipment(Array.from(selection));
+    } catch (e){
+      console.error('shipment notification error', e);
+      global.alert('発送通知処理に失敗しました: ' + (e && e.message ? e.message : e));
+    }
+  }
+
   function updateVisibility(){
     if (!ui.panel) return;
     const fileInput = global.document.getElementById('file');
     const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
-    ui.panel.hidden = hasFile;
+    const allSheets = global.document.querySelectorAll('section.sheet');
+    const labelSheets = global.document.querySelectorAll('section.sheet.label-sheet');
+    const hasOrderSheets = allSheets.length > labelSheets.length;
+    const hasCurrentPreview = Array.isArray(global.currentDisplayedOrderNumbers) && global.currentDisplayedOrderNumbers.length > 0;
+    ui.panel.hidden = hasFile || hasOrderSheets || hasCurrentPreview;
   }
 
   function attachEventHandlers(){
@@ -357,6 +510,9 @@
     if (ui.filter){
       ui.filter.addEventListener('change', handleFilterChange);
     }
+    if (ui.shippedFilter){
+      ui.shippedFilter.addEventListener('change', handleShippedFilterChange);
+    }
     if (ui.prev){
       ui.prev.addEventListener('click', handlePrevPage);
     }
@@ -365,6 +521,9 @@
     }
     if (ui.deleteButton){
       ui.deleteButton.addEventListener('click', handleDelete);
+    }
+    if (ui.shipButton){
+      ui.shipButton.addEventListener('click', handleShipNotification);
     }
     if (ui.previewButton){
       ui.previewButton.addEventListener('click', handlePreview);
@@ -384,11 +543,13 @@
     ui.selectAll = global.document.getElementById('processedOrdersSelectAll');
     ui.deleteButton = global.document.getElementById('processedOrdersDeleteButton');
     ui.previewButton = global.document.getElementById('processedOrdersPreviewButton');
+    ui.shipButton = global.document.getElementById('processedOrdersShipButton');
     ui.prev = global.document.getElementById('processedOrdersPrev');
     ui.next = global.document.getElementById('processedOrdersNext');
     ui.pageInfo = global.document.getElementById('processedOrdersPageInfo');
     ui.empty = global.document.getElementById('processedOrdersEmpty');
     ui.filter = global.document.getElementById('processedOrdersUnprintedOnly');
+    ui.shippedFilter = global.document.getElementById('processedOrdersUnshippedOnly');
     ui.headerCells = ui.panel ? Array.from(ui.panel.querySelectorAll('th.sortable')) : [];
   }
 
