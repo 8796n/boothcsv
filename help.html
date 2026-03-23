@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Favicon (relative path for file:// and http:// both) -->
   <link rel="icon" href="./docs/images/favicon.svg" type="image/svg+xml">
   <title>BOOTH CSV 使い方ガイド</title>
@@ -137,6 +138,30 @@
       font-size: 12px;
       color: #495057;
     }
+    .image-block {
+      margin: 15px 0;
+    }
+    .cta-box {
+      text-align: center;
+      margin: 40px 0;
+      padding: 20px;
+      background-color: #f6f8fa;
+      border-radius: 6px;
+    }
+    .cta-link {
+      color: #0366d6;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: #28a745;
+      color: white;
+      padding: 12px 24px;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -205,7 +230,7 @@
 
     <h2 id="基本的な使い方">基本的な使い方</h2>
     
-    <img src="docs/images/main-interface.png" alt="BOOTH CSV ツールのメイン画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 10px 0;">
+    <img src="docs/images/main-interface.png" alt="BOOTH CSV ツールのメイン画面">
     
     <div class="step-list">
       <ol>
@@ -285,7 +310,7 @@
     </div>
 
     <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>
-    <img src="docs/images/csv-labels.png" alt="ラベルシール印刷画面" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/csv-labels.png" alt="ラベルシール印刷画面" class="image-block">
   <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank" rel="noopener">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
 
   <p>補足: ラベルに表示される各注文番号は BOOTH の注文詳細ページ（例: <code>https://manage.booth.pm/orders/&lt;注文番号&gt;</code>）へのリンクになっています。リンク先であんしんBOOTHパック用の QR コードを生成・コピーできるため、該当注文のラベルから直接 QR 発行フローへ移動できます。</p>
@@ -304,13 +329,13 @@
 
   <h2 id="画像機能について">画像機能について</h2>
 
-    <img src="docs/images/image-function.png" alt="画像機能の概要" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/image-function.png" alt="画像機能の概要" class="image-block">
 
   <p>注文明細に画像を追加できる機能があります（サイドバーの「画像とカスタムラベル」で有効化）。</p>
 
     <h3>画像のアップロード状態</h3>
     
-    <img src="docs/images/image-dropzone.png" alt="画像アップロード後の状態" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/image-dropzone.png" alt="画像アップロード後の状態" class="image-block">
 
     <h3>基本的な使い方</h3>
     <div class="step-list">
@@ -347,13 +372,13 @@
 
     <h2 id="カスタムラベル機能について">カスタムラベル機能について</h2>
     
-    <img src="docs/images/custom-labels.png" alt="カスタムラベル機能" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/custom-labels.png" alt="カスタムラベル機能" class="image-block">
     
     <p>余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。</p>
 
     <h3>カスタムラベルのシート表示</h3>
     
-    <img src="docs/images/custom-labels-sheet.png" alt="カスタムラベルシート表示" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/custom-labels-sheet.png" alt="カスタムラベルシート表示" class="image-block">
 
   <h3>設定方法</h3>
 
@@ -367,7 +392,7 @@
 
     <h3>文字列の編集方法</h3>
     
-    <img src="docs/images/custom-labels.png" alt="文字列編集とカスタムフォント設定" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/custom-labels.png" alt="文字列編集とカスタムフォント設定" class="image-block">
     
     <ul>
       <li>テキストエリア内で普通に文字を入力</li>
@@ -392,7 +417,7 @@
     
     <p>カスタムラベルでは独自のフォントファイルをアップロードして使用できます。</p>
 
-    <img src="docs/images/custom-fonts.png" alt="カスタムフォント設定" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/custom-fonts.png" alt="カスタムフォント設定" class="image-block">
     
     <h4>フォントファイルのアップロード</h4>
     <ul>
@@ -450,7 +475,7 @@
 
     <h3>注文明細印刷プレビュー</h3>
     
-    <img src="docs/images/csv-orders.png" alt="注文明細印刷プレビュー" style="max-width: 100%; height: auto; border: 1px solid #e1e4e8; border-radius: 6px; margin: 15px 0;">
+    <img src="docs/images/csv-orders.png" alt="注文明細印刷プレビュー" class="image-block">
     
     <p>各注文の詳細情報が印刷に適したフォーマットで表示されます。画像機能を有効にしている場合は、設定した画像も表示されます。</p>
 
@@ -487,9 +512,9 @@
       <li>IndexedDBに画像とかQRコードの情報を保存してるので、ブラウザ閉じても設定が残って便利です。IndexedDBは大容量のデータも効率的に保存できるので、画像をたくさん保存しても安心です。不要になったらクリアボタンで削除してください。</li>
     </ul>
 
-    <div style="text-align: center; margin: 40px 0; padding: 20px; background-color: #f6f8fa; border-radius: 6px;">
-      <p><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener" style="color: #0366d6; text-decoration: none; font-weight: bold;">🚀 このツールの公開場所（GitHub）</a></p>
-      <p><a href="boothcsv.html" style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">📋 ツールを使う</a></p>
+    <div class="cta-box">
+      <p><a href="https://github.com/8796n/boothcsv" target="_blank" rel="noopener" class="cta-link">🚀 このツールの公開場所（GitHub）</a></p>
+      <p><a href="boothcsv.html" class="cta-button">📋 ツールを使う</a></p>
     </div>
 
     <h2 id="バックアップとリストア">バックアップとリストア</h2>
