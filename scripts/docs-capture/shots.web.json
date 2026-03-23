@@ -148,6 +148,42 @@
     "capture": { "mode": "crop", "padding": 6 }
   },
   {
+    "id": "usage-guide",
+    "output": "docs/images/usage-guide.png",
+    "viewport": { "width": 1570, "height": 1200 },
+    "page": { "path": "boothcsv.html", "query": { "debug": "1", "appMode": "web" } },
+    "ui": {
+      "sidebar": "docked",
+      "labelyn": true,
+      "customLabel": true,
+      "orderImage": true,
+      "labelSkip": 1,
+      "clearFile": true,
+      "clearResults": true
+    },
+    "fixtures": [
+      { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true, "customLabels": true },
+      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" },
+      { "type": "global-image", "path": "sample/footersample.png", "mimeType": "image/png" },
+      {
+        "type": "custom-labels",
+        "labels": [
+          {
+            "html": "<div><b>【サンプル商品】</b></div><div>アクリルキーホルダー</div><div style=\"color: #666;\">商品コード: AKH-001</div>",
+            "count": 1,
+            "enabled": true,
+            "fontSize": "12pt"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      { "type": "sleep", "ms": 250 }
+    ],
+    "target": { "selector": "#order-8796002", "scroll": "start", "padding": 12 },
+    "capture": { "mode": "viewport" }
+  },
+  {
     "id": "csv-labels",
     "output": "docs/images/csv-labels.png",
     "viewport": { "width": 1300, "height": 1280 },
@@ -210,6 +246,6 @@
       { "type": "show-processed-orders-panel" }
     ],
     "target": { "selector": "#processedOrdersPanel", "scroll": "start", "padding": 8 },
-    "capture": { "mode": "viewport", "hideFixedHeader": true }
+    "capture": { "mode": "crop", "hideFixedHeader": true, "padding": 10 }
   }
 ]

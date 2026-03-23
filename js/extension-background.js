@@ -4,8 +4,23 @@ const APP_URL = chrome.runtime.getURL('boothcsv.html');
 const CSV_URL = 'https://manage.booth.pm/orders/csv?state=paid';
 const ORDER_URL_PREFIX = 'https://manage.booth.pm/orders/';
 
+async function openOrFocusAppTab() {
+  const existingTabs = await chrome.tabs.query({ url: APP_URL });
+  const existingTab = existingTabs.find(tab => typeof tab.id === 'number');
+
+  if (existingTab && typeof existingTab.id === 'number') {
+    if (typeof existingTab.windowId === 'number') {
+      await chrome.windows.update(existingTab.windowId, { focused: true }).catch(() => {});
+    }
+    await chrome.tabs.update(existingTab.id, { active: true });
+    return existingTab;
+  }
+
+  return await chrome.tabs.create({ url: APP_URL });
+}
+
 chrome.action.onClicked.addListener(async () => {
-  await chrome.tabs.create({ url: APP_URL });
+  await openOrFocusAppTab();
 });
 
 async function fetchBoothCsv() {
