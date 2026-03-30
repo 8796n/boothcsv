@@ -426,6 +426,26 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
         }
       });
     }
+    static mergeNestedSpans(editor){
+      if(!editor) return false;
+      let changed=false;
+      Array.from(editor.querySelectorAll('span[style]')).forEach(parentSpan=>{
+        if(parentSpan.childElementCount!==1) return;
+        const child=parentSpan.firstElementChild;
+        if(!child || child.tagName!=='SPAN') return;
+        const textNodes=Array.from(parentSpan.childNodes).filter(n=>n.nodeType===Node.TEXT_NODE && (n.nodeValue||'').trim()!=='');
+        if(textNodes.length) return;
+        const parentMap=this.parseStyle(parentSpan.getAttribute('style')||'');
+        const childMap=this.parseStyle(child.getAttribute('style')||'');
+        const merged=new Map([...parentMap.entries(), ...childMap.entries()]);
+        const mergedStyle=this.mapToStyle(merged);
+        if(mergedStyle) child.setAttribute('style', mergedStyle); else child.removeAttribute('style');
+        parentSpan.parentNode?.insertBefore(child, parentSpan);
+        parentSpan.remove();
+        changed=true;
+      });
+      return changed;
+    }
     static cleanupSpans(editor){
       if(!editor) return;
       let changed=true, loops=0;
@@ -441,6 +461,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
               }
             }
         });
+        if(this.mergeNestedSpans(editor)) changed=true;
         this.mergeAdjacentSpans(editor);
       }
     }
@@ -572,6 +593,29 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     });
     while(walker.nextNode()) nodes.push(walker.currentNode);
     return nodes;
+  }
+
+  function getUniformSelectedStyles(range, editor, props=[]){
+    const textNodes=getSelectedTextNodes(range, editor).filter(node=>node.nodeValue.trim()!=='');
+    if(!textNodes.length || !props.length) return {};
+    const result={};
+    props.forEach(prop=>{
+      let uniformValue=null;
+      let isFirst=true;
+      for(const node of textNodes){
+        const base=node.parentElement || node.parentNode;
+        const value=base ? window.getComputedStyle(base).getPropertyValue(prop) : '';
+        if(isFirst){
+          uniformValue=value;
+          isFirst=false;
+        } else if(uniformValue !== value){
+          uniformValue=null;
+          break;
+        }
+      }
+      if(uniformValue) result[prop]=uniformValue;
+    });
+    return result;
   }
 
   function findClosestAncestorTag(node, tag, editor){
@@ -778,6 +822,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     applyFormatToSelectionFallback,
     clearAllContent,
     isSelectionFormatted,
+    isRangeInsideEditor,
     getTargetTagName,
     analyzeSelectionRange,
     cleanupEmptySpans,
@@ -801,8 +846,11 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     if(!textNodes.length) return false;
     return textNodes.every(node=>!!findClosestAncestorTag(node, tag, scopedEditor));
   }
-  function applyFormatToRange(range, command){
+  function applyFormatToRange(range, command, editor){
+    const scopedEditor=getEditorFromRange(range, editor);
+    const inheritedStyles=getUniformSelectedStyles(range, scopedEditor, ['font-family','font-size','line-height']);
     const frag=range.extractContents(); let el; switch(command){ case 'bold': el=document.createElement('strong'); break; case 'italic': el=document.createElement('em'); break; case 'underline': el=document.createElement('u'); break; default: return; }
+    Object.entries(inheritedStyles).forEach(([prop, val])=>{ try { el.style.setProperty(prop, val); } catch {} });
     el.appendChild(frag);
     replaceExtractedSelection(range, el);
   }
@@ -822,7 +870,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     replaceExtractedSelection(range, cleaned);
     normalizeInlineFormatting(scopedEditor);
   }
-  function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(!isRangeInsideEditor(range, editor)) return; if(isSelectionFormatted(range,command,editor)){ removeFormatFromSelection(range,command,editor); } else { applyFormatToRange(range,command); } }
+  function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(!isRangeInsideEditor(range, editor)) return; if(isSelectionFormatted(range,command,editor)){ removeFormatFromSelection(range,command,editor); } else { applyFormatToRange(range,command,editor); } }
   function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); window.CustomLabels?.save(); } }
   function normalizeInlineFormatting(editor){
     if(!editor) return;
@@ -871,6 +919,37 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
       this.fontCacheTime=0;
       this.fontLoadError=false;
     }
+    rememberSelection(editor){
+      const sel=window.getSelection();
+      if(!editor || !sel?.rangeCount || sel.isCollapsed) return false;
+      const range=sel.getRangeAt(0);
+      if(!window.__LabelCore?.isRangeInsideEditor?.(range, editor)) return false;
+      this.savedSelectionRange=range.cloneRange();
+      this.savedSelectionEditor=editor;
+      return true;
+    }
+    hasRememberedSelection(editor){
+      if(!this.savedSelectionRange || (editor && this.savedSelectionEditor!==editor)) return false;
+      try { return !this.savedSelectionRange.collapsed && this.savedSelectionRange.toString().length>0; }
+      catch { return false; }
+    }
+    restoreSelection(editor=this.savedSelectionEditor){
+      if(!editor || !this.savedSelectionRange) return false;
+      try {
+        const sel=window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(this.savedSelectionRange.cloneRange());
+        editor.focus();
+        return true;
+      } catch(err){
+        clog('restoreSelection err', err);
+        return false;
+      }
+    }
+    clearSelectionSnapshot(){
+      this.savedSelectionRange=null;
+      this.savedSelectionEditor=null;
+    }
     close(menu){
       const targets = menu? [menu] : Array.from(document.querySelectorAll('.custom-label-context-menu'));
       targets.forEach(el=>{ if(el && el.parentNode){ el.style.opacity='0'; setTimeout(()=>{ try{ el.parentNode && el.parentNode.removeChild(el); }catch{} },150);} });
@@ -878,6 +957,8 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     }
     async show(x,y,editor,hasSelection=true){
       try { this.close(); } catch{}
+      const remembered=this.rememberSelection(editor);
+      if(!hasSelection && !remembered && this.hasRememberedSelection(editor)) hasSelection=true;
       const menu=document.createElement('div');
       menu.className='custom-label-context-menu';
       menu.style.cssText=`position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;padding:8px 0;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:10000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-width:160px;max-width:250px;max-height:400px;overflow-y:auto;visibility:hidden;opacity:0;transition:opacity .2s ease;`;
@@ -887,7 +968,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
         item.addEventListener('mouseenter',function(){ this.style.backgroundColor='#f0f0f0'; });
         item.addEventListener('mouseleave',function(){ this.style.backgroundColor='transparent'; });
         item.addEventListener('mousedown',e=>{ e.preventDefault(); e.stopPropagation(); });
-        item.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try{ opt.onClick?.(); }catch(err){clog('item click err',err);} this.close(menu); try{ window.CustomLabels?.save(); }catch{} },10); });
+        item.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); setTimeout(()=>{ try{ this.restoreSelection(editor); opt.onClick?.(); }catch(err){clog('item click err',err);} this.close(menu); try{ window.CustomLabels?.save(); }catch{} },10); });
         menu.appendChild(item);
       };
       const sep=()=>{ const d=document.createElement('div'); d.style.cssText='height:1px;background:#ddd;margin:5px 0;'; menu.appendChild(d); };
@@ -1002,9 +1083,25 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
       constructor(editor){
         this.editor=editor; this.isComposing=false; this._bind();
       }
+      syncSelectionSnapshot(){
+        try { window.ContextMenuManager?.rememberSelection?.(this.editor); } catch {}
+      }
+      ensureSelectionForOperation(){
+        if(this.hasActiveSelection()) return true;
+        try { window.ContextMenuManager?.restoreSelection?.(this.editor); } catch {}
+        return this.hasActiveSelection();
+      }
+      hasActiveSelection(){
+        if(!this.editor) return false;
+        const sel=window.getSelection();
+        if(!sel?.rangeCount || sel.isCollapsed) return false;
+        const range=sel.getRangeAt(0);
+        return window.__LabelCore?.isRangeInsideEditor?.(range, this.editor) || false;
+      }
       applyStyle(prop, value, isDefault=false){
         if(!this.editor) return;
         try {
+            if(!this.ensureSelectionForOperation()) return;
             const disabled = window.__DISABLE_DEPRECATED_CUSTOM_LABEL_STYLE;
             if(prop==='font-size'){
               window.__LabelCore?.applyFontSizeToSelection(value, this.editor);
@@ -1014,17 +1111,20 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
             } else {
               window.__LabelCore?.applyStyleToSelection(prop, value, this.editor, isDefault);
             }
+            this.syncSelectionSnapshot();
         } catch(e){ console.error('RichTextManager.applyStyle error', e); }
       }
       applyFormat(command){
         if(!this.editor) return;
-          try { window.__LabelCore?.applyFormatToSelection(command, this.editor); }
+          try { if(!this.ensureSelectionForOperation()) return; window.__LabelCore?.applyFormatToSelection(command, this.editor); this.syncSelectionSnapshot(); }
         catch(e){ console.error('RichTextManager.applyFormat error', e); }
       }
   clearAll(){ try { window.__LabelCore?.clearAllContent(this.editor); } catch(e){ console.error('RichTextManager.clearAll error', e);} }
       _bind(){
         const ed=this.editor; if(!ed) return;
         ed.__rtm = this; // マーカー
+        this._selectionChangeHandler = ()=>{ this.syncSelectionSnapshot(); };
+        document.addEventListener('selectionchange', this._selectionChangeHandler);
         ed.addEventListener('compositionstart',()=>{ this.isComposing=true; });
         ed.addEventListener('compositionend',()=>{ this.isComposing=false; });
         // ペースト/ドロップ（プレーンテキスト化）
@@ -1048,17 +1148,32 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
         ed.addEventListener('paste', e=>{ try{ e.preventDefault(); }catch{} let t=''; try{ t=(e.clipboardData||window.clipboardData).getData('text/plain'); }catch{} insertPlain(t); });
         ed.addEventListener('drop', e=>{ try{ e.preventDefault(); }catch{} if(e.dataTransfer?.files?.length) return false; const t=e.dataTransfer?.getData('text/plain'); insertPlain(t); });
         ed.addEventListener('dragover', e=>{ if(e.dataTransfer?.types?.includes('Files')){ e.dataTransfer.dropEffect='none'; return false;} e.preventDefault(); });
+        ed.addEventListener('mouseup', ()=>{ setTimeout(()=>this.syncSelectionSnapshot(), 0); });
+        ed.addEventListener('keyup', ()=>{ setTimeout(()=>this.syncSelectionSnapshot(), 0); });
+        ed.addEventListener('focus', ()=>{ setTimeout(()=>this.syncSelectionSnapshot(), 0); });
         // Enter -> <br>
         const supportsBeforeInput=('onbeforeinput' in ed);
         const insertBr=(src)=>{ const sel=window.getSelection(); if(!sel?.rangeCount) return; const range=sel.getRangeAt(0); let atEnd=false; try{ const tail=document.createRange(); tail.selectNodeContents(ed); tail.setStart(range.endContainer, range.endOffset); atEnd=tail.toString().length===0; }catch{} range.deleteContents(); const br=document.createElement('br'); range.insertNode(br); if(atEnd){ const zw=document.createTextNode('\u200B'); if(!(br.nextSibling && br.nextSibling.nodeType===Node.TEXT_NODE && br.nextSibling.nodeValue.startsWith('\u200B'))){ br.parentNode.insertBefore(zw, br.nextSibling); range.setStartAfter(zw);} } else { range.setStartAfter(br);} range.collapse(true); sel.removeAllRanges(); sel.addRange(range); };
         if(supportsBeforeInput){ ed.addEventListener('beforeinput', e=>{ if(e.inputType==='insertParagraph'){ if(this.isComposing||e.isComposing) return; e.preventDefault(); insertBr('beforeinput'); }}); }
-        ed.addEventListener('keydown', e=>{ if(e.key==='Enter'){ if(supportsBeforeInput) return; if(this.isComposing||e.isComposing) return; e.preventDefault(); insertBr('keydown'); }});
+        ed.addEventListener('keydown', e=>{
+          const key=(e.key||'').toLowerCase();
+          const isShortcut=(e.ctrlKey || e.metaKey) && !e.altKey;
+          if(isShortcut && (key==='b' || key==='i' || key==='u')){
+            if(this.isComposing||e.isComposing) return;
+            if(!this.hasActiveSelection()) return;
+            e.preventDefault();
+            const commandMap={ b:'bold', i:'italic', u:'underline' };
+            this.applyFormat(commandMap[key]);
+            return;
+          }
+          if(e.key==='Enter'){ if(supportsBeforeInput) return; if(this.isComposing||e.isComposing) return; e.preventDefault(); insertBr('keydown'); }
+        });
         // コンテキストメニュー
   ed.addEventListener('contextmenu', async e=>{ try{ e.preventDefault(); const sel=window.getSelection(); const hasSel=!!sel && sel.toString().length>0; if(window.ContextMenuManager){ await window.ContextMenuManager.show(e.clientX,e.clientY,ed,hasSel); } else { (window.createFontSizeMenu||window.CustomLabelContextMenu?.createFontSizeMenu)?.(e.clientX,e.clientY,ed,hasSel); } }catch(err){ console.error('rtm contextmenu',err);} });
         // 変な要素除去
         const observer=new MutationObserver(muts=>{ muts.forEach(m=>{ if(m.type==='childList'){ m.addedNodes.forEach(n=>{ if(n.nodeType===Node.ELEMENT_NODE){ const tg=n.tagName; if(tg==='IMG'||tg==='VIDEO'||tg==='AUDIO'){ n.remove(); } } }); } }); }); observer.observe(ed,{childList:true,subtree:true}); this._observer=observer;
       }
-      destroy(){ try{ this._observer?.disconnect(); }catch{} }
+      destroy(){ try{ this._observer?.disconnect(); }catch{} try{ if(this._selectionChangeHandler) document.removeEventListener('selectionchange', this._selectionChangeHandler); }catch{} }
     }
     window.RichTextManager = RichTextManager;
     window.initRichTextManager = function(editor){ if(!editor || editor.__rtm) return; try { new RichTextManager(editor); } catch(e){ console.error('initRichTextManager error', e); } };
