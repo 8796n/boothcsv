@@ -815,6 +815,80 @@ function updateProcessedOrdersVisibility() {
   window.ProcessedOrdersPanel.updateVisibility();
 }
 
+function formatShippingCommentPreview(messageTemplate) {
+  if (typeof messageTemplate !== 'string') return '未設定';
+  const normalized = messageTemplate.replace(/\r\n?/g, '\n').trim();
+  return normalized || '未設定';
+}
+
+async function collectShipmentConfirmationStatus(orderNumbers, bridge) {
+  const responses = new Map();
+  const shipped = [];
+  const pending = [];
+  const failed = [];
+
+  for (const orderNumber of orderNumbers) {
+    try {
+      const response = await bridge.collectOrderShipmentStatus(orderNumber);
+      responses.set(orderNumber, response);
+      const shippedAtValue = response && response.ok ? (response.shippedAt || response.shippedAtRaw || '') : '';
+      if (response && response.ok && shippedAtValue) {
+        shipped.push(orderNumber);
+      } else if (response && response.ok) {
+        pending.push(orderNumber);
+      } else {
+        const diagnostic = response && response.diagnosticsSummary ? ` | ${response.diagnosticsSummary}` : '';
+        failed.push(`${orderNumber}: ${response && response.error ? response.error : '発送状態の取得に失敗しました'}${diagnostic}`);
+      }
+    } catch (error) {
+      failed.push(`${orderNumber}: ${error && error.message ? error.message : '発送状態の取得に失敗しました'}`);
+    }
+  }
+
+  return { responses, shipped, pending, failed };
+}
+
+function buildShipmentConfirmationMessage(orderNumbers, messageTemplate, useExtensionBridge, statusSummary) {
+  const count = Array.isArray(orderNumbers) ? orderNumbers.length : 0;
+  const commentPreview = formatShippingCommentPreview(messageTemplate);
+
+  if (useExtensionBridge) {
+    const shippedCount = statusSummary && Array.isArray(statusSummary.shipped) ? statusSummary.shipped.length : 0;
+    const pendingCount = statusSummary && Array.isArray(statusSummary.pending) ? statusSummary.pending.length : 0;
+    const failedCount = statusSummary && Array.isArray(statusSummary.failed) ? statusSummary.failed.length : 0;
+
+    return [
+      '選択した注文を確認し、未通知の注文のみ BOOTH で発送通知します。',
+      '',
+      `対象件数: ${count}件`,
+      `未通知で BOOTH へ発送通知する注文: ${pendingCount}件`,
+      `通知済みで発送日時を再取得する注文: ${shippedCount}件`,
+      failedCount > 0 ? `発送状態の取得に失敗した注文: ${failedCount}件` : '',
+      '',
+      '通知コメント:',
+      commentPreview,
+      '',
+      '通知済みの注文は BOOTH 側で再通知できないため、発送日時の再取得のみ行います。',
+      failedCount > 0 ? '発送状態を取得できなかった注文は、続行後に再度確認したうえで処理します。' : '',
+      'この操作を実行すると、未通知の注文は BOOTH 側で発送完了通知まで実施します。',
+      '続行しますか？'
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    '選択した注文の発送日時を記録します。',
+    '',
+    `対象件数: ${count}件`,
+    '',
+    '通知コメント:',
+    commentPreview,
+    '',
+    'この環境では発送日時のみ反映します。',
+    'BOOTH の注文詳細で、上記コメントを使って手動で発送完了通知を行ってください。',
+    '続行しますか？'
+  ].join('\n');
+}
+
 async function notifySelectedOrdersShipment(orderNumbers) {
   const repo = await ensureOrderRepository();
   if (!repo) throw new Error('注文データを読み込めませんでした');
@@ -822,7 +896,16 @@ async function notifySelectedOrdersShipment(orderNumbers) {
   const selectedOrderNumbers = normalizeOrderSelection(orderNumbers);
   if (selectedOrderNumbers.length === 0) return;
 
-  if (!canUseExtensionBridge()) {
+  const useExtensionBridge = canUseExtensionBridge();
+  const shippingMessageTemplate = (settingsCache && typeof settingsCache.shippingMessageTemplate === 'string')
+    ? settingsCache.shippingMessageTemplate
+    : '';
+
+  if (!useExtensionBridge) {
+    if (!confirm(buildShipmentConfirmationMessage(selectedOrderNumbers, shippingMessageTemplate, false))) {
+      return;
+    }
+
     const shippedAt = new Date().toISOString();
     for (const orderNumber of selectedOrderNumbers) {
       await repo.markShipped(orderNumber, shippedAt);
@@ -837,17 +920,21 @@ async function notifySelectedOrdersShipment(orderNumbers) {
     throw new Error('Chrome拡張との連携が初期化されていません');
   }
 
+  const confirmationStatus = await collectShipmentConfirmationStatus(selectedOrderNumbers, bridge);
+  if (!confirm(buildShipmentConfirmationMessage(selectedOrderNumbers, shippingMessageTemplate, true, confirmationStatus))) {
+    return;
+  }
+
   const updated = [];
   const pending = [];
   const failed = [];
   const submitted = [];
-  const shippingMessageTemplate = (settingsCache && typeof settingsCache.shippingMessageTemplate === 'string')
-    ? settingsCache.shippingMessageTemplate
-    : '';
 
   for (const orderNumber of selectedOrderNumbers) {
     try {
-      const response = await bridge.collectOrderShipmentStatus(orderNumber);
+      const response = confirmationStatus.responses.has(orderNumber)
+        ? confirmationStatus.responses.get(orderNumber)
+        : await bridge.collectOrderShipmentStatus(orderNumber);
       const shippedAtValue = response && response.ok ? (response.shippedAt || response.shippedAtRaw || '') : '';
       if (response && response.ok && shippedAtValue) {
         await repo.markShipped(orderNumber, shippedAtValue);

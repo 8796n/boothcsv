@@ -44,6 +44,25 @@ async function fetchBoothCsv() {
   };
 }
 
+async function ensureOrderPageAvailable(orderNumber) {
+  const orderUrl = `${ORDER_URL_PREFIX}${encodeURIComponent(orderNumber)}`;
+  const response = await fetch(orderUrl, {
+    credentials: 'include',
+    cache: 'no-store',
+    redirect: 'follow'
+  });
+
+  if (response.status === 404) {
+    throw new Error(`注文 ${orderNumber} の詳細ページが BOOTH 上に見つかりませんでした (HTTP 404)`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`注文 ${orderNumber} の詳細ページ取得に失敗しました: HTTP ${response.status}`);
+  }
+
+  return orderUrl;
+}
+
 async function waitForTabComplete(tabId, timeoutMs = 20000) {
   return await new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -156,6 +175,8 @@ async function normalizeQrResponse(response, pageUrl) {
 }
 
 async function collectOrderQr(orderNumber, yamatoIssueSettings) {
+  await ensureOrderPageAvailable(orderNumber);
+
   const tab = await chrome.tabs.create({
     url: `${ORDER_URL_PREFIX}${encodeURIComponent(orderNumber)}`,
     active: false
@@ -197,6 +218,8 @@ async function collectOrderQr(orderNumber, yamatoIssueSettings) {
 }
 
 async function collectOrderShipmentStatus(orderNumber) {
+  await ensureOrderPageAvailable(orderNumber);
+
   const tab = await chrome.tabs.create({
     url: `${ORDER_URL_PREFIX}${encodeURIComponent(orderNumber)}`,
     active: false
@@ -216,6 +239,8 @@ async function collectOrderShipmentStatus(orderNumber) {
 }
 
 async function notifyOrderShipment(orderNumber, messageTemplate) {
+  await ensureOrderPageAvailable(orderNumber);
+
   const tab = await chrome.tabs.create({
     url: `${ORDER_URL_PREFIX}${encodeURIComponent(orderNumber)}`,
     active: false
