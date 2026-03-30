@@ -556,12 +556,17 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
 
   function stripStylePropertyFromFragment(fragment, prop){
     const container=fragmentToContainer(fragment);
-    container.querySelectorAll('span[style]').forEach(span=>{
-      updateSpanStyle(span, prop, '', true);
+    container.querySelectorAll('[style]').forEach(el=>{
+      const tagName=el.tagName;
+      if(tagName!=='SPAN' && tagName!=='STRONG' && tagName!=='EM' && tagName!=='U') return;
+      const map=parseStyleString(el.getAttribute('style')||'');
+      map.delete(prop);
       if(prop==='font-size'){
-        updateSpanStyle(span, 'line-height', '', true);
+        map.delete('line-height');
       }
-      if(!(span.getAttribute('style')||'').trim()) unwrapElement(span);
+      const styleStr=StyleHelper.mapToStyle(map);
+      if(styleStr) el.setAttribute('style', styleStr); else el.removeAttribute('style');
+      if(tagName==='SPAN' && !(el.getAttribute('style')||'').trim()) unwrapElement(el);
     });
     return containerToFragment(container);
   }
@@ -575,6 +580,21 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     } catch{}
     span.appendChild(fragment);
     return span;
+  }
+
+  function applyStyleToFormattedDescendants(fragment, prop, value, isDefault=false){
+    const container=fragmentToContainer(fragment);
+    container.querySelectorAll('strong, em, u').forEach(el=>{
+      const map=parseStyleString(el.getAttribute('style')||'');
+      if(isDefault){
+        map.delete(prop);
+      } else {
+        map.set(prop, value);
+      }
+      const styleStr=StyleHelper.mapToStyle(map);
+      if(styleStr) el.setAttribute('style', styleStr); else el.removeAttribute('style');
+    });
+    return containerToFragment(container);
   }
 
   function getSelectedTextNodes(range, editor){
@@ -778,7 +798,8 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
       ? (window.getComputedStyle(scopedEditor || document.body).fontFamily || 'sans-serif')
       : String(value)+unit;
     const extracted=range.extractContents();
-    const cleaned=stripStylePropertyFromFragment(extracted, prop);
+    const cleanedBase=stripStylePropertyFromFragment(extracted, prop);
+    const cleaned=applyStyleToFormattedDescendants(cleanedBase, prop, explicitValue, isDefault);
     const wrapper=wrapFragmentWithStyle(cleaned, prop, explicitValue);
     return replaceExtractedSelection(range, wrapper);
   }
