@@ -474,14 +474,269 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     return { targetSpan,isCompleteSpan,isPartialSpan,isMultiSpan,multiSpans, commonAncestor: ca };
   }
 
-  function applyStylePreservingBreaks(range, prop, value){
+  function unwrapElement(el){
+    if(!el?.parentNode) return;
+    const parent=el.parentNode;
+    while(el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+  }
+
+  function getEditorFromRange(range, editor){
+    if(editor) return editor;
+    const base = range?.commonAncestorContainer;
+    const element = base?.nodeType===Node.ELEMENT_NODE ? base : base?.parentElement;
+    return element?.closest?.('.rich-text-editor') || null;
+  }
+
+  function isRangeInsideEditor(range, editor){
+    if(!range || !editor) return false;
+    const nodes=[range.startContainer, range.endContainer, range.commonAncestorContainer];
+    return nodes.every(node=>{
+      if(!node) return false;
+      if(node===editor) return true;
+      const base=node.nodeType===Node.ELEMENT_NODE ? node : node.parentNode;
+      return !!(base && (base===editor || editor.contains(base)));
+    });
+  }
+
+  function replaceExtractedSelection(range, content){
+    const sel=window.getSelection();
+    const fragment=document.createDocumentFragment();
+    const startMarker=document.createComment('sel-start');
+    const endMarker=document.createComment('sel-end');
+    fragment.appendChild(startMarker);
+    if(content){
+      if(content.nodeType===Node.DOCUMENT_FRAGMENT_NODE){ fragment.appendChild(content); }
+      else { fragment.appendChild(content); }
+    }
+    fragment.appendChild(endMarker);
+    range.insertNode(fragment);
+    const nextRange=document.createRange();
+    nextRange.setStartAfter(startMarker);
+    nextRange.setEndBefore(endMarker);
+    startMarker.parentNode?.removeChild(startMarker);
+    endMarker.parentNode?.removeChild(endMarker);
+    sel?.removeAllRanges();
+    sel?.addRange(nextRange);
+    return nextRange;
+  }
+
+  function fragmentToContainer(fragment){
+    const container=document.createElement('div');
+    container.appendChild(fragment);
+    return container;
+  }
+
+  function containerToFragment(container){
+    const fragment=document.createDocumentFragment();
+    while(container.firstChild) fragment.appendChild(container.firstChild);
+    return fragment;
+  }
+
+  function stripStylePropertyFromFragment(fragment, prop){
+    const container=fragmentToContainer(fragment);
+    container.querySelectorAll('span[style]').forEach(span=>{
+      updateSpanStyle(span, prop, '', true);
+      if(prop==='font-size'){
+        updateSpanStyle(span, 'line-height', '', true);
+      }
+      if(!(span.getAttribute('style')||'').trim()) unwrapElement(span);
+    });
+    return containerToFragment(container);
+  }
+
+  function wrapFragmentWithStyle(fragment, prop, value){
+    const span=document.createElement('span');
+    try{
+      if(prop==='font-family') span.style.fontFamily=value;
+      else span.style.setProperty(prop, value);
+      if(prop==='font-size') span.style.lineHeight='1.2';
+    } catch{}
+    span.appendChild(fragment);
+    return span;
+  }
+
+  function getSelectedTextNodes(range, editor){
+    if(!range) return [];
+    const root=getEditorFromRange(range, editor) || (range.commonAncestorContainer.nodeType===Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode);
+    if(!root) return [];
+    const nodes=[];
+    const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node){
+        if(!node?.nodeValue || node.nodeValue.length===0) return NodeFilter.FILTER_REJECT;
+        const parent=node.parentNode;
+        if(editor && parent && !(parent===editor || editor.contains(parent))) return NodeFilter.FILTER_REJECT;
+        try { return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
+        catch { return NodeFilter.FILTER_REJECT; }
+      }
+    });
+    while(walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+  }
+
+  function findClosestAncestorTag(node, tag, editor){
+    let current=node?.nodeType===Node.TEXT_NODE ? node.parentNode : node;
+    while(current && current!==editor){
+      if(current.nodeType===Node.ELEMENT_NODE && current.tagName===tag) return current;
+      current=current.parentNode;
+    }
+    return null;
+  }
+
+  function splitTextBoundaries(range){
+    if(!range) return range;
+    if(range.endContainer?.nodeType===Node.TEXT_NODE){
+      const endNode=range.endContainer;
+      const endOffset=range.endOffset;
+      if(endOffset>0 && endOffset<endNode.nodeValue.length){
+        endNode.splitText(endOffset);
+        range.setEnd(endNode, endNode.nodeValue.length);
+      }
+    }
+    if(range.startContainer?.nodeType===Node.TEXT_NODE){
+      const startNode=range.startContainer;
+      const startOffset=range.startOffset;
+      if(startOffset>0 && startOffset<startNode.nodeValue.length){
+        const endWasSameNode=range.endContainer===startNode;
+        const endOffsetBeforeSplit=range.endOffset;
+        const afterNode=startNode.splitText(startOffset);
+        range.setStart(afterNode, 0);
+        if(endWasSameNode){
+          range.setEnd(afterNode, Math.max(0, endOffsetBeforeSplit - startOffset));
+        }
+      }
+    }
+    return range;
+  }
+
+  function findBoundaryReferenceNode(container, offset, atStart){
+    if(container?.nodeType===Node.TEXT_NODE) return container;
+    if(!container?.childNodes?.length) return container;
+    if(atStart){
+      return container.childNodes[offset] || container.childNodes[offset-1] || container;
+    }
+    return container.childNodes[offset-1] || container.childNodes[offset] || container;
+  }
+
+  function isTagBoundaryEdge(range, target, atStart){
+    const edgeRange=document.createRange();
+    edgeRange.selectNodeContents(target);
+    try {
+      if(atStart){
+        edgeRange.setEnd(range.startContainer, range.startOffset);
+      } else {
+        edgeRange.setStart(range.endContainer, range.endOffset);
+      }
+    } catch {
+      return false;
+    }
+    return edgeRange.collapsed;
+  }
+
+  function splitTagAncestorAtBoundary(range, tag, editor, atStart){
+    const container=atStart ? range.startContainer : range.endContainer;
+    const offset=atStart ? range.startOffset : range.endOffset;
+    const refNode=findBoundaryReferenceNode(container, offset, atStart);
+    const target=findClosestAncestorTag(refNode, tag, editor);
+    if(!target || !target.parentNode) return;
+    if(isTagBoundaryEdge(range, target, atStart)) return;
+    const tailRange=document.createRange();
+    tailRange.selectNodeContents(target);
+    try {
+      if(atStart){
+        tailRange.setStart(range.startContainer, range.startOffset);
+        if(tailRange.collapsed) return;
+      } else {
+        tailRange.setStart(range.endContainer, range.endOffset);
+        if(tailRange.collapsed) return;
+      }
+    } catch {
+      return;
+    }
+    const fragment=tailRange.extractContents();
+    const clone=target.cloneNode(false);
+    clone.appendChild(fragment);
+    target.parentNode.insertBefore(clone, target.nextSibling);
+    if(atStart){
+      range.setStart(clone, 0);
+    } else {
+      range.setEnd(target, target.childNodes.length);
+    }
+  }
+
+  function unwrapTagFromFragment(fragment, tag){
+    const container=fragmentToContainer(fragment);
+    container.querySelectorAll(tag.toLowerCase()).forEach(el=> unwrapElement(el));
+    return containerToFragment(container);
+  }
+
+  function fragmentHasNodes(fragment){
+    return !!fragment && Array.from(fragment.childNodes).some(node=>{
+      if(node.nodeType===Node.TEXT_NODE) return node.nodeValue.length>0;
+      return true;
+    });
+  }
+
+  function removeFormatWithinSingleAncestor(range, tag, editor){
+    const startTag=findClosestAncestorTag(range.startContainer, tag, editor);
+    const endTag=findClosestAncestorTag(range.endContainer, tag, editor);
+    if(!startTag || startTag!==endTag || !startTag.parentNode) return false;
+    const target=startTag;
+    const beforeRange=document.createRange();
+    beforeRange.selectNodeContents(target);
+    beforeRange.setEnd(range.startContainer, range.startOffset);
+    const beforeFragment=beforeRange.cloneContents();
+
+    const selectedFragment=unwrapTagFromFragment(range.cloneContents(), tag);
+
+    const afterRange=document.createRange();
+    afterRange.selectNodeContents(target);
+    afterRange.setStart(range.endContainer, range.endOffset);
+    const afterFragment=afterRange.cloneContents();
+
+    const replacement=document.createDocumentFragment();
+    const startMarker=document.createComment('sel-start');
+    const endMarker=document.createComment('sel-end');
+
+    if(fragmentHasNodes(beforeFragment)){
+      const beforeWrapper=target.cloneNode(false);
+      beforeWrapper.appendChild(beforeFragment);
+      replacement.appendChild(beforeWrapper);
+    }
+
+    replacement.appendChild(startMarker);
+    replacement.appendChild(selectedFragment);
+    replacement.appendChild(endMarker);
+
+    if(fragmentHasNodes(afterFragment)){
+      const afterWrapper=target.cloneNode(false);
+      afterWrapper.appendChild(afterFragment);
+      replacement.appendChild(afterWrapper);
+    }
+
+    target.parentNode.replaceChild(replacement, target);
+
+    const sel=window.getSelection();
+    const nextRange=document.createRange();
+    nextRange.setStartAfter(startMarker);
+    nextRange.setEndBefore(endMarker);
+    startMarker.parentNode?.removeChild(startMarker);
+    endMarker.parentNode?.removeChild(endMarker);
+    sel?.removeAllRanges();
+    sel?.addRange(nextRange);
+    return true;
+  }
+
+  function applyStylePreservingBreaks(range, prop, value, editor, isDefault=false){
+    const scopedEditor=getEditorFromRange(range, editor);
     const unit = (prop==='font-size' && /^(\d+)$/.test(String(value)))? 'pt': '';
-    const valStr = String(value)+unit;
-    const frag=range.extractContents();
-    const walker=document.createTreeWalker(frag, NodeFilter.SHOW_TEXT, null);
-    const nodes=[]; while(walker.nextNode()) { const n=walker.currentNode; if(n.textContent.trim()!=='') nodes.push(n); }
-    nodes.forEach(tn=>{ const span=document.createElement('span'); try{ if(prop==='font-family') span.style.fontFamily=valStr; else span.style.setProperty(prop, valStr); }catch{} tn.parentNode.replaceChild(span, tn); span.appendChild(tn); });
-    range.insertNode(frag);
+    const explicitValue = isDefault && prop==='font-family'
+      ? (window.getComputedStyle(scopedEditor || document.body).fontFamily || 'sans-serif')
+      : String(value)+unit;
+    const extracted=range.extractContents();
+    const cleaned=stripStylePropertyFromFragment(extracted, prop);
+    const wrapper=wrapFragmentWithStyle(cleaned, prop, explicitValue);
+    return replaceExtractedSelection(range, wrapper);
   }
 
   function cleanupEmptySpans(editor){
@@ -491,20 +746,9 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
 
   function applyStyleToSelection(prop, value, editor, isDefault=false){
     const sel=window.getSelection(); if(!sel.rangeCount || sel.isCollapsed) return; const range=sel.getRangeAt(0); const text=range.toString(); if(!text) return;
+    if(!isRangeInsideEditor(range, editor)) return;
     try {
-      const info=analyzeSelectionRange(range);
-      const unit = (prop==='font-size' && /^(\d+)$/.test(String(value)))? 'pt': '';
-      const valStr = String(value)+unit;
-      if(info.isCompleteSpan){ updateSpanStyle(info.targetSpan, prop, valStr, isDefault); if(prop==='font-size'||prop==='font-family') removeStyleFromDescendants(info.targetSpan, prop); }
-      else if(info.isPartialSpan){ // テキストノード内部分選択
-        if(range.startContainer===range.endContainer && range.startContainer.nodeType===Node.TEXT_NODE){
-          const tn=range.startContainer; const full=tn.nodeValue||''; const before=full.slice(0,range.startOffset); const mid=full.slice(range.startOffset, range.endOffset); const after=full.slice(range.endOffset);
-          tn.nodeValue=before; const span=document.createElement('span'); if(!isDefault){ try{ if(prop==='font-family') span.style.fontFamily=valStr; else span.style.setProperty(prop, valStr); }catch{} } span.textContent=mid; const afterNode=document.createTextNode(after); const parent=tn.parentNode; parent.insertBefore(span, tn.nextSibling); parent.insertBefore(afterNode, span.nextSibling);
-          sel.removeAllRanges(); const nr=document.createRange(); nr.selectNodeContents(span); sel.addRange(nr);
-        } else { applyStylePreservingBreaks(range, prop, value); }
-      }
-      else if(info.isMultiSpan){ info.multiSpans.forEach(s=> updateSpanStyle(s, prop, valStr, isDefault)); if(prop==='font-size'||prop==='font-family') info.multiSpans.forEach(s=> removeStyleFromDescendants(s, prop)); }
-      else { applyStylePreservingBreaks(range, prop, value); }
+      applyStylePreservingBreaks(range, prop, value, editor, isDefault);
       cleanupEmptySpans(editor);
     } catch(e){ log('applyStyleToSelection error', e); }
     editor?.focus();
@@ -517,26 +761,8 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     const sel=window.getSelection(); if(!sel.rangeCount || sel.isCollapsed) return;
     try {
       const range=sel.getRangeAt(0);
-      // 選択範囲に交差する既存 span の font-family を除去
-      const candidateSpans = Array.from(editor.querySelectorAll('span[style*="font-family"], span'));
-      let touched=false;
-      candidateSpans.forEach(sp=>{
-        if(range.intersectsNode(sp) && sp.style && sp.style.fontFamily){
-          sp.style.removeProperty('font-family');
-          if(!(sp.getAttribute('style')||'').trim()){
-            // unwrap 空 style span
-            const parent=sp.parentNode; if(parent){ while(sp.firstChild) parent.insertBefore(sp.firstChild, sp); parent.removeChild(sp); }
-          }
-          touched=true;
-        }
-      });
-      if(!touched){
-        // 直接対象 span が無い (テキスト直下選択等) -> multiSpan 相当として wrap 回避し子テキストを維持
-        const walker=document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
-        while(walker.nextNode()){
-          const el=walker.currentNode; if(el.tagName==='SPAN' && el.style && el.style.fontFamily){ el.style.removeProperty('font-family'); if(!(el.getAttribute('style')||'').trim()){ const p=el.parentNode; if(p){ while(el.firstChild) p.insertBefore(el.firstChild, el); p.removeChild(el);} } }
-        }
-      }
+      if(!isRangeInsideEditor(range, editor)) return;
+      applyStylePreservingBreaks(range, 'font-family', '', editor, true);
       StyleHelper.cleanupSpans(editor);
     } catch(e){ log('applyDefaultFontToSelection error', e); applyStyleToSelection('font-family','',editor,true); }
     editor?.focus();
@@ -567,25 +793,52 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
       default: return null;
     }
   }
-  function isSelectionFormatted(range, command){
-    const tag = getTargetTagName(command); if(!tag) return false; let node=range.startContainer; if(node.nodeType===Node.TEXT_NODE) node=node.parentNode; while(node && node.closest && node.closest('.rich-text-editor')){ if(node.tagName===tag) return true; node=node.parentNode; } return false;
+  function isSelectionFormatted(range, command, editor){
+    const tag = getTargetTagName(command);
+    if(!tag) return false;
+    const scopedEditor=getEditorFromRange(range, editor);
+    const textNodes=getSelectedTextNodes(range, scopedEditor).filter(node=>node.nodeValue.trim()!=='');
+    if(!textNodes.length) return false;
+    return textNodes.every(node=>!!findClosestAncestorTag(node, tag, scopedEditor));
   }
   function applyFormatToRange(range, command){
     const frag=range.extractContents(); let el; switch(command){ case 'bold': el=document.createElement('strong'); break; case 'italic': el=document.createElement('em'); break; case 'underline': el=document.createElement('u'); break; default: return; }
-    el.appendChild(frag); range.insertNode(el); range.selectNodeContents(el); const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    el.appendChild(frag);
+    replaceExtractedSelection(range, el);
   }
-  function removeFormatFromSelection(range, command){
-    const tag=getTargetTagName(command); if(!tag) return; let node=range.startContainer; if(node.nodeType===Node.TEXT_NODE) node=node.parentNode; let target=null; while(node && node.closest && node.closest('.rich-text-editor')){ if(node.tagName===tag){ target=node; break; } node=node.parentNode; }
-    if(!target) return; const parent=target.parentNode; const editor=target.closest('.rich-text-editor'); const frag=document.createDocumentFragment(); const children=Array.from(target.childNodes); children.forEach(c=>frag.appendChild(c)); parent.replaceChild(frag, target);
-    const sel=window.getSelection(); sel.removeAllRanges(); if(editor && children.length){ try { const nr=document.createRange(); const first=children[0]; const last=children[children.length-1]; if(first.nodeType===Node.TEXT_NODE) nr.setStart(first,0); else nr.setStartBefore(first); if(last.nodeType===Node.TEXT_NODE) nr.setEnd(last,last.textContent.length); else nr.setEndAfter(last); sel.addRange(nr); } catch { try { const nr=document.createRange(); nr.selectNodeContents(editor); nr.collapse(false); sel.addRange(nr); } catch {} } }
+  function removeFormatFromSelection(range, command, editor){
+    const tag=getTargetTagName(command);
+    const scopedEditor=getEditorFromRange(range, editor);
+    if(!tag || !scopedEditor || !isRangeInsideEditor(range, scopedEditor)) return;
+    if(removeFormatWithinSingleAncestor(range, tag, scopedEditor)){
+      normalizeInlineFormatting(scopedEditor);
+      return;
+    }
+    splitTextBoundaries(range);
+    splitTagAncestorAtBoundary(range, tag, scopedEditor, false);
+    splitTagAncestorAtBoundary(range, tag, scopedEditor, true);
+    const extracted=range.extractContents();
+    const cleaned=unwrapTagFromFragment(extracted, tag);
+    replaceExtractedSelection(range, cleaned);
+    normalizeInlineFormatting(scopedEditor);
   }
-  function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(isSelectionFormatted(range,command)){ removeFormatFromSelection(range,command); } else { applyFormatToRange(range,command); } }
+  function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(!isRangeInsideEditor(range, editor)) return; if(isSelectionFormatted(range,command,editor)){ removeFormatFromSelection(range,command,editor); } else { applyFormatToRange(range,command); } }
   function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); window.CustomLabels?.save(); } }
   function normalizeInlineFormatting(editor){
     if(!editor) return;
     // b -> strong, i -> em (semantic)
     editor.querySelectorAll('b').forEach(b=>{ const strong=document.createElement('strong'); while(b.firstChild) strong.appendChild(b.firstChild); b.parentNode.replaceChild(strong,b); });
     editor.querySelectorAll('i').forEach(i=>{ const em=document.createElement('em'); while(i.firstChild) em.appendChild(i.firstChild); i.parentNode.replaceChild(em,i); });
+    ['strong','em','u'].forEach(tagName=>{
+      editor.querySelectorAll(`${tagName} ${tagName}`).forEach(el=> unwrapElement(el));
+      editor.querySelectorAll(tagName).forEach(el=>{
+        const next=el.nextSibling;
+        if(next && next.nodeType===Node.ELEMENT_NODE && next.tagName===tagName.toUpperCase()){
+          while(next.firstChild) el.appendChild(next.firstChild);
+          next.remove();
+        }
+      });
+    });
   }
   function applyFormatToSelection(command, editor){
     if(!editor) return;
@@ -613,6 +866,11 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
 
   class ContextMenuManager {
   constructor(){ this.currentMenu=null; this.fontCache=null; this.fontCacheTime=0; this.fontCacheTTL=5*60*1000; this.fontLoadError=false; }
+    invalidateFontCache(){
+      this.fontCache=null;
+      this.fontCacheTime=0;
+      this.fontLoadError=false;
+    }
     close(menu){
       const targets = menu? [menu] : Array.from(document.querySelectorAll('.custom-label-context-menu'));
       targets.forEach(el=>{ if(el && el.parentNode){ el.style.opacity='0'; setTimeout(()=>{ try{ el.parentNode && el.parentNode.removeChild(el); }catch{} },150);} });
@@ -710,6 +968,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   }
 
   window.ContextMenuManager = new ContextMenuManager();
+  document.addEventListener('custom-label-fonts-updated', ()=>{ try { window.ContextMenuManager?.invalidateFontCache?.(); } catch{} });
   // 互換APIラッパ
   function createFontSizeMenu(x,y,editor,hasSelection){ return window.ContextMenuManager.show(x,y,editor,hasSelection); }
   function closeContextMenu(menu){ return window.ContextMenuManager.close(menu); }

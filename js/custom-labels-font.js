@@ -8,6 +8,9 @@
 
   // 依存（遅延評価）: CONSTANTS / StorageManager / debugLog などは boothcsv.js 側で定義
   function dlog(...a){ if(typeof debugLog === 'function') debugLog('font', ...a); }
+  function notifyFontChange(){
+    try { document.dispatchEvent(new CustomEvent('custom-label-fonts-updated')); } catch{}
+  }
 
   // ===================== フォント管理 =====================
   let fontManager = null;
@@ -49,6 +52,7 @@
         catch(e){ console.warn('FontFace 初期化失敗', name, e); }
       }
       await Promise.all(promises);
+      notifyFontChange();
       dlog('フォントロード完了', Object.keys(fonts));
     } catch(e){ console.error('フォントCSS生成エラー', e); }
   }
@@ -90,6 +94,7 @@
       await fontManager.saveFont(baseName, arrayBuffer, { type: file.type || 'font/ttf', originalName: file.name });
       await loadCustomFontsCSS();
       await updateFontList();
+      notifyFontChange();
       showSuccessMessage(`フォント "${baseName}" をアップロードしました`);
     } catch(e){ console.error('フォント処理エラー', e); alert('フォント処理中にエラー: '+ e.message); }
     finally { showFontUploadProgress(false); }
@@ -108,7 +113,7 @@
   }
 
   async function removeFontFromList(fontName){
-    try { if(!fontManager) await initializeFontManager(); if(!fontManager) return; const f= await fontManager.getFont(fontName); if(!f){ alert('フォントが見つかりません'); return; } if(!confirm(`フォント "${fontName}" を削除しますか？`)) return; await fontManager.deleteFont(fontName); await updateFontList(); await loadCustomFontsCSS(); showSuccessMessage(`フォント "${fontName}" を削除しました`); } catch(e){ console.error('削除失敗', e); alert('削除中にエラー'); }
+    try { if(!fontManager) await initializeFontManager(); if(!fontManager) return; const f= await fontManager.getFont(fontName); if(!f){ alert('フォントが見つかりません'); return; } if(!confirm(`フォント "${fontName}" を削除しますか？`)) return; await fontManager.deleteFont(fontName); await updateFontList(); await loadCustomFontsCSS(); notifyFontChange(); showSuccessMessage(`フォント "${fontName}" を削除しました`); } catch(e){ console.error('削除失敗', e); alert('削除中にエラー'); }
   }
 
   function showSuccessMessage(msg){
