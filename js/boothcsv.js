@@ -133,6 +133,87 @@ function escapeHTML(str) {
     .replace(/'/g, '&#39;');
 }
 
+function canUseExtensionUiFeatures() {
+  return getAppMode() === 'extension' && canUseExtensionBridge();
+}
+
+function revokeBlobUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('blob:')) return;
+  try { URL.revokeObjectURL(url); } catch {}
+}
+
+function revokeBlobImages(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('img[src^="blob:"]').forEach(img => revokeBlobUrl(img.src));
+}
+
+function sanitizeCustomLabelStyle(styleText) {
+  if (!styleText) return '';
+  const allowedProps = new Set([
+    'font-size',
+    'font-family',
+    'font-weight',
+    'font-style',
+    'text-decoration',
+    'line-height',
+    'letter-spacing',
+    'text-align'
+  ]);
+  const safeDecls = [];
+  String(styleText).split(';').forEach(part => {
+    const idx = part.indexOf(':');
+    if (idx <= 0) return;
+    const prop = part.slice(0, idx).trim().toLowerCase();
+    const value = part.slice(idx + 1).trim();
+    if (!allowedProps.has(prop) || !value) return;
+    if (/(expression|url\s*\(|javascript:|-moz-binding|behavior\s*:)/i.test(value)) return;
+    safeDecls.push(`${prop}: ${value}`);
+  });
+  return safeDecls.join('; ');
+}
+
+function sanitizeCustomLabelHTML(html) {
+  if (html == null || html === '') return '';
+  const allowedTags = new Set(['BR', 'B', 'STRONG', 'I', 'EM', 'U', 'SPAN', 'DIV', 'P']);
+  const dropTags = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'IMG', 'VIDEO', 'AUDIO', 'SVG', 'MATH']);
+  const template = document.createElement('template');
+  template.innerHTML = String(html);
+
+  const sanitizeNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.nodeValue || '');
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+
+    const tag = node.tagName.toUpperCase();
+    if (dropTags.has(tag)) {
+      return document.createDocumentFragment();
+    }
+
+    if (!allowedTags.has(tag)) {
+      const fragment = document.createDocumentFragment();
+      Array.from(node.childNodes).forEach(child => fragment.appendChild(sanitizeNode(child)));
+      return fragment;
+    }
+
+    const clean = document.createElement(tag.toLowerCase());
+    if (tag !== 'BR') {
+      const safeStyle = sanitizeCustomLabelStyle(node.getAttribute('style'));
+      if (safeStyle) clean.setAttribute('style', safeStyle);
+      Array.from(node.childNodes).forEach(child => clean.appendChild(sanitizeNode(child)));
+    }
+    return clean;
+  };
+
+  const container = document.createElement('div');
+  Array.from(template.content.childNodes).forEach(node => container.appendChild(sanitizeNode(node)));
+  return container.innerHTML;
+}
+
+window.sanitizeCustomLabelHTML = sanitizeCustomLabelHTML;
+
 // CSVの行データから注文番号を取得
 function getOrderNumberFromCSVRow(row){
   if (!row || !row[CONSTANTS.CSV.ORDER_NUMBER_COLUMN]) return '';
@@ -189,6 +270,7 @@ function setPreviewSource(source) {
 function updateExtensionUIVisibility() {
   const appMode = getAppMode();
   const isExtensionMode = appMode === 'extension';
+  const showExtensionControls = canUseExtensionUiFeatures();
   document.body.dataset.appMode = appMode;
   document.body.classList.toggle('is-extension-app', isExtensionMode);
   document.body.classList.toggle('is-web-app', appMode === 'web');
@@ -200,11 +282,11 @@ function updateExtensionUIVisibility() {
   const extensionLabelPrintTools = document.getElementById('extensionLabelPrintTools');
   const yamatoSection = document.getElementById('yamatoIssueSettingsSection');
 
-  if (csvDownloadWrapper) csvDownloadWrapper.hidden = isExtensionMode;
-  if (csvFileInputWrapper) csvFileInputWrapper.hidden = isExtensionMode;
-  if (extensionHeaderCsvControls) extensionHeaderCsvControls.hidden = !isExtensionMode;
-  if (extensionLabelPrintTools) extensionLabelPrintTools.hidden = !(isExtensionMode && labelEnabled);
-  if (yamatoSection) yamatoSection.hidden = !(isExtensionMode && labelEnabled);
+  if (csvDownloadWrapper) csvDownloadWrapper.hidden = showExtensionControls;
+  if (csvFileInputWrapper) csvFileInputWrapper.hidden = showExtensionControls;
+  if (extensionHeaderCsvControls) extensionHeaderCsvControls.hidden = !showExtensionControls;
+  if (extensionLabelPrintTools) extensionLabelPrintTools.hidden = !(showExtensionControls && labelEnabled);
+  if (yamatoSection) yamatoSection.hidden = !(showExtensionControls && labelEnabled);
 }
 
 function initializeFixedHeaderOffset() {
@@ -741,7 +823,10 @@ async function updateCustomLabelsPreview() {
 // 前回の処理結果をクリア
 function clearPreviousResults() {
   // 結果セクションだけを削除（サイドバー等の一般sectionは残す）
-  document.querySelectorAll('section.sheet').forEach(sec => sec.remove());
+  document.querySelectorAll('section.sheet').forEach(sec => {
+    revokeBlobImages(sec);
+    sec.remove();
+  });
   
   // 印刷枚数表示もクリア
   clearPrintCountDisplay();
@@ -1166,7 +1251,7 @@ async function processCSVResults(results, config) {
 async function processCustomLabelsOnly(config, isPreviewMode = false) {
   // 複数カスタムラベルの総面数を計算
   const totalCustomLabelCount = config.customLabels.reduce((sum, label) => sum + label.count, 0);
-  const labelskipNum = parseInt(settingsCache.labelskip, 10) || 0; // settingsCache 参照
+  const labelskipNum = parseInt(config?.labelskip ?? settingsCache.labelskip, 10) || 0;
   
   // 有効なカスタムラベルがあるかチェック
   const validLabels = config.customLabels.filter(label => label.text.trim() !== '');
@@ -1228,7 +1313,7 @@ async function processCustomLabelsOnly(config, isPreviewMode = false) {
     
     // このシートのラベルを生成
     if (labelarr.length > 0) {
-      await generateLabels(labelarr, { skipOnFirstSheet: labelskipNum });
+      await generateLabels(labelarr, { skipOnFirstSheet: currentSkip });
     }
     
     // 使い切ったラベルを削除
@@ -2229,7 +2314,7 @@ function cloneTemplate(id) {
 }
 // QRペーストプレースホルダを template から生成（プロトコルに応じて適切なテンプレートを選択）
 function buildQRPastePlaceholder() {
-  if (getAppMode() === 'extension') {
+  if (canUseExtensionUiFeatures()) {
     return cloneTemplate('qrFetchPlaceholderExtension');
   }
   const templateId = PROTOCOL_UTILS.canDragFromExternalSites() ? 'qrDropPlaceholderHttp' : 'qrDropPlaceholder';
@@ -2398,7 +2483,7 @@ function setupPasteZoneEvents(dropzone) {
 function createDropzone(div){ // 互換のため名称維持（内部はペースト専用）
   const divDrop = createDiv('dropzone');
   divDrop.appendChild(buildQRPastePlaceholder());
-  if (getAppMode() === 'extension') {
+  if (canUseExtensionUiFeatures()) {
     divDrop.classList.add('extension-qr-fetch-mode');
     setupExtensionQrFetchEvents(divDrop);
   } else {
@@ -2418,7 +2503,7 @@ async function createLabel(labelData=""){
     // base は <td class="qrlabel custom-mode"> ...
     const td = base.matches('td') ? base : base.querySelector('td.qrlabel');
     const contentWrap = td.querySelector('.custom-content');
-    contentWrap.innerHTML = labelData.content || '';
+    contentWrap.innerHTML = sanitizeCustomLabelHTML(labelData.content || '');
     if (labelData.fontSize) contentWrap.style.fontSize = labelData.fontSize;
     return td;
   }
@@ -2449,6 +2534,7 @@ async function createLabel(labelData=""){
         if (qr.qrimage instanceof ArrayBuffer) {
           const blob = new Blob([qr.qrimage], { type: qr.qrimageType || 'image/png' });
           elImage.src = URL.createObjectURL(blob);
+          elImage.dataset.objectUrl = elImage.src;
           elImage.addEventListener('error', () => console.error('QR画像Blob URL読み込み失敗'));
         } else if (typeof qr.qrimage === 'string') {
           // 互換: dataURL などの文字列
@@ -2589,12 +2675,14 @@ function updateLabelCellWithQR(orderNumber, qrData) {
   const yamatoDiv = td.querySelector('.yamato');
   if (!qrDiv || !yamatoDiv) return false;
 
+  revokeBlobImages(qrDiv);
   qrDiv.innerHTML = '';
   yamatoDiv.innerHTML = '';
 
   const image = document.createElement('img');
   const blob = new Blob([qrData.qrimage], { type: qrData.qrimageType || 'image/png' });
   image.src = URL.createObjectURL(blob);
+  image.dataset.objectUrl = image.src;
   qrDiv.appendChild(image);
   addP(yamatoDiv, qrData.receiptnum);
   addP(yamatoDiv, qrData.receiptpassword);
@@ -2699,6 +2787,7 @@ function addEventQrReset(elImage){
         }
         
         // QR画像を削除
+        revokeBlobUrl(elImage.dataset.objectUrl || elImage.src);
         elImage.remove();
         
         // ドロップゾーンを復元

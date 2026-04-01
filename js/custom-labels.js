@@ -151,7 +151,10 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     labelEl.setAttribute('for', checkbox.id);
     // editor 初期化
     editor.dataset.index = itemIndex;
-    if(ctx.text && ctx.text.trim()) editor.innerHTML = ctx.text;
+    if(ctx.text && ctx.text.trim()) {
+      const sanitize = window.sanitizeCustomLabelHTML || ((value) => String(value || ''));
+      editor.innerHTML = sanitize(ctx.text);
+    }
     if(ctx.fontSize){ editor.style.fontSize = ctx.fontSize.toString().includes('pt')? ctx.fontSize : ctx.fontSize + 'pt'; }
     // count
     countInput.value = ctx.count;
