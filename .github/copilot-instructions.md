@@ -2,6 +2,7 @@
 
 ## 日本語
 - 日本語で回答してください。
+- 今後のコメント類（PRタイトル/本文、レビューコメント、説明コメント、必要なコードコメント）は、ユーザーから別指定がない限り日本語で統一してください。
 
 ## Project Overview
 This is a **client-side web application** for processing BOOTH (Japanese marketplace) shipping CSV files and generating printable labels/order details. It's built as a pure JavaScript application without external dependencies, running entirely in the browser with no server required.
