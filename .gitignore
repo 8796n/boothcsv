@@ -41,7 +41,10 @@ logs/
 coverage/
 .nyc_output/
 
-tests/
+tests/*
+!tests/automated/
+tests/automated/*
+!tests/automated/label-sheet-layout.test.js
 backup/
 manifest.json
 docs/chrome-extension-dev-notes.md

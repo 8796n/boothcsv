@@ -2221,69 +2221,49 @@ async function generateLabels(labelarr, options = {}) {
     skipOnFirstSheet: 0,
     ...options
   };
-  if (!Array.isArray(labelarr) || labelarr.length === 0) return; // 何も生成しない
-  // 全てが空スキップ要素("" など falsy)のみなら生成しない（全注文印刷済みで skip 指定だけのケースで空シートが出るのを防止）
-  const hasMeaningful = labelarr.some(l => {
-    if (!l) return false; // 空文字や null
-    if (typeof l === 'string') return l.trim() !== '';
-    // オブジェクト（カスタムラベルなど）は有効とみなす
-    return true;
-  });
-  if (!hasMeaningful) return;
-  // シートをちょうど埋めるために不足分だけ空ラベルを追加
-  if (labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET) {
-    const remainder = labelarr.length % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET;
-    const toFill = CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET - remainder;
-    for (let i = 0; i < toFill; i++) {
-      labelarr.push("");
-    }
-  }
-  
+  const layoutBuilder = window.BoothCSVLabelLayout && typeof window.BoothCSVLabelLayout.buildSheetLayouts === 'function'
+    ? window.BoothCSVLabelLayout.buildSheetLayouts
+    : null;
+  const sheetLayouts = layoutBuilder
+    ? layoutBuilder(labelarr, {
+        skipOnFirstSheet: opts.skipOnFirstSheet,
+        totalLabelsPerSheet: CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET
+      })
+    : [];
+  if (!Array.isArray(sheetLayouts) || sheetLayouts.length === 0) return;
+
   const tL44 = document.querySelector('#L44');
-  let cL44 = document.importNode(tL44.content, true);
-  // 生成するラベルシートに識別クラスを付与
-  cL44.querySelector('section.sheet')?.classList.add('label-sheet');
-  let tableL44 = cL44.querySelector("table");
-  let tr = document.createElement("tr");
-  let i = 0; // 全体インデックス
-  let sheetIndex = 0;
-  let posInSheet = 0; // 0..43
-  // C: 生成開始時にカウンタ初期化（既存を上書き）
   if (typeof window.currentLabelSheetCount !== 'number') window.currentLabelSheetCount = 0;
-  
-  for (let label of labelarr) {
-    if (i > 0 && i % CONSTANTS.LABEL.TOTAL_LABELS_PER_SHEET == 0) {
-      tableL44.appendChild(tr);
-      tr = document.createElement("tr");
-  document.body.insertBefore(cL44, tL44);
-  window.currentLabelSheetCount++;
-      cL44 = document.importNode(tL44.content, true);
-      cL44.querySelector('section.sheet')?.classList.add('label-sheet');
-      tableL44 = cL44.querySelector("table");
-      tr = document.createElement("tr");
-      sheetIndex++;
-      posInSheet = 0;
-    } else if (i > 0 && i % CONSTANTS.LABEL.LABELS_PER_ROW == 0) {
-      tableL44.appendChild(tr);
-      tr = document.createElement("tr");
+
+  for (const sheetLayout of sheetLayouts) {
+    const cL44 = document.importNode(tL44.content, true);
+    cL44.querySelector('section.sheet')?.classList.add('label-sheet');
+    const tableL44 = cL44.querySelector('table');
+    let tr = document.createElement('tr');
+
+    for (let i = 0; i < sheetLayout.items.length; i++) {
+      if (i > 0 && i % CONSTANTS.LABEL.LABELS_PER_ROW === 0) {
+        tableL44.appendChild(tr);
+        tr = document.createElement('tr');
+      }
+
+      const item = sheetLayout.items[i];
+      const td = await createLabel(item.label);
+      if (item.isSkipFace) {
+        td.classList.add('skip-face');
+        td.setAttribute('data-label-index', String(item.skipFaceNumber));
+        const indicator = document.createElement('div');
+        indicator.className = 'skip-indicator';
+        indicator.textContent = String(item.skipFaceNumber);
+        td.appendChild(indicator);
+      }
+      tr.appendChild(td);
     }
-    const td = await createLabel(label);
-    // スキップ面の視覚表示（初回シートの先頭skip数のみ）
-    if (sheetIndex === 0 && posInSheet < (opts.skipOnFirstSheet || 0)) {
-      td.classList.add('skip-face');
-      td.setAttribute('data-label-index', String(posInSheet + 1));
-      const indicator = document.createElement('div');
-      indicator.className = 'skip-indicator';
-      indicator.textContent = String(posInSheet + 1);
-      td.appendChild(indicator);
-    }
-    tr.appendChild(td);
-    posInSheet++;
-    i++;
+
+    tableL44.appendChild(tr);
+    document.body.insertBefore(cL44, tL44);
+    window.currentLabelSheetCount++;
   }
-  tableL44.appendChild(tr);
-  document.body.insertBefore(cL44, tL44);
-  window.currentLabelSheetCount++;
 }
 
 // div要素にpタグを追加するヘルパー関数
