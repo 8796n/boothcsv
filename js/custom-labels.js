@@ -3,6 +3,13 @@
 // CustomLabelCalculator もここに統合
 class CustomLabelCalculator {
   static calculateMultiSheetDistribution(totalLabels, skipCount){
+    if (window.BoothCSVLabelLayout && typeof window.BoothCSVLabelLayout.calculateMultiSheetDistribution === 'function') {
+      return window.BoothCSVLabelLayout.calculateMultiSheetDistribution(
+        totalLabels,
+        skipCount,
+        CONSTANTS?.LABEL?.TOTAL_LABELS_PER_SHEET || 44
+      );
+    }
     const sheetsInfo=[]; let remainingLabels=totalLabels; let currentSkip=skipCount; let sheetNumber=1;
     while(remainingLabels>0){
       const availableInSheet = (CONSTANTS?.LABEL?.TOTAL_LABELS_PER_SHEET||44) - currentSkip;

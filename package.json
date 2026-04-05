@@ -1,0 +1,7 @@
+{
+  "name": "boothcsv",
+  "private": true,
+  "scripts": {
+    "test": "node --test .\\tests\\automated\\label-sheet-layout.test.js"
+  }
+}
