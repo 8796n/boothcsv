@@ -1,11 +1,12 @@
 (function() {
   'use strict';
 
-  const TRIGGER_PATTERNS = [
-    /発送コードを発行する/,
-    /発送コード/,
-    /QRコード/,
-    /再発行/
+  const HANDLING_CODE_VALUES = [
+    'precision_equipment',
+    'fragile',
+    'do_not_stack',
+    'do_not_turn_over',
+    'raw_food'
   ];
 
   const DEFAULT_ISSUE_SETTINGS = {
@@ -29,22 +30,15 @@
     return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
   }
 
-  function findTriggerButton() {
-    const candidates = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+  // 「発送コードを発行する」ボタンのみを対象にする。
+  // 「発送コードを再発行する」は既発行コードを無効化するため、自動では絶対にクリックしない。
+  function findIssueButton() {
+    const scope = getOrderDetailMount() || document;
+    const candidates = Array.from(scope.querySelectorAll('button, a, [role="button"]'));
     return candidates.find(function(element) {
-      const text = (element.innerText || element.textContent || '').trim();
-      return isElementVisible(element) && TRIGGER_PATTERNS.some(function(pattern) {
-        return pattern.test(text);
-      });
-    }) || null;
-  }
-
-  function findReissueToggle() {
-    const candidates = Array.from(document.querySelectorAll('button, a, summary, [role="button"]'));
-    return candidates.find(function(element) {
-      const text = (element.innerText || element.textContent || '').trim();
-      if (!text) return false;
-      return /サイズを変更.*再発行|発送コードを再発行|再発行/.test(text);
+      const text = normalizeInlineText(element.innerText || element.textContent || '');
+      if (!text || /再発行/.test(text)) return false;
+      return isElementVisible(element) && /発送コードを発行する/.test(text);
     }) || null;
   }
 
@@ -82,17 +76,113 @@
     };
   }
 
-  function getIssueForm() {
-    let form = document.querySelector('form[action*="/register_yamato_invoice"]');
-    if (form) return form;
+  function waitMs(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
 
-    const toggle = findReissueToggle();
-    if (toggle) {
-      toggle.click();
-      form = document.querySelector('form[action*="/register_yamato_invoice"]');
+  // 2026-08時点のBOOTH注文詳細はReact製で <form> 要素が存在しない。
+  // サイズ/発送場所は react-aria の hidden <select>、品名はテキスト入力、
+  // 荷扱いは value が HANDLING_CODE_VALUES のチェックボックスとして描画される。
+  function findReactIssueControls() {
+    const scope = getOrderDetailMount() || document;
+    const selects = Array.from(scope.querySelectorAll('select'));
+    const sizeSelect = selects.find(function(select) {
+      return Array.from(select.options).some(function(option) { return option.value === '16'; })
+        && select.options.length >= 5;
+    }) || null;
+    const placeSelect = selects.find(function(select) {
+      if (select === sizeSelect || select.options.length === 0) return false;
+      return Array.from(select.options).every(function(option) {
+        return option.value === '0' || option.value === '1';
+      });
+    }) || null;
+
+    const checkboxes = Array.from(scope.querySelectorAll('input[type="checkbox"]'));
+    const handlingCheckboxes = checkboxes.filter(function(checkbox) {
+      return HANDLING_CODE_VALUES.includes(checkbox.value);
+    });
+    const includeOrderCheckbox = checkboxes.find(function(checkbox) {
+      const label = checkbox.closest('label');
+      const container = label || checkbox.parentElement;
+      const text = container ? normalizeInlineText(container.innerText || container.textContent || '') : '';
+      return /品名に注文番号を記載する/.test(text);
+    }) || null;
+
+    // 品名入力: サイズselectと同じセクション内のテキスト入力を親を遡って探す
+    let descriptionInput = null;
+    let cursor = sizeSelect ? sizeSelect.parentElement : null;
+    while (cursor && cursor !== document.body && !descriptionInput) {
+      descriptionInput = cursor.querySelector('input[type="text"]');
+      cursor = cursor.parentElement;
     }
 
-    return form;
+    return {
+      sizeSelect,
+      placeSelect,
+      descriptionInput,
+      includeOrderCheckbox,
+      handlingCheckboxes
+    };
+  }
+
+  function setNativeSelectValue(select, value) {
+    if (!select) return false;
+    const stringValue = String(value);
+    const hasOption = Array.from(select.options).some(function(option) {
+      return option.value === stringValue;
+    });
+    if (!hasOption) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value');
+    if (descriptor && typeof descriptor.set === 'function') {
+      descriptor.set.call(select, stringValue);
+    } else {
+      select.value = stringValue;
+    }
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function setCheckboxChecked(checkbox, desired) {
+    if (!checkbox) return false;
+    if (checkbox.checked !== !!desired) {
+      checkbox.click();
+    }
+    return checkbox.checked === !!desired;
+  }
+
+  // React UI へ発行設定を反映する。核心のコントロールが見つからない場合は null を返し、
+  // 呼び出し側は発行を中断する（設定が反映されないまま発行しないため）。
+  async function applyIssueSettingsToReactUi(settings) {
+    const controls = findReactIssueControls();
+    if (!controls.sizeSelect || !controls.placeSelect || !controls.descriptionInput) {
+      return null;
+    }
+
+    const applied = {};
+    applied.size = setNativeSelectValue(controls.sizeSelect, settings.packageSizeId);
+    await waitMs(120);
+    applied.place = setNativeSelectValue(controls.placeSelect, settings.codeType);
+    await waitMs(120);
+
+    setFieldValue(controls.descriptionInput, settings.description || '');
+    await waitMs(120);
+    applied.description = controls.descriptionInput.value === (settings.description || '');
+
+    applied.includeOrderNumber = setCheckboxChecked(controls.includeOrderCheckbox, settings.includeOrderNumber);
+
+    // BOOTH側の上限は2つまで
+    const desiredHandling = settings.handlingCodes.slice(0, 2);
+    applied.handling = controls.handlingCheckboxes.every(function(checkbox) {
+      return setCheckboxChecked(checkbox, desiredHandling.includes(checkbox.value));
+    });
+    await waitMs(200);
+
+    return {
+      applied,
+      summary: `size=${controls.sizeSelect.value}, place=${controls.placeSelect.value}, description=${controls.descriptionInput.value}, includeOrderNumber=${controls.includeOrderCheckbox ? controls.includeOrderCheckbox.checked : 'n/a'}, handling=${controls.handlingCheckboxes.filter(function(c) { return c.checked; }).map(function(c) { return c.value; }).join('+') || 'none'}`
+    };
   }
 
   function isShippedOrderPage() {
@@ -456,7 +546,7 @@
   function findQrImageUrlFromMarkup(scopeElement) {
     const scopes = [scopeElement, document.documentElement].filter(Boolean);
     const patterns = [
-      /https:\/\/s2\.booth\.pm\/yamato_invoices\/[^"'\s>]+\.png/i,
+      /https:\/\/s\d+\.booth\.pm\/yamato_invoices\/[^"'\s>]+\.png/i,
       /https:\/\/[^"'\s>]*booth\.pm\/yamato_invoices\/[^"'\s>]+\.png/i,
       /\/yamato_invoices\/[^"'\s>]+\.png/i
     ];
@@ -883,7 +973,7 @@
   }
 
   function submitIssueForm(form) {
-    const submitButton = form.querySelector('button[type="submit"], input[type="submit"]') || findTriggerButton();
+    const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
     if (submitButton) {
       submitButton.click();
       return;
@@ -966,6 +1056,9 @@
   }
 
   async function collectOrderQr(rawSettings) {
+    // React描画完了前に判定すると、既発行QRを見落として発行フローへ誤って落ちる
+    await waitForOrderDetailContent(12000);
+
     const existingQr = await getStructuredQrCandidate();
     if (existingQr) {
       return {
@@ -992,7 +1085,7 @@
     }
 
     if (hasIssuedQrMetadata()) {
-      const delayedExistingQr = await waitForExistingQr(3000);
+      const delayedExistingQr = await waitForExistingQr(8000);
       if (delayedExistingQr) {
         return {
           ok: true,
@@ -1019,20 +1112,38 @@
       };
     }
 
-    const issueForm = getIssueForm();
-    if (issueForm) {
-      applyIssueSettings(issueForm, rawSettings);
-      submitIssueForm(issueForm);
-    } else {
-      const trigger = findTriggerButton();
-      if (!trigger) {
-        return { ok: false, error: '発送コードを発行するボタンが見つかりません' };
-      }
+    const settings = getNormalizedIssueSettings(rawSettings);
+    const issueButton = findIssueButton();
+    const legacyForm = document.querySelector('form[action*="/register_yamato_invoice"]');
 
-      trigger.click();
+    if (issueButton) {
+      const appliedSettings = await applyIssueSettingsToReactUi(settings);
+      if (!appliedSettings) {
+        return {
+          ok: false,
+          error: '発行設定の入力欄が見つからないため中断しました（BOOTH側のUI変更の可能性があります）'
+        };
+      }
+      if (!appliedSettings.applied.size || !appliedSettings.applied.place) {
+        return {
+          ok: false,
+          error: `サイズ・発送場所を反映できないため発行を中断しました | ${appliedSettings.summary}`
+        };
+      }
+      // 設定反映中のReact再描画でボタンノードが差し替わることがあるため、クリック直前に再取得する
+      const freshIssueButton = findIssueButton() || issueButton;
+      freshIssueButton.click();
+    } else if (legacyForm) {
+      applyIssueSettings(legacyForm, settings);
+      submitIssueForm(legacyForm);
+    } else {
+      return {
+        ok: false,
+        error: '発送コードを発行するボタンが見つかりません（発行済みの場合、再発行は自動では行いません）'
+      };
     }
 
-    const candidate = await waitForQrCandidate(15000);
+    const candidate = await waitForQrCandidate(20000);
     if (!candidate) {
       return { ok: false, error: 'QRコード画像またはcanvasを検出できませんでした' };
     }
