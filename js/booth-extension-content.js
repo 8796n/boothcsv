@@ -1124,7 +1124,15 @@
           error: '発行設定の入力欄が見つからないため中断しました（BOOTH側のUI変更の可能性があります）'
         };
       }
-      issueButton.click();
+      if (!appliedSettings.applied.size || !appliedSettings.applied.place) {
+        return {
+          ok: false,
+          error: `サイズ・発送場所を反映できないため発行を中断しました | ${appliedSettings.summary}`
+        };
+      }
+      // 設定反映中のReact再描画でボタンノードが差し替わることがあるため、クリック直前に再取得する
+      const freshIssueButton = findIssueButton() || issueButton;
+      freshIssueButton.click();
     } else if (legacyForm) {
       applyIssueSettings(legacyForm, settings);
       submitIssueForm(legacyForm);
