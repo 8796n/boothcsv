@@ -1055,26 +1055,32 @@
     return null;
   }
 
+  // canvas経路でdataUrl化に失敗しても、imageUrlがあればbackground側がfetchして救える。
+  // 3つの返却経路で同じ形にすること（imageUrlを落とすとデータ化失敗になる）。
+  function buildQrResponse(candidate, alreadyIssued) {
+    return {
+      ok: true,
+      dataUrl: candidate.dataUrl,
+      imageUrl: candidate.imageUrl || '',
+      diagnostics: candidate.diagnostics,
+      diagnosticsSummary: summarizeDiagnostics(candidate.diagnostics),
+      sourceType: candidate.type,
+      receiptnum: candidate.receiptnum || null,
+      receiptpassword: candidate.receiptpassword || null,
+      orderNumber: candidate.orderNumber || null,
+      expiresAt: candidate.expiresAt || null,
+      packageSizeLabel: candidate.packageSizeLabel || null,
+      alreadyIssued: !!alreadyIssued
+    };
+  }
+
   async function collectOrderQr(rawSettings) {
     // React描画完了前に判定すると、既発行QRを見落として発行フローへ誤って落ちる
     await waitForOrderDetailContent(12000);
 
     const existingQr = await getStructuredQrCandidate();
     if (existingQr) {
-      return {
-        ok: true,
-        dataUrl: existingQr.dataUrl,
-        imageUrl: existingQr.imageUrl,
-        diagnostics: existingQr.diagnostics,
-        diagnosticsSummary: summarizeDiagnostics(existingQr.diagnostics),
-        sourceType: existingQr.type,
-        receiptnum: existingQr.receiptnum,
-        receiptpassword: existingQr.receiptpassword,
-        orderNumber: existingQr.orderNumber,
-        expiresAt: existingQr.expiresAt,
-        packageSizeLabel: existingQr.packageSizeLabel,
-        alreadyIssued: true
-      };
+      return buildQrResponse(existingQr, true);
     }
 
     if (isShippedOrderPage()) {
@@ -1087,20 +1093,7 @@
     if (hasIssuedQrMetadata()) {
       const delayedExistingQr = await waitForExistingQr(8000);
       if (delayedExistingQr) {
-        return {
-          ok: true,
-          dataUrl: delayedExistingQr.dataUrl,
-          imageUrl: delayedExistingQr.imageUrl,
-          diagnostics: delayedExistingQr.diagnostics,
-          diagnosticsSummary: summarizeDiagnostics(delayedExistingQr.diagnostics),
-          sourceType: delayedExistingQr.type,
-          receiptnum: delayedExistingQr.receiptnum,
-          receiptpassword: delayedExistingQr.receiptpassword,
-          orderNumber: delayedExistingQr.orderNumber,
-          expiresAt: delayedExistingQr.expiresAt,
-          packageSizeLabel: delayedExistingQr.packageSizeLabel,
-          alreadyIssued: true
-        };
+        return buildQrResponse(delayedExistingQr, true);
       }
 
       const diagnostics = getCurrentQrDiagnostics();
@@ -1148,17 +1141,7 @@
       return { ok: false, error: 'QRコード画像またはcanvasを検出できませんでした' };
     }
 
-    return {
-      ok: true,
-      dataUrl: candidate.dataUrl,
-      sourceType: candidate.type,
-      receiptnum: candidate.receiptnum || null,
-      receiptpassword: candidate.receiptpassword || null,
-      orderNumber: candidate.orderNumber || null,
-      expiresAt: candidate.expiresAt || null,
-      packageSizeLabel: candidate.packageSizeLabel || null,
-      alreadyIssued: false
-    };
+    return buildQrResponse(candidate, false);
   }
 
   async function submitOrderShipmentNotification(messageTemplate) {
