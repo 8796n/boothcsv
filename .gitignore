@@ -45,6 +45,7 @@ tests/*
 !tests/automated/
 tests/automated/*
 !tests/automated/label-sheet-layout.test.js
+!tests/automated/label-rich-text.test.js
 backup/
 manifest.json
 docs/chrome-extension-dev-notes.md

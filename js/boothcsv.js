@@ -3688,55 +3688,6 @@ document.addEventListener('keydown', e => {
   }
 }, true);
 
-// applyStyleToSelection などのスタイル編集関数は custom-labels.js (CustomLabelStyle) に移動
-
-// updateSpanStyle は移動
-
-// 部分選択時のspan分割処理
-// handlePartialSpanSelection は移動
-
-// 複数span要素選択時の統合処理（改行保持版）
-// handleMultiSpanSelection は移動
-
-// 新しいspan要素を作成するヘルパー関数
-// createNewSpanForSelection は移動
-
-// BRやゼロ幅スペースを保持しつつ、選択範囲内のテキストノードにだけスタイルを適用
-// applyStylePreservingBreaks は移動
-
-// フォントファミリーを選択範囲に適用（統合された関数を使用）
-// applyFontFamilyToSelection は移動
-
-// 選択範囲解析（簡略再定義）
-// analyzeSelectionRange は移動
-
-// デフォルトフォントに戻す専用関数
-// applyDefaultFontToSelection は移動
-
-// 空のspan要素やネストしたspan要素を掃除（改良版）
-// cleanupEmptySpans は移動（簡略版 custom-labels.js 内）
-
-// CSSスタイル文字列をMapに変換するヘルパー関数
-// parseStyles は移動
-
-// フォントサイズを選択範囲に適用（統合された関数を使用）
-// applyFontSizeToSelection は移動
-
-// span要素のスタイルを統合するヘルパー関数
-// mergeSpanStyles は移動
-
-// スタイル文字列を正規化するヘルパー関数
-// normalizeStyle は移動
-
-// スタイル文字列をMapに変換するヘルパー関数
-// parseStyleString は移動
-
-// 指定した要素配下の全てのspanから、指定スタイルプロパティを取り除く
-// removeStyleFromDescendants は移動
-
-// フォントサイズを選択範囲に適用（統合された関数を使用）
-// applyFontSizeToSelection は移動（重複）
-
 // ===========================================
 // IndexedDBフォント機能の初期化とヘルパー関数
 // ===========================================

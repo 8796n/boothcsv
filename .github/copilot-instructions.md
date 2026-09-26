@@ -23,6 +23,7 @@
 - `js/order-repository.js` - 注文データのキャッシュと DB 同期を担う `OrderRepository`。
 - `js/processed-orders-panel.js` - 処理済み注文一覧の描画、ソート、フィルタ、複数選択、発送通知導線。
 - `js/custom-labels.js` - カスタムラベル編集 UI、保存、集計、複数面計算。
+- `js/label-rich-text.js` - カスタムラベルの書式モデル（文字＋書式のラン配列）。書式操作のたびにエディタを決まった形の HTML に組み直す。
 - `js/custom-labels-font.js` - カスタムフォント管理。
 - `js/docs-capture.js` - ドキュメント用スクリーンショット撮影の補助。
 
@@ -83,6 +84,8 @@ settingsCache.labelskip = newValue;
 ### カスタムラベルの安全性
 - リッチテキストを扱うときは、既存の `sanitizeCustomLabelHTML()` / `sanitizeCustomLabelStyle()` の方針に合わせる。
 - カスタムラベルは内部モデルと差分保存を前提にしているので、DOM を直接いじるだけの実装を増やさない。
+- 太字・フォントなどの書式操作は `label-rich-text.js` の `updateRange()` / `toggleRange()` を通す。Range の切り貼りや span の結合で直接 DOM を整形しない。
+- エディタの内容を変えたら `input` イベントを発火させ、モデル更新・保存・プレビュー予約を入力時と同じ経路で行う。
 
 ### 画像・Blob URL
 - Blob URL を作る処理では、既存の `revokeBlobUrl()` / `revokeBlobImages()` の流れを崩さない。
@@ -116,7 +119,7 @@ settingsCache.labelskip = newValue;
 - IndexedDB の確認はブラウザ DevTools の Application タブを使う。
 
 ## テスト方針
-- 現在、このリポジトリに自動テスト基盤はない前提で進める。
+- DOM に依存しないロジック（ラベル配置、書式ラン）は `npm test`（`node --test`）で確認できる。それ以外は手動確認。
 - 変更時は、対象機能に応じて手動で確認手順を組み立てる。
 - とくに以下は壊しやすいので影響範囲に含める。
   - CSV 読み込み
