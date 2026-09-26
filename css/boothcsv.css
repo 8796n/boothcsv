@@ -282,6 +282,25 @@ table.label44 td {
     vertical-align: middle;
     border: solid 1px;
 }
+/* カスタムラベル本文: 空白・行間・折り返しをエディタ（sidebar.css の .rich-text-editor）に揃える。
+   anywhere は長い英数字でセル幅（=シート全体の列幅）が広がらないようにするため */
+.custom-content {
+    white-space: pre-wrap;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+/* 行が多くてもセルの高さを伸ばさず、ラベル寸法で切る。
+   収まる場合は td の vertical-align で上下中央、はみ出す場合はエディタと同じく上から表示される */
+.custom-wrapper {
+    max-height: 25.3mm;
+    overflow: hidden;
+}
+/* 上の * { font-family } が <strong> などに直接効くと、外側の span のフォントが継承されない。
+   ラベル本文内は親から継承させる（label-rich-text.js の書式モデルの前提） */
+.rich-text-editor *,
+.custom-content * {
+    font-family: inherit;
+}
 .ordernum {
     position: absolute;
     font-size: 10pt;

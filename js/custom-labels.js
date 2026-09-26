@@ -166,8 +166,8 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     // count
     countInput.value = ctx.count;
     countInput.dataset.index = itemIndex;
-    // remove
-    removeBtn.onclick = ()=> removeItem(itemIndex);
+    // remove（削除後の reindex で番号が変わるため、押下時の data-index を使う）
+    removeBtn.onclick = ()=> removeItem(parseInt(ctx.itemDiv.dataset.index,10));
 
     return { itemIndex, checkbox, editor, countInput, removeBtn };
   }
@@ -196,10 +196,10 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   function wireLabelItemEvents(container, itemIndex){
     // checkbox change
     const enabledCb = container.querySelector(`.custom-label-enabled[data-index="${itemIndex}"]`);
-  enabledCb?.addEventListener('change', async ()=>{ __updateModel(itemIndex,{ enabled: !!enabledCb.checked }); scheduleSave(); await updateSummary(); await autoProcessCSV?.(); });
+  enabledCb?.addEventListener('change', async ()=>{ __updateModel(parseInt(enabledCb.dataset.index,10),{ enabled: !!enabledCb.checked }); scheduleSave(); await updateSummary(); await autoProcessCSV?.(); });
     // count input
     const countEl = container.querySelector(`input[type="number"][data-index="${itemIndex}"]`);
-  countEl?.addEventListener('input', async ()=>{ const val=parseInt(countEl.value||'1',10)||1; __updateModel(itemIndex,{ count: val }); scheduleSave(); updateButtonStates(); await updateSummary(); await autoProcessCSV?.(); });
+  countEl?.addEventListener('input', async ()=>{ const val=parseInt(countEl.value||'1',10)||1; __updateModel(parseInt(countEl.dataset.index,10),{ count: val }); scheduleSave(); updateButtonStates(); await updateSummary(); await autoProcessCSV?.(); });
   }
 
   function registerEditorPlugins(editorElement){
@@ -246,7 +246,13 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
   function reindex(){
     const container = getContainer(); if(!container) return;
     const items = container.querySelectorAll('.custom-label-item');
-    items.forEach((item,i)=>{ item.dataset.index=i; const del = item.querySelector('.btn-danger'); if(del) del.setAttribute('onclick', `removeCustomLabelItem(${i})`); });
+    items.forEach((item,i)=>{
+      item.dataset.index=i;
+      // エディタ・チェックボックス・面数入力の data-index もモデルの添字なので揃える
+      item.querySelectorAll('[data-index]').forEach(el=>{ el.dataset.index=i; });
+      const cb=item.querySelector('.custom-label-enabled');
+      if(cb){ cb.id=`customLabel_${i}_enabled`; item.querySelector('.custom-label-item-title')?.setAttribute('for', cb.id); }
+    });
     // DOM順にモデルも並び替え（splice削除後は DOM と整合している前提）
     if(items.length !== __model.length){ __rebuildModelFromDom(); }
   }
@@ -398,126 +404,11 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
 })();
 
 // =============================
-// スタイル適用ロジック（分離）
+// 書式適用ロジック（ランモデルは label-rich-text.js）
 // =============================
 (function(){
   const log = (...a)=>{ if(typeof debugLog==='function') debugLog('[labelCore]', ...a); };
-
-  // =============================
-  // Phase1 抽出: StyleHelper (span スタイル/クリーンアップ共通化)
-  // =============================
-  class StyleHelper {
-    static parseStyle(styleStr){
-      const map=new Map();
-      if(!styleStr) return map;
-      styleStr.split(';').forEach(rule=>{
-        const [p,v]=rule.split(':').map(s=>s&&s.trim()).filter(Boolean);
-        if(p&&v) map.set(p.toLowerCase(), v);
-      });
-      return map;
-    }
-    static mapToStyle(map){ return map.size? Array.from(map.entries()).map(([k,v])=>`${k}: ${v}`).join('; '): ''; }
-    static updateSpanStyle(span, prop, val, isDefault){
-      if(!span) return;
-      const map=this.parseStyle(span.getAttribute('style')||'');
-      if(isDefault){ map.delete(prop); } else { map.set(prop, val); }
-      const styleStr=this.mapToStyle(map);
-      if(styleStr) span.setAttribute('style', styleStr); else span.removeAttribute('style');
-    }
-    static mergeAdjacentSpans(editor){
-      if(!editor) return;
-      Array.from(editor.querySelectorAll('span[style]')).forEach(sp=>{
-        const next=sp.nextSibling;
-        if(next && next.nodeType===Node.ELEMENT_NODE && next.tagName==='SPAN' && next.getAttribute('style')===sp.getAttribute('style')){
-          // textContent 連結: ZWSP 保護
-          const nextText=next.textContent;
-          if(nextText && !/\u200B$/.test(sp.textContent)) sp.textContent += nextText; else sp.textContent += nextText;
-          next.remove();
-        }
-      });
-    }
-    static mergeNestedSpans(editor){
-      if(!editor) return false;
-      let changed=false;
-      Array.from(editor.querySelectorAll('span[style]')).forEach(parentSpan=>{
-        if(parentSpan.childElementCount!==1) return;
-        const child=parentSpan.firstElementChild;
-        if(!child || child.tagName!=='SPAN') return;
-        const textNodes=Array.from(parentSpan.childNodes).filter(n=>n.nodeType===Node.TEXT_NODE && (n.nodeValue||'').trim()!=='');
-        if(textNodes.length) return;
-        const parentMap=this.parseStyle(parentSpan.getAttribute('style')||'');
-        const childMap=this.parseStyle(child.getAttribute('style')||'');
-        const merged=new Map([...parentMap.entries(), ...childMap.entries()]);
-        const mergedStyle=this.mapToStyle(merged);
-        if(mergedStyle) child.setAttribute('style', mergedStyle); else child.removeAttribute('style');
-        parentSpan.parentNode?.insertBefore(child, parentSpan);
-        parentSpan.remove();
-        changed=true;
-      });
-      return changed;
-    }
-    static cleanupSpans(editor){
-      if(!editor) return;
-      let changed=true, loops=0;
-      while(changed && loops<5){
-        changed=false; loops++;
-        editor.querySelectorAll('span').forEach(span=>{
-          const style=(span.getAttribute('style')||'').trim();
-            if(!style){
-              if(span.childElementCount===0){
-                const parent=span.parentNode; if(!parent) return;
-                while(span.firstChild) parent.insertBefore(span.firstChild, span);
-                parent.removeChild(span); changed=true;
-              }
-            }
-        });
-        if(this.mergeNestedSpans(editor)) changed=true;
-        this.mergeAdjacentSpans(editor);
-      }
-    }
-  }
-  window.StyleHelper = window.StyleHelper || StyleHelper; // デバッグ / 将来利用用
-
-  function parseStyleString(styleString){
-  // Phase1: StyleHelper へ委譲
-  return StyleHelper.parseStyle(styleString);
-  }
-
-  function updateSpanStyle(span, prop, val, isDefault){
-  // Phase1: StyleHelper へ委譲
-  StyleHelper.updateSpanStyle(span, prop, val, isDefault);
-  }
-
-  function removeStyleFromDescendants(rootEl, prop){
-    if(!rootEl) return; try {
-      rootEl.querySelectorAll('span[style]')?.forEach(s=>{
-        const map=parseStyleString(s.getAttribute('style')||''); if(map.has(prop)){ map.delete(prop); const ns=Array.from(map.entries()).map(([k,v])=>`${k}: ${v}`).join('; '); if(ns) s.setAttribute('style', ns); else s.removeAttribute('style'); }
-      });
-    } catch(e){ log('removeStyleFromDescendants error', e); }
-  }
-
-  function analyzeSelectionRange(range){
-    const ca = range.commonAncestorContainer;
-    let targetSpan=null,isCompleteSpan=false,isPartialSpan=false,isMultiSpan=false,multiSpans=[];
-    if(ca.nodeType===Node.TEXT_NODE){ const p=ca.parentElement; if(p&&p.tagName==='SPAN'){ const sel=range.toString(); if(sel===p.textContent){ targetSpan=p; isCompleteSpan=true; } else { targetSpan=p; isPartialSpan=true; } } }
-    else if(ca.nodeType===Node.ELEMENT_NODE && ca.tagName==='SPAN'){ targetSpan=ca; isCompleteSpan=true; }
-    else { const root=(ca.nodeType===Node.ELEMENT_NODE? ca: ca.parentElement); if(root){ const sel=range.toString(); const spans=Array.from(root.querySelectorAll('span')); const hit=spans.filter(s=>range.intersectsNode(s) && sel.includes(s.textContent)); if(hit.length>1){ isMultiSpan=true; multiSpans=hit; } } }
-    return { targetSpan,isCompleteSpan,isPartialSpan,isMultiSpan,multiSpans, commonAncestor: ca };
-  }
-
-  function unwrapElement(el){
-    if(!el?.parentNode) return;
-    const parent=el.parentNode;
-    while(el.firstChild) parent.insertBefore(el.firstChild, el);
-    parent.removeChild(el);
-  }
-
-  function getEditorFromRange(range, editor){
-    if(editor) return editor;
-    const base = range?.commonAncestorContainer;
-    const element = base?.nodeType===Node.ELEMENT_NODE ? base : base?.parentElement;
-    return element?.closest?.('.rich-text-editor') || null;
-  }
+  const FORMAT_COMMANDS = ['bold','italic','underline'];
 
   function isRangeInsideEditor(range, editor){
     if(!range || !editor) return false;
@@ -530,411 +421,44 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     });
   }
 
-  function replaceExtractedSelection(range, content){
+  // 入力と同じ経路でモデル更新・保存・プレビュー予約を行う
+  function notifyEdited(editor){ editor.dispatchEvent(new Event('input', { bubbles:true })); }
+
+  function editSelection(editor, update){
     const sel=window.getSelection();
-    const fragment=document.createDocumentFragment();
-    const startMarker=document.createComment('sel-start');
-    const endMarker=document.createComment('sel-end');
-    fragment.appendChild(startMarker);
-    if(content){
-      if(content.nodeType===Node.DOCUMENT_FRAGMENT_NODE){ fragment.appendChild(content); }
-      else { fragment.appendChild(content); }
-    }
-    fragment.appendChild(endMarker);
-    range.insertNode(fragment);
-    const nextRange=document.createRange();
-    nextRange.setStartAfter(startMarker);
-    nextRange.setEndBefore(endMarker);
-    startMarker.parentNode?.removeChild(startMarker);
-    endMarker.parentNode?.removeChild(endMarker);
-    sel?.removeAllRanges();
-    sel?.addRange(nextRange);
-    return nextRange;
-  }
-
-  function fragmentToContainer(fragment){
-    const container=document.createElement('div');
-    container.appendChild(fragment);
-    return container;
-  }
-
-  function containerToFragment(container){
-    const fragment=document.createDocumentFragment();
-    while(container.firstChild) fragment.appendChild(container.firstChild);
-    return fragment;
-  }
-
-  function stripStylePropertyFromFragment(fragment, prop){
-    const container=fragmentToContainer(fragment);
-    container.querySelectorAll('[style]').forEach(el=>{
-      const tagName=el.tagName;
-      if(tagName!=='SPAN' && tagName!=='STRONG' && tagName!=='EM' && tagName!=='U') return;
-      const map=parseStyleString(el.getAttribute('style')||'');
-      map.delete(prop);
-      if(prop==='font-size'){
-        map.delete('line-height');
-      }
-      const styleStr=StyleHelper.mapToStyle(map);
-      if(styleStr) el.setAttribute('style', styleStr); else el.removeAttribute('style');
-      if(tagName==='SPAN' && !(el.getAttribute('style')||'').trim()) unwrapElement(el);
-    });
-    return containerToFragment(container);
-  }
-
-  function wrapFragmentWithStyle(fragment, prop, value){
-    const span=document.createElement('span');
-    try{
-      if(prop==='font-family') span.style.fontFamily=value;
-      else span.style.setProperty(prop, value);
-      if(prop==='font-size') span.style.lineHeight='1.2';
-    } catch{}
-    span.appendChild(fragment);
-    return span;
-  }
-
-  function applyStyleToFormattedDescendants(fragment, prop, value, isDefault=false){
-    const container=fragmentToContainer(fragment);
-    container.querySelectorAll('strong, em, u').forEach(el=>{
-      const map=parseStyleString(el.getAttribute('style')||'');
-      if(isDefault){
-        map.delete(prop);
-      } else {
-        map.set(prop, value);
-      }
-      const styleStr=StyleHelper.mapToStyle(map);
-      if(styleStr) el.setAttribute('style', styleStr); else el.removeAttribute('style');
-    });
-    return containerToFragment(container);
-  }
-
-  function getSelectedTextNodes(range, editor){
-    if(!range) return [];
-    const root=getEditorFromRange(range, editor) || (range.commonAncestorContainer.nodeType===Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode);
-    if(!root) return [];
-    const nodes=[];
-    const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node){
-        if(!node?.nodeValue || node.nodeValue.length===0) return NodeFilter.FILTER_REJECT;
-        const parent=node.parentNode;
-        if(editor && parent && !(parent===editor || editor.contains(parent))) return NodeFilter.FILTER_REJECT;
-        try { return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
-        catch { return NodeFilter.FILTER_REJECT; }
-      }
-    });
-    while(walker.nextNode()) nodes.push(walker.currentNode);
-    return nodes;
-  }
-
-  function getUniformSelectedStyles(range, editor, props=[]){
-    const textNodes=getSelectedTextNodes(range, editor).filter(node=>node.nodeValue.trim()!=='');
-    if(!textNodes.length || !props.length) return {};
-    const result={};
-    props.forEach(prop=>{
-      let uniformValue=null;
-      let isFirst=true;
-      for(const node of textNodes){
-        const base=node.parentElement || node.parentNode;
-        const value=base ? window.getComputedStyle(base).getPropertyValue(prop) : '';
-        if(isFirst){
-          uniformValue=value;
-          isFirst=false;
-        } else if(uniformValue !== value){
-          uniformValue=null;
-          break;
-        }
-      }
-      if(uniformValue) result[prop]=uniformValue;
-    });
-    return result;
-  }
-
-  function findClosestAncestorTag(node, tag, editor){
-    let current=node?.nodeType===Node.TEXT_NODE ? node.parentNode : node;
-    while(current && current!==editor){
-      if(current.nodeType===Node.ELEMENT_NODE && current.tagName===tag) return current;
-      current=current.parentNode;
-    }
-    return null;
-  }
-
-  function splitTextBoundaries(range){
-    if(!range) return range;
-    if(range.endContainer?.nodeType===Node.TEXT_NODE){
-      const endNode=range.endContainer;
-      const endOffset=range.endOffset;
-      if(endOffset>0 && endOffset<endNode.nodeValue.length){
-        endNode.splitText(endOffset);
-        range.setEnd(endNode, endNode.nodeValue.length);
-      }
-    }
-    if(range.startContainer?.nodeType===Node.TEXT_NODE){
-      const startNode=range.startContainer;
-      const startOffset=range.startOffset;
-      if(startOffset>0 && startOffset<startNode.nodeValue.length){
-        const endWasSameNode=range.endContainer===startNode;
-        const endOffsetBeforeSplit=range.endOffset;
-        const afterNode=startNode.splitText(startOffset);
-        range.setStart(afterNode, 0);
-        if(endWasSameNode){
-          range.setEnd(afterNode, Math.max(0, endOffsetBeforeSplit - startOffset));
-        }
-      }
-    }
-    return range;
-  }
-
-  function findBoundaryReferenceNode(container, offset, atStart){
-    if(container?.nodeType===Node.TEXT_NODE) return container;
-    if(!container?.childNodes?.length) return container;
-    if(atStart){
-      return container.childNodes[offset] || container.childNodes[offset-1] || container;
-    }
-    return container.childNodes[offset-1] || container.childNodes[offset] || container;
-  }
-
-  function isTagBoundaryEdge(range, target, atStart){
-    const edgeRange=document.createRange();
-    edgeRange.selectNodeContents(target);
-    try {
-      if(atStart){
-        edgeRange.setEnd(range.startContainer, range.startOffset);
-      } else {
-        edgeRange.setStart(range.endContainer, range.endOffset);
-      }
-    } catch {
-      return false;
-    }
-    return edgeRange.collapsed;
-  }
-
-  function splitTagAncestorAtBoundary(range, tag, editor, atStart){
-    const container=atStart ? range.startContainer : range.endContainer;
-    const offset=atStart ? range.startOffset : range.endOffset;
-    const refNode=findBoundaryReferenceNode(container, offset, atStart);
-    const target=findClosestAncestorTag(refNode, tag, editor);
-    if(!target || !target.parentNode) return;
-    if(isTagBoundaryEdge(range, target, atStart)) return;
-    const tailRange=document.createRange();
-    tailRange.selectNodeContents(target);
-    try {
-      if(atStart){
-        tailRange.setStart(range.startContainer, range.startOffset);
-        if(tailRange.collapsed) return;
-      } else {
-        tailRange.setStart(range.endContainer, range.endOffset);
-        if(tailRange.collapsed) return;
-      }
-    } catch {
-      return;
-    }
-    const fragment=tailRange.extractContents();
-    const clone=target.cloneNode(false);
-    clone.appendChild(fragment);
-    target.parentNode.insertBefore(clone, target.nextSibling);
-    if(atStart){
-      range.setStart(clone, 0);
-    } else {
-      range.setEnd(target, target.childNodes.length);
-    }
-  }
-
-  function unwrapTagFromFragment(fragment, tag){
-    const container=fragmentToContainer(fragment);
-    container.querySelectorAll(tag.toLowerCase()).forEach(el=> unwrapElement(el));
-    return containerToFragment(container);
-  }
-
-  function fragmentHasNodes(fragment){
-    return !!fragment && Array.from(fragment.childNodes).some(node=>{
-      if(node.nodeType===Node.TEXT_NODE) return node.nodeValue.length>0;
-      return true;
-    });
-  }
-
-  function removeFormatWithinSingleAncestor(range, tag, editor){
-    const startTag=findClosestAncestorTag(range.startContainer, tag, editor);
-    const endTag=findClosestAncestorTag(range.endContainer, tag, editor);
-    if(!startTag || startTag!==endTag || !startTag.parentNode) return false;
-    const target=startTag;
-    const beforeRange=document.createRange();
-    beforeRange.selectNodeContents(target);
-    beforeRange.setEnd(range.startContainer, range.startOffset);
-    const beforeFragment=beforeRange.cloneContents();
-
-    const selectedFragment=unwrapTagFromFragment(range.cloneContents(), tag);
-
-    const afterRange=document.createRange();
-    afterRange.selectNodeContents(target);
-    afterRange.setStart(range.endContainer, range.endOffset);
-    const afterFragment=afterRange.cloneContents();
-
-    const replacement=document.createDocumentFragment();
-    const startMarker=document.createComment('sel-start');
-    const endMarker=document.createComment('sel-end');
-
-    if(fragmentHasNodes(beforeFragment)){
-      const beforeWrapper=target.cloneNode(false);
-      beforeWrapper.appendChild(beforeFragment);
-      replacement.appendChild(beforeWrapper);
-    }
-
-    replacement.appendChild(startMarker);
-    replacement.appendChild(selectedFragment);
-    replacement.appendChild(endMarker);
-
-    if(fragmentHasNodes(afterFragment)){
-      const afterWrapper=target.cloneNode(false);
-      afterWrapper.appendChild(afterFragment);
-      replacement.appendChild(afterWrapper);
-    }
-
-    target.parentNode.replaceChild(replacement, target);
-
-    const sel=window.getSelection();
-    const nextRange=document.createRange();
-    nextRange.setStartAfter(startMarker);
-    nextRange.setEndBefore(endMarker);
-    startMarker.parentNode?.removeChild(startMarker);
-    endMarker.parentNode?.removeChild(endMarker);
-    sel?.removeAllRanges();
-    sel?.addRange(nextRange);
-    return true;
-  }
-
-  function applyStylePreservingBreaks(range, prop, value, editor, isDefault=false){
-    const scopedEditor=getEditorFromRange(range, editor);
-    const unit = (prop==='font-size' && /^(\d+)$/.test(String(value)))? 'pt': '';
-    const explicitValue = isDefault && prop==='font-family'
-      ? (window.getComputedStyle(scopedEditor || document.body).fontFamily || 'sans-serif')
-      : String(value)+unit;
-    const extracted=range.extractContents();
-    const cleanedBase=stripStylePropertyFromFragment(extracted, prop);
-    const cleaned=applyStyleToFormattedDescendants(cleanedBase, prop, explicitValue, isDefault);
-    const wrapper=wrapFragmentWithStyle(cleaned, prop, explicitValue);
-    return replaceExtractedSelection(range, wrapper);
-  }
-
-  function cleanupEmptySpans(editor){
-  // Phase1: StyleHelper へ委譲
-  StyleHelper.cleanupSpans(editor);
-  }
-
-  function applyStyleToSelection(prop, value, editor, isDefault=false){
-    const sel=window.getSelection(); if(!sel.rangeCount || sel.isCollapsed) return; const range=sel.getRangeAt(0); const text=range.toString(); if(!text) return;
+    if(!editor || !sel?.rangeCount || sel.isCollapsed) return;
+    const range=sel.getRangeAt(0);
     if(!isRangeInsideEditor(range, editor)) return;
     try {
-      applyStylePreservingBreaks(range, prop, value, editor, isDefault);
-      cleanupEmptySpans(editor);
-    } catch(e){ log('applyStyleToSelection error', e); }
-    editor?.focus();
-  }
-
-  function applyFontFamilyToSelection(fontFamily, editor){ const isDefault=!fontFamily; if(isDefault){ applyDefaultFontToSelection(editor); } else { applyStyleToSelection('font-family', fontFamily, editor, false); } }
-  function applyFontSizeToSelection(fontSize, editor){ applyStyleToSelection('font-size', fontSize, editor, false); }
-
-  function applyDefaultFontToSelection(editor){
-    const sel=window.getSelection(); if(!sel.rangeCount || sel.isCollapsed) return;
-    try {
-      const range=sel.getRangeAt(0);
-      if(!isRangeInsideEditor(range, editor)) return;
-      applyStylePreservingBreaks(range, 'font-family', '', editor, true);
-      StyleHelper.cleanupSpans(editor);
-    } catch(e){ log('applyDefaultFontToSelection error', e); applyStyleToSelection('font-family','',editor,true); }
-    editor?.focus();
-  }
-
-  // Facade撤去: 最小コアAPIを __LabelCore として公開
-  window.__LabelCore = {
-    applyStyleToSelection,
-    applyFontFamilyToSelection,
-    applyFontSizeToSelection,
-    applyDefaultFontToSelection,
-    applyFormatToSelection,
-    applyFormatToSelectionFallback,
-    clearAllContent,
-    isSelectionFormatted,
-    isRangeInsideEditor,
-    getTargetTagName,
-    analyzeSelectionRange,
-    cleanupEmptySpans,
-    StyleHelper
-  };
-  if(window.CustomLabels){ Object.assign(window.CustomLabels, { analyzeSelectionRange, cleanupEmptySpans }); }
-  // 書式（bold/italic/underline）関連を追加
-  function getTargetTagName(command){
-    switch(command){
-      case 'bold': return 'STRONG';
-      case 'italic': return 'EM';
-      case 'underline': return 'U';
-      default: return null;
-    }
-  }
-  function isSelectionFormatted(range, command, editor){
-    const tag = getTargetTagName(command);
-    if(!tag) return false;
-    const scopedEditor=getEditorFromRange(range, editor);
-    const textNodes=getSelectedTextNodes(range, scopedEditor).filter(node=>node.nodeValue.trim()!=='');
-    if(!textNodes.length) return false;
-    return textNodes.every(node=>!!findClosestAncestorTag(node, tag, scopedEditor));
-  }
-  function applyFormatToRange(range, command, editor){
-    const scopedEditor=getEditorFromRange(range, editor);
-    const inheritedStyles=getUniformSelectedStyles(range, scopedEditor, ['font-family','font-size','line-height']);
-    const frag=range.extractContents(); let el; switch(command){ case 'bold': el=document.createElement('strong'); break; case 'italic': el=document.createElement('em'); break; case 'underline': el=document.createElement('u'); break; default: return; }
-    Object.entries(inheritedStyles).forEach(([prop, val])=>{ try { el.style.setProperty(prop, val); } catch {} });
-    el.appendChild(frag);
-    replaceExtractedSelection(range, el);
-  }
-  function removeFormatFromSelection(range, command, editor){
-    const tag=getTargetTagName(command);
-    const scopedEditor=getEditorFromRange(range, editor);
-    if(!tag || !scopedEditor || !isRangeInsideEditor(range, scopedEditor)) return;
-    if(removeFormatWithinSingleAncestor(range, tag, scopedEditor)){
-      normalizeInlineFormatting(scopedEditor);
-      return;
-    }
-    splitTextBoundaries(range);
-    splitTagAncestorAtBoundary(range, tag, scopedEditor, false);
-    splitTagAncestorAtBoundary(range, tag, scopedEditor, true);
-    const extracted=range.extractContents();
-    const cleaned=unwrapTagFromFragment(extracted, tag);
-    replaceExtractedSelection(range, cleaned);
-    normalizeInlineFormatting(scopedEditor);
-  }
-  function applyFormatToSelectionFallback(command, editor){ const sel=window.getSelection(); if(!sel.rangeCount||sel.isCollapsed) return; const range=sel.getRangeAt(0); if(!isRangeInsideEditor(range, editor)) return; if(isSelectionFormatted(range,command,editor)){ removeFormatFromSelection(range,command,editor); } else { applyFormatToRange(range,command,editor); } }
-  function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); window.CustomLabels?.save(); } }
-  function normalizeInlineFormatting(editor){
-    if(!editor) return;
-    // b -> strong, i -> em (semantic)
-    editor.querySelectorAll('b').forEach(b=>{ const strong=document.createElement('strong'); while(b.firstChild) strong.appendChild(b.firstChild); b.parentNode.replaceChild(strong,b); });
-    editor.querySelectorAll('i').forEach(i=>{ const em=document.createElement('em'); while(i.firstChild) em.appendChild(i.firstChild); i.parentNode.replaceChild(em,i); });
-    ['strong','em','u'].forEach(tagName=>{
-      editor.querySelectorAll(`${tagName} ${tagName}`).forEach(el=> unwrapElement(el));
-      editor.querySelectorAll(tagName).forEach(el=>{
-        const next=el.nextSibling;
-        if(next && next.nodeType===Node.ELEMENT_NODE && next.tagName===tagName.toUpperCase()){
-          while(next.firstChild) el.appendChild(next.firstChild);
-          next.remove();
-        }
-      });
-    });
-  }
-  function applyFormatToSelection(command, editor){
-    if(!editor) return;
-    if(command==='clear'){ clearAllContent(editor); return; }
-    // 常に手動トグル: execCommand を排除して安定化
-    applyFormatToSelectionFallback(command, editor);
-    normalizeInlineFormatting(editor);
-    try { window.CustomLabels?.__markEditorDirty?.(editor,false); } catch {}
+      if(window.BoothCSVLabelRichText.editRange(editor, range, update)) notifyEdited(editor);
+    } catch(e){ log('editSelection error', e); }
     editor.focus();
   }
-  // 後方互換用 CustomLabelStyle グローバルを削除告知だけのプロキシに (存在していれば保持)
-  try {
-    Object.defineProperty(window, 'CustomLabelStyle', { get(){ console.error('[CustomLabelStyle REMOVED] 旧APIは削除されました。__LabelCore または RichTextManager を利用してください。'); return undefined; }, configurable:true });
-  } catch{}
-})();
 
-// (Removed: Phase7 Step2 duplicate facade)
+  // prop: 'font-family' | 'font-size'。value が空ならその指定を外す（デフォルトに戻す）
+  function applyStyle(editor, prop, value){
+    const key = prop==='font-size' ? 'fontSize' : 'fontFamily';
+    let css = value==null ? '' : String(value).trim();
+    if(css && key==='fontSize' && /^\d+(\.\d+)?$/.test(css)) css += 'pt';
+    if(css){
+      // 既存ランの値と比較できるよう CSSOM で正規化
+      const probe=document.createElement('span').style;
+      probe.setProperty(prop, css);
+      css=probe.getPropertyValue(prop);
+      if(!css) return;
+    }
+    editSelection(editor, (runs,start,end)=> window.BoothCSVLabelRichText.updateRange(runs, start, end, format=>{ format[key]=css; return format; }));
+  }
+
+  function toggleFormat(editor, command){
+    if(!FORMAT_COMMANDS.includes(command)) return;
+    editSelection(editor, (runs,start,end)=> window.BoothCSVLabelRichText.toggleRange(runs, start, end, command));
+  }
+
+  function clearAllContent(editor){ if(!editor) return; if(confirm('このカスタムラベルの内容と書式をすべてクリアしますか？')){ editor.innerHTML=''; editor.style.fontSize='12pt'; editor.style.lineHeight='1.2'; editor.style.textAlign='center'; editor.focus(); notifyEdited(editor); } }
+
+  window.__LabelCore = { applyStyle, toggleFormat, clearAllContent, isRangeInsideEditor };
+})();
 
 // =============================
 // コンテキストメニュー（フォント/書式）生成ロジック（boothcsv.js から移動）
@@ -952,17 +476,14 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     }
     rememberSelection(editor){
       const sel=window.getSelection();
-      if(!editor || !sel?.rangeCount || sel.isCollapsed) return false;
+      if(!editor || !sel?.rangeCount) return false;
       const range=sel.getRangeAt(0);
       if(!window.__LabelCore?.isRangeInsideEditor?.(range, editor)) return false;
+      // エディタ内でカーソルだけになったら、古い選択範囲に適用されないよう破棄する
+      if(range.collapsed){ if(this.savedSelectionEditor===editor) this.clearSelectionSnapshot(); return false; }
       this.savedSelectionRange=range.cloneRange();
       this.savedSelectionEditor=editor;
       return true;
-    }
-    hasRememberedSelection(editor){
-      if(!this.savedSelectionRange || (editor && this.savedSelectionEditor!==editor)) return false;
-      try { return !this.savedSelectionRange.collapsed && this.savedSelectionRange.toString().length>0; }
-      catch { return false; }
     }
     restoreSelection(editor=this.savedSelectionEditor){
       if(!editor || !this.savedSelectionRange) return false;
@@ -988,8 +509,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
     }
     async show(x,y,editor,hasSelection=true){
       try { this.close(); } catch{}
-      const remembered=this.rememberSelection(editor);
-      if(!hasSelection && !remembered && this.hasRememberedSelection(editor)) hasSelection=true;
+      this.rememberSelection(editor);
       const menu=document.createElement('div');
       menu.className='custom-label-context-menu';
       menu.style.cssText=`position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;padding:8px 0;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:10000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-width:160px;max-width:250px;max-height:400px;overflow-y:auto;visibility:hidden;opacity:0;transition:opacity .2s ease;`;
@@ -1023,10 +543,7 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
         sep(); header('フォントサイズ');
   [6,8,10,12,14,16,18,20,24,28].forEach(size=> appendItem({ label:`${size}pt`, style:'padding-left:20px;font-size:11px;', onClick:()=>{ editor.__rtm?.applyStyle('font-size', size); } }));
         sep(); header('フォント');
-        appendItem({ label:'デフォルトフォント（システムフォント）', style:'font-size:11px;font-family:sans-serif;font-weight:bold;color:#333;border-bottom:1px solid #eee;', onClick:()=>{
-          try { const sel=window.getSelection(); if(sel.rangeCount>0 && !sel.isCollapsed){ editor.__rtm?.applyStyle('font-family','',true);} else if(editor.style.fontFamily){ editor.style.fontFamily=''; } }
-          catch(err){ clog('defaultFont err',err); editor.__rtm?.applyStyle('font-family','',true);} }
-        });
+        appendItem({ label:'デフォルトフォント（システムフォント）', style:'font-size:11px;font-family:sans-serif;font-weight:bold;color:#333;border-bottom:1px solid #eee;', onClick:()=>{ editor.__rtm?.applyStyle('font-family','',true); } });
 
         const systemFonts=[
           { name:'ゴシック（sans-serif）', family:'sans-serif' },
@@ -1133,21 +650,14 @@ window.CustomLabelCalculator = window.CustomLabelCalculator || CustomLabelCalcul
         if(!this.editor) return;
         try {
             if(!this.ensureSelectionForOperation()) return;
-            const disabled = window.__DISABLE_DEPRECATED_CUSTOM_LABEL_STYLE;
-            if(prop==='font-size'){
-              window.__LabelCore?.applyFontSizeToSelection(value, this.editor);
-            } else if(prop==='font-family') {
-              if(isDefault) window.__LabelCore?.applyFontFamilyToSelection('', this.editor);
-              else window.__LabelCore?.applyFontFamilyToSelection(value, this.editor);
-            } else {
-              window.__LabelCore?.applyStyleToSelection(prop, value, this.editor, isDefault);
-            }
+            window.__LabelCore?.applyStyle(this.editor, prop, isDefault ? '' : value);
             this.syncSelectionSnapshot();
         } catch(e){ console.error('RichTextManager.applyStyle error', e); }
       }
       applyFormat(command){
         if(!this.editor) return;
-          try { if(!this.ensureSelectionForOperation()) return; window.__LabelCore?.applyFormatToSelection(command, this.editor); this.syncSelectionSnapshot(); }
+        if(command==='clear'){ this.clearAll(); return; }
+          try { if(!this.ensureSelectionForOperation()) return; window.__LabelCore?.toggleFormat(this.editor, command); this.syncSelectionSnapshot(); }
         catch(e){ console.error('RichTextManager.applyFormat error', e); }
       }
   clearAll(){ try { window.__LabelCore?.clearAllContent(this.editor); } catch(e){ console.error('RichTextManager.clearAll error', e);} }

@@ -393,11 +393,12 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
 
 /* --- Rich text editor (custom labels) inside sidebar --- */
 #appSidebar .rich-text-editor {
-  width: 180px; /* ラベル幅48.3mm相当 */
-  height: 95px; /* ラベル高25.3mm相当 */
-  min-height: 95px;
-  max-height: 95px;
-  padding: 8px;
+  /* 文字を置ける領域を印刷ラベル（boothcsv.css の table.label44 td）と同寸にし、折り返し位置を一致させる。枠線は外側 */
+  width: 48.3mm;
+  height: 25.3mm;
+  min-height: 25.3mm;
+  max-height: 25.3mm;
+  padding: 0;
   border: 2px solid #ddd;
   border-radius: 4px;
   background-color: #fff;
@@ -405,7 +406,7 @@ body.sidebar-docked .fixed-header { left: var(--sidebar-width); width: calc(100%
   font-family: inherit;
   font-size: 12pt;
   line-height: 1.2;
-  box-sizing: border-box;
+  box-sizing: content-box;
   resize: none;
   text-align: center;
   display: block;
