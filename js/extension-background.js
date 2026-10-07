@@ -114,6 +114,15 @@ function isDataUrl(url) {
   return /^data:/i.test(url || '');
 }
 
+function isAllowedImageHost(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'booth.pm' || hostname.endsWith('.booth.pm');
+  } catch (_error) {
+    return false;
+  }
+}
+
 function resolveAbsoluteUrl(url, baseUrl) {
   if (!url) return '';
   try {
