@@ -933,51 +933,121 @@ async function collectShipmentConfirmationStatus(orderNumbers, bridge) {
   return { responses, shipped, pending, failed };
 }
 
-function buildShipmentConfirmationMessage(orderNumbers, messageTemplate, useExtensionBridge, statusSummary) {
+function openShipmentCsvDialog(orderNumbers, messageTemplate) {
+  const dialog = document.getElementById('shipmentCsvDialog');
+  const fileInput = document.getElementById('shipmentCsvFile');
+  const selectFileButton = document.getElementById('shipmentCsvSelectFile');
+  const fileName = document.getElementById('shipmentCsvFileName');
+  const fileError = document.getElementById('shipmentCsvFileError');
+  const downloadButton = document.getElementById('shipmentCsvDownload');
+  const recordButton = document.getElementById('shipmentCsvRecord');
+  const status = document.getElementById('shipmentCsvStatus');
+  let result = null;
+
+  document.getElementById('shipmentCsvSelection').textContent = `選択した注文: ${orderNumbers.length}件（${orderNumbers.join(', ')}）`;
+  document.getElementById('shipmentCsvComment').textContent = formatShippingCommentPreview(messageTemplate);
+  fileInput.value = '';
+  fileInput.disabled = false;
+  selectFileButton.disabled = false;
+  selectFileButton.onclick = () => fileInput.click();
+  fileName.textContent = '未選択';
+  fileError.textContent = '';
+  downloadButton.disabled = true;
+  recordButton.disabled = true;
+  status.textContent = '';
+
+  fileInput.onchange = async function() {
+    result = null;
+    downloadButton.disabled = true;
+    recordButton.disabled = true;
+    status.textContent = '';
+    fileError.textContent = '';
+    const file = fileInput.files[0];
+    fileName.textContent = file ? file.name : '未選択';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      if (!dialog.open || fileInput.files[0] !== file) return;
+      result = window.BoothCSVBulkShipment.buildShipmentCsv(text, orderNumbers, messageTemplate);
+      const missing = result.missingOrderNumbers;
+      status.textContent = result.rowCount
+        ? `通知対象: ${result.orderNumbers.length}件 / CSV ${result.rowCount}行`
+        : '選択した注文に一致する未発送行がありません。最新のCSVと選択した注文を確認してください。';
+      if (missing.length) status.textContent += `\nCSVにない注文（出力対象外）: ${missing.join(', ')}`;
+      downloadButton.disabled = result.rowCount === 0;
+    } catch (error) {
+      fileError.textContent = error.message || 'CSVの読み込みに失敗しました';
+    }
+  };
+
+  downloadButton.onclick = function() {
+    if (!result || !result.rowCount) return;
+    const url = URL.createObjectURL(new Blob([result.csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bulk_shipment_dispatches_selected_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => revokeBlobUrl(url), 1000);
+    window.open('https://manage.booth.pm/bulk_shipment_dispatches/current', '_blank', 'noopener');
+    recordButton.disabled = false;
+  };
+
+  recordButton.onclick = async function() {
+    if (!result || !result.rowCount) return;
+    recordButton.disabled = true;
+    fileInput.disabled = true;
+    selectFileButton.disabled = true;
+    downloadButton.disabled = true;
+    try {
+      const repo = await ensureOrderRepository();
+      if (!repo) throw new Error('注文データを読み込めませんでした');
+      const shippedAt = new Date().toISOString();
+      for (const orderNumber of result.orderNumbers) await repo.markShipped(orderNumber, shippedAt);
+      await refreshProcessedOrdersPanel();
+      dialog.close();
+    } catch (error) {
+      status.textContent = `発送日時の記録に失敗しました: ${error.message}`;
+      recordButton.disabled = false;
+    } finally {
+      fileInput.disabled = false;
+      selectFileButton.disabled = false;
+      downloadButton.disabled = false;
+    }
+  };
+
+  dialog.onclose = function() { fileInput.value = ''; };
+  dialog.showModal();
+}
+
+function buildShipmentConfirmationMessage(orderNumbers, messageTemplate, statusSummary) {
   const count = Array.isArray(orderNumbers) ? orderNumbers.length : 0;
   const commentPreview = formatShippingCommentPreview(messageTemplate);
 
-  if (useExtensionBridge) {
-    const shippedCount = statusSummary && Array.isArray(statusSummary.shipped) ? statusSummary.shipped.length : 0;
-    const pendingCount = statusSummary && Array.isArray(statusSummary.pending) ? statusSummary.pending.length : 0;
-    const failedCount = statusSummary && Array.isArray(statusSummary.failed) ? statusSummary.failed.length : 0;
-
-    return [
-      '選択した注文を確認し、未通知の注文のみ BOOTH で発送通知します。',
-      '',
-      `対象件数: ${count}件`,
-      `未通知で BOOTH へ発送通知する注文: ${pendingCount}件`,
-      `通知済みで発送日時を再取得する注文: ${shippedCount}件`,
-      failedCount > 0 ? `発送状態の取得に失敗した注文: ${failedCount}件` : '',
-      '',
-      '通知コメント:',
-      commentPreview,
-      '',
-      '通知済みの注文は BOOTH 側で再通知できないため、発送日時の再取得のみ行います。',
-      failedCount > 0 ? '発送状態を取得できなかった注文は、続行後に再度確認したうえで処理します。' : '',
-      'この操作を実行すると、未通知の注文は BOOTH 側で発送完了通知まで実施します。',
-      '続行しますか？'
-    ].filter(Boolean).join('\n');
-  }
+  const shippedCount = statusSummary && Array.isArray(statusSummary.shipped) ? statusSummary.shipped.length : 0;
+  const pendingCount = statusSummary && Array.isArray(statusSummary.pending) ? statusSummary.pending.length : 0;
+  const failedCount = statusSummary && Array.isArray(statusSummary.failed) ? statusSummary.failed.length : 0;
 
   return [
-    '選択した注文の発送日時を記録します。',
+    '選択した注文を確認し、未通知の注文のみ BOOTH で発送通知します。',
     '',
     `対象件数: ${count}件`,
+    `未通知で BOOTH へ発送通知する注文: ${pendingCount}件`,
+    `通知済みで発送日時を再取得する注文: ${shippedCount}件`,
+    failedCount > 0 ? `発送状態の取得に失敗した注文: ${failedCount}件` : '',
     '',
     '通知コメント:',
     commentPreview,
     '',
-    'この環境では発送日時のみ反映します。',
-    'BOOTH の注文詳細で、上記コメントを使って手動で発送完了通知を行ってください。',
+    '通知済みの注文は BOOTH 側で再通知できないため、発送日時の再取得のみ行います。',
+    failedCount > 0 ? '発送状態を取得できなかった注文は、続行後に再度確認したうえで処理します。' : '',
+    'この操作を実行すると、未通知の注文は BOOTH 側で発送完了通知まで実施します。',
     '続行しますか？'
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 async function notifySelectedOrdersShipment(orderNumbers) {
-  const repo = await ensureOrderRepository();
-  if (!repo) throw new Error('注文データを読み込めませんでした');
-
   const selectedOrderNumbers = normalizeOrderSelection(orderNumbers);
   if (selectedOrderNumbers.length === 0) return;
 
@@ -987,26 +1057,19 @@ async function notifySelectedOrdersShipment(orderNumbers) {
     : '';
 
   if (!useExtensionBridge) {
-    if (!confirm(buildShipmentConfirmationMessage(selectedOrderNumbers, shippingMessageTemplate, false))) {
-      return;
-    }
-
-    const shippedAt = new Date().toISOString();
-    for (const orderNumber of selectedOrderNumbers) {
-      await repo.markShipped(orderNumber, shippedAt);
-    }
-    await refreshProcessedOrdersPanel();
-    alert('発送日時を記録しました。\nBOOTHの注文詳細で発送完了を通知してください。');
+    openShipmentCsvDialog(selectedOrderNumbers, shippingMessageTemplate);
     return;
   }
 
+  const repo = await ensureOrderRepository();
+  if (!repo) throw new Error('注文データを読み込めませんでした');
   const bridge = window.BoothCSVExtensionBridge;
   if (!bridge || typeof bridge.collectOrderShipmentStatus !== 'function' || typeof bridge.notifyOrderShipment !== 'function') {
     throw new Error('Chrome拡張との連携が初期化されていません');
   }
 
   const confirmationStatus = await collectShipmentConfirmationStatus(selectedOrderNumbers, bridge);
-  if (!confirm(buildShipmentConfirmationMessage(selectedOrderNumbers, shippingMessageTemplate, true, confirmationStatus))) {
+  if (!confirm(buildShipmentConfirmationMessage(selectedOrderNumbers, shippingMessageTemplate, confirmationStatus))) {
     return;
   }
 

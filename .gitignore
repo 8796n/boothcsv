@@ -46,6 +46,8 @@ tests/*
 tests/automated/*
 !tests/automated/label-sheet-layout.test.js
 !tests/automated/label-rich-text.test.js
+!tests/automated/booth-extension-content.test.js
+!tests/automated/bulk-shipment-csv.test.js
 backup/
 manifest.json
 docs/chrome-extension-dev-notes.md
