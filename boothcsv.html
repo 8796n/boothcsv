@@ -57,7 +57,7 @@
       <div class="header-action-controls">
         <!-- CSVダウンロード -->
         <div class="csv-download-wrapper" id="boothOrdersOpenWrapper">
-          <button type="button" id="boothOrdersOpenButton" class="btn-base btn-header btn-download" title="BOOTHの注文一覧へ飛びます">
+          <button type="button" id="boothOrdersOpenButton" class="btn-base btn-header btn-download" title="BOOTHの「未発送注文のCSV」をダウンロードします">
             📥 CSVをダウンロード
           </button>
         </div>
@@ -200,25 +200,24 @@
     <summary>保存済みの発送通知コメント</summary>
     <pre id="shipmentCsvComment"></pre>
   </details>
-  <ol>
+  <p id="shipmentCsvSavedSource" hidden>取り込み済みのCSVから作成できます。再ダウンロードは不要です。</p>
+  <ol id="shipmentCsvSourceSteps">
     <li>
       <a id="shipmentCsvSource" class="btn-base btn-header btn-download" href="https://manage.booth.pm/bulk_shipment_dispatches/csv" target="_blank" rel="noopener">📥 CSVをダウンロード</a>
     </li>
     <li>
       <button id="shipmentCsvSelectFile" type="button" class="btn-base btn-header btn-primary" aria-describedby="shipmentCsvFileError">📁 CSVファイルを選択</button>
-      <input id="shipmentCsvFile" type="file" accept=".csv,text/csv" class="hidden" aria-label="発送通知用CSVファイル選択" aria-describedby="shipmentCsvFileError">
+      <input id="shipmentCsvFile" type="file" accept=".csv,text/csv" class="hidden" aria-label="未発送注文のCSVファイル選択" aria-describedby="shipmentCsvFileError">
       <p id="shipmentCsvFileName">未選択</p>
       <p id="shipmentCsvFileError" role="alert"></p>
       <p>チェックした注文だけを残し、保存済みの発送通知コメントを反映します。</p>
     </li>
-    <li>
+  </ol>
       <button id="shipmentCsvDownload" type="button" class="btn-base btn-primary btn-medium" disabled>編集済みCSVをダウンロードしてBOOTHを開く</button>
       <p>開いた画面で編集済みCSVをアップロードし、対象注文を確認して発送完了を通知してください。</p>
       <a href="https://manage.booth.pm/bulk_shipment_dispatches/current" target="_blank" rel="noopener">BOOTHのアップロード画面を開く</a>
-    </li>
-  </ol>
   <p id="shipmentCsvStatus" role="status" aria-live="polite"></p>
-  <p>CSVを作成しただけでは発送済みになりません。BOOTHで通知完了を確認した後、下のボタンでこのアプリにも発送日時を記録できます。</p>
+  <p>CSVを作成しただけでは発送済みになりません。BOOTHで通知完了を確認した後、下のボタンで発送日時と出力に使ったコメントを記録できます。</p>
   <button id="shipmentCsvRecord" type="button" class="btn-base btn-success btn-medium" disabled>BOOTHで通知完了を確認したので発送日時を記録</button>
   <form method="dialog"><button class="btn-base btn-small">閉じる</button></form>
 </dialog>
@@ -501,39 +500,43 @@
           <p class="注文番号"></p>
         </div>
         <table class="orderdetail">
+          <colgroup><col class="address-label"><col class="address-value"><col class="order-label"><col></colgroup>
           <tr>
-            <td>郵便番号</td>
-            <td class="郵便番号">【あんしんBOOTHパック】</td>
-            <td>注文状況</td>
-            <td class="注文状況"></td>
+            <td class="field-label">郵便番号</td>
+            <td class="郵便番号" data-order-field="郵便番号" data-address></td>
+            <td class="field-label">注文日時</td>
+            <td class="注文日時" data-order-field="注文日時"></td>
           </tr>
           <tr>
-            <td>都道府県</td>
-            <td class="都道府県">【あんしんBOOTHパック】</td>
-            <td>注文日時</td>
-            <td class="注文日時"></td>
+            <td class="field-label">都道府県</td>
+            <td class="都道府県" data-order-field="都道府県" data-address></td>
+            <td class="field-label">支払い日時</td>
+            <td class="支払い日時" data-order-field="支払い日時"></td>
           </tr>
           <tr>
-            <td>住所１</td>
-            <td class="市区町村・丁目・番地">【あんしんBOOTHパック】</td>
-            <td>支払い日時</td>
-            <td class="支払い日時"></td>
+            <td class="field-label">住所１</td>
+            <td class="市区町村・丁目・番地" data-order-field="市区町村・丁目・番地" data-address></td>
+            <td class="field-label">ユーザー識別コード</td>
+            <td class="ユーザー識別コード" data-order-field="ユーザー識別コード"></td>
           </tr>
           <tr>
-            <td>住所２</td>
-            <td class="マンション・建物名・部屋番号"></td>
-            <td>お支払方法</td>
-            <td class="お支払方法"></td>
+            <td class="field-label">住所２</td>
+            <td class="マンション・建物名・部屋番号" data-order-field="マンション・建物名・部屋番号" data-address></td>
+            <td colspan="2"></td>
           </tr>
           <tr>
-            <td>氏名</td>
-            <td class="氏名">【あんしんBOOTHパック】</td>
-            <td>ユーザー識別コード</td>
-            <td class="ユーザー識別コード"></td>
+            <td class="field-label">氏名</td>
+            <td class="氏名" data-order-field="氏名" data-address></td>
+            <td colspan="2"></td>
           </tr>
           <tr>
-            <td>電話番号</td>
-            <td class="電話番号">【あんしんBOOTHパック】</td>
+            <td class="field-label">電話番号</td>
+            <td class="電話番号" data-order-field="電話番号" data-address></td>
+            <td colspan="2"></td>
+          </tr>
+          <tr>
+            <td class="field-label">お支払方法</td>
+            <td class="お支払方法" data-order-field="お支払方法" colspan="3"></td>
           </tr>
         </table>
       </div>
@@ -566,6 +569,7 @@
 </div>
 <script src="./js/jsQR.js"></script>
 <script src="./js/papaparse.min.js"></script>
+<script src="./js/order-csv.js"></script>
 <script src="./js/bulk-shipment-csv.js"></script>
 <script src="./js/storage.js"></script>
 <!-- OrderRepository (orders 単一ソース化 Stage B) -->

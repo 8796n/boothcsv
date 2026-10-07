@@ -1165,6 +1165,7 @@
     if (uiState.commentField && typeof messageTemplate === 'string') {
       setFieldValue(uiState.commentField, messageTemplate);
     }
+    const shippedComment = uiState.commentField ? uiState.commentField.value : null;
 
     const submitButton = uiState.submitButton || findShipmentSubmitButton(uiState.form || document, trigger);
     if (submitButton) {
@@ -1172,6 +1173,7 @@
       return {
         ok: true,
         submitted: true,
+        shippedComment,
         orderNumber: getOrderNumberFromPage(uiState.form),
         diagnosticsSummary: `shipmentSubmitted=yes, usedComment=${uiState.commentField ? 'yes' : 'no'}`
       };
@@ -1182,6 +1184,7 @@
       return {
         ok: true,
         submitted: true,
+        shippedComment,
         orderNumber: getOrderNumberFromPage(uiState.form),
         diagnosticsSummary: `shipmentSubmitted=yes, usedComment=${uiState.commentField ? 'yes' : 'no'}, submitMode=form` 
       };
