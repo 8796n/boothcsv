@@ -163,7 +163,7 @@
     },
     "fixtures": [
       { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true, "customLabels": true },
-      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" },
+      { "type": "csv", "path": "sample/bulk_shipment_dispatches_sample.csv", "sourceName": "bulk_shipment_dispatches_sample.csv" },
       { "type": "global-image", "path": "sample/footersample.png", "mimeType": "image/png" },
       {
         "type": "custom-labels",
@@ -219,7 +219,7 @@
     "fixtures": [
       { "type": "reset-storage", "orders": true, "productImages": true, "globalImage": true },
       { "type": "global-image", "path": "sample/footersample.png", "mimeType": "image/png" },
-      { "type": "csv", "path": "sample/booth_orders_sample.csv", "sourceName": "booth_orders_sample.csv" }
+      { "type": "csv", "path": "sample/bulk_shipment_dispatches_sample.csv", "sourceName": "bulk_shipment_dispatches_sample.csv" }
     ],
     "target": { "snap": "order-page", "selector": "section.sheet", "scroll": "start", "padding": 8 },
     "capture": { "mode": "crop", "hideFixedHeader": true, "padding": 10 }
