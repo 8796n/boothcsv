@@ -212,6 +212,12 @@ table.items td.数量 {
     text-align: right;
 }
 
+table.items th:nth-child(n+3),
+table.items td:nth-child(n+3) {
+    width: 1%;
+    white-space: nowrap;
+}
+
 table.items td.spacerow {
     border: none;
     text-align: center;
@@ -249,10 +255,13 @@ table.items td.spacerow {
 }
 
 .orderdetail {
-    position: absolute;
-    top: 5em;
-    left: 0mm;
+    margin-top: 5em;
+    table-layout: fixed;
 }
+.orderdetail .address-label { width: 26mm; }
+.orderdetail .address-value { width: 60mm; }
+.orderdetail .order-label { width: 43mm; }
+.orderdetail .field-label { white-space: nowrap; }
 
 table.orderdetail {
     width: 100%;
@@ -262,6 +271,8 @@ table.orderdetail {
 
 table.orderdetail td {
     padding: 0 2mm;
+    vertical-align: top;
+    overflow-wrap: anywhere;
   font-size: inherit;
   line-height: 1.25;
 }
@@ -281,7 +292,7 @@ table.orderdetail td {
 .header {
   flex-shrink: 0;  /* ヘッダーのサイズを固定 */
   position: relative;
-  height: 7cm;
+  min-height: 7cm;
   width: 100%;
 }
 

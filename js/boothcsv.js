@@ -658,54 +658,18 @@ window.addEventListener("load", async function(){
 
 // 自動処理関数（ファイル選択時や設定変更時に呼ばれる）
 async function autoProcessCSV() {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const fileInput = document.getElementById("file");
-      if (!fileInput.files || fileInput.files.length === 0) {
-        console.log('ファイルが選択されていません。自動処理をスキップします。');
-        updateProcessedOrdersVisibility();
-        try {
-          await renderProductOrderImagesManager();
-          await updateCustomLabelsPreview();
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-        return;
-      }
-
-      // カスタムラベルのバリデーション（エラー表示なし）
-      // バリデーションエラーがあってもCSV処理は継続する
-  const hasValidCustomLabels = CustomLabels.validateQuiet();
-      if (!hasValidCustomLabels) {
-        console.log('カスタムラベルにエラーがありますが、CSV処理は継続します。');
-      }
-      
-      console.log('自動CSV処理を開始します...');
-      setPreviewSource('');
-      clearPreviousResults();
-      updateProcessedOrdersVisibility();
-    const config = buildCurrentPreviewConfig(document.getElementById('file').files[0]);
-      
-      Papa.parse(config.file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: async function(results) {
-          try {
-            await processCSVResults(results, config);
-            console.log('自動CSV処理が完了しました。');
-            // ペイント後に解決してスクロール処理が安定するようにする
-            requestAnimationFrame(() => requestAnimationFrame(resolve));
-          } catch (e) {
-            reject(e);
-          }
-        }
-      });
-    } catch (error) {
-      console.error('自動処理中にエラーが発生しました:', error);
-      reject(error);
-    }
-  });
+  const fileInput = document.getElementById('file');
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) {
+    updateProcessedOrdersVisibility();
+    await renderProductOrderImagesManager();
+    await updateCustomLabelsPreview();
+    return;
+  }
+  const text = await file.text();
+  if (fileInput.files[0] !== file) return;
+  await importCSVText(text, { sourceName: file.name, file });
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 async function importCSVText(csvText, options = {}) {
@@ -713,6 +677,8 @@ async function importCSVText(csvText, options = {}) {
   if (typeof csvText !== 'string' || !csvText.trim()) {
     throw new Error('CSVテキストが空です');
   }
+  // 全行を検証してから、保存内容や現在のプレビューを変更する。
+  const results = window.BoothCSVOrders.parseOrderCsv(csvText, { sourceName });
 
   CustomLabels.updateButtonStates();
   await CustomLabels.updateSummary();
@@ -722,25 +688,9 @@ async function importCSVText(csvText, options = {}) {
   setPreviewSource('');
   clearPreviousResults();
 
-  const config = buildCurrentPreviewConfig(null);
-  return await new Promise((resolve, reject) => {
-    Papa.parse(csvText, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async function(results) {
-        try {
-          await processCSVResults(results, config);
-          resolve({
-            rowCount: Array.isArray(results.data) ? results.data.length : 0,
-            sourceName
-          });
-        } catch (error) {
-          reject(error);
-        }
-      },
-      error: reject
-    });
-  });
+  const config = buildCurrentPreviewConfig(options.file || null);
+  await processCSVResults(results, config);
+  return { rowCount: results.data.length, sourceName };
 }
 
 function syncPreviewSurfaceState() {
@@ -933,7 +883,12 @@ async function collectShipmentConfirmationStatus(orderNumbers, bridge) {
   return { responses, shipped, pending, failed };
 }
 
-function openShipmentCsvDialog(orderNumbers, messageTemplate) {
+async function openShipmentCsvDialog(orderNumbers, messageTemplate) {
+  const repo = await ensureOrderRepository();
+  if (!repo) throw new Error('注文データを読み込めませんでした');
+  const records = orderNumbers.map(number => repo.get(number)).filter(Boolean);
+  const pendingNumbers = records.filter(record => !record.shippedAt).map(record => record.orderNumber);
+  const shippedCount = records.length - pendingNumbers.length;
   const dialog = document.getElementById('shipmentCsvDialog');
   const fileInput = document.getElementById('shipmentCsvFile');
   const selectFileButton = document.getElementById('shipmentCsvSelectFile');
@@ -942,7 +897,22 @@ function openShipmentCsvDialog(orderNumbers, messageTemplate) {
   const downloadButton = document.getElementById('shipmentCsvDownload');
   const recordButton = document.getElementById('shipmentCsvRecord');
   const status = document.getElementById('shipmentCsvStatus');
+  const sourceSteps = document.getElementById('shipmentCsvSourceSteps');
+  const savedSource = document.getElementById('shipmentCsvSavedSource');
   let result = null;
+  let downloadedResult = null;
+
+  function prepareResult() {
+    // コメントはダイアログを開いたときの定型文を使い、出力後も同じ文面を記録する。
+    result = window.BoothCSVBulkShipment.buildShipmentCsvFromRecords(pendingNumbers.map(number => repo.get(number)), messageTemplate);
+    const missing = result.missingOrderNumbers;
+    sourceSteps.hidden = missing.length === 0;
+    savedSource.hidden = !result.rowCount;
+    status.textContent = `通知対象: ${result.orderNumbers.length}件 / CSV ${result.rowCount}行`;
+    if (shippedCount) status.textContent += `\n発送日時を記録済み（出力対象外）: ${shippedCount}件`;
+    if (missing.length) status.textContent += `\n未発送注文のCSVを未取り込み（出力対象外）: ${missing.join(', ')}\n対象に加える場合は未発送注文のCSVを取得して選択してください。`;
+    downloadButton.disabled = result.rowCount === 0;
+  }
 
   document.getElementById('shipmentCsvSelection').textContent = `選択した注文: ${orderNumbers.length}件（${orderNumbers.join(', ')}）`;
   document.getElementById('shipmentCsvComment').textContent = formatShippingCommentPreview(messageTemplate);
@@ -955,9 +925,12 @@ function openShipmentCsvDialog(orderNumbers, messageTemplate) {
   downloadButton.disabled = true;
   recordButton.disabled = true;
   status.textContent = '';
+  sourceSteps.hidden = false;
+  savedSource.hidden = true;
 
   fileInput.onchange = async function() {
     result = null;
+    downloadedResult = null;
     downloadButton.disabled = true;
     recordButton.disabled = true;
     status.textContent = '';
@@ -968,13 +941,11 @@ function openShipmentCsvDialog(orderNumbers, messageTemplate) {
     try {
       const text = await file.text();
       if (!dialog.open || fileInput.files[0] !== file) return;
-      result = window.BoothCSVBulkShipment.buildShipmentCsv(text, orderNumbers, messageTemplate);
-      const missing = result.missingOrderNumbers;
-      status.textContent = result.rowCount
-        ? `通知対象: ${result.orderNumbers.length}件 / CSV ${result.rowCount}行`
-        : '選択した注文に一致する未発送行がありません。最新のCSVと選択した注文を確認してください。';
-      if (missing.length) status.textContent += `\nCSVにない注文（出力対象外）: ${missing.join(', ')}`;
-      downloadButton.disabled = result.rowCount === 0;
+      const parsed = window.BoothCSVOrders.parseOrderCsv(text, { sourceName: file.name });
+      if (parsed.kind !== 'shipment') throw new Error('発送通知用CSVではありません。「未発送注文のCSV」を選択してください。');
+      await persistCsvToRepository(parsed);
+      if (!dialog.open || fileInput.files[0] !== file) return;
+      prepareResult();
     } catch (error) {
       fileError.textContent = error.message || 'CSVの読み込みに失敗しました';
     }
@@ -991,20 +962,19 @@ function openShipmentCsvDialog(orderNumbers, messageTemplate) {
     link.remove();
     setTimeout(() => revokeBlobUrl(url), 1000);
     window.open('https://manage.booth.pm/bulk_shipment_dispatches/current', '_blank', 'noopener');
+    downloadedResult = result;
     recordButton.disabled = false;
   };
 
   recordButton.onclick = async function() {
-    if (!result || !result.rowCount) return;
+    if (!downloadedResult || !downloadedResult.rowCount) return;
     recordButton.disabled = true;
     fileInput.disabled = true;
     selectFileButton.disabled = true;
     downloadButton.disabled = true;
     try {
-      const repo = await ensureOrderRepository();
-      if (!repo) throw new Error('注文データを読み込めませんでした');
       const shippedAt = new Date().toISOString();
-      for (const orderNumber of result.orderNumbers) await repo.markShipped(orderNumber, shippedAt);
+      for (const orderNumber of downloadedResult.orderNumbers) await repo.markShipped(orderNumber, shippedAt, downloadedResult.shippedComment);
       await refreshProcessedOrdersPanel();
       dialog.close();
     } catch (error) {
@@ -1018,6 +988,8 @@ function openShipmentCsvDialog(orderNumbers, messageTemplate) {
   };
 
   dialog.onclose = function() { fileInput.value = ''; };
+  try { prepareResult(); }
+  catch (error) { fileError.textContent = error.message; }
   dialog.showModal();
 }
 
@@ -1057,7 +1029,7 @@ async function notifySelectedOrdersShipment(orderNumbers) {
     : '';
 
   if (!useExtensionBridge) {
-    openShipmentCsvDialog(selectedOrderNumbers, shippingMessageTemplate);
+    await openShipmentCsvDialog(selectedOrderNumbers, shippingMessageTemplate);
     return;
   }
 
@@ -1091,7 +1063,7 @@ async function notifySelectedOrdersShipment(orderNumbers) {
         const notifyResponse = await bridge.notifyOrderShipment(orderNumber, shippingMessageTemplate);
         const notifiedShippedAt = notifyResponse ? (notifyResponse.shippedAt || notifyResponse.shippedAtRaw || '') : '';
         if (notifyResponse && notifyResponse.ok && notifiedShippedAt) {
-          await repo.markShipped(orderNumber, notifiedShippedAt);
+          await repo.markShipped(orderNumber, notifiedShippedAt, notifyResponse.submitted ? notifyResponse.shippedComment : undefined);
           updated.push({ orderNumber, shippedAt: notifyResponse.shippedAtRaw || notifyResponse.shippedAt || notifiedShippedAt });
           if (notifyResponse.submitted) {
             submitted.push(orderNumber);
@@ -1148,7 +1120,7 @@ async function persistCsvToRepository(results) {
     }
   }
 
-  await repo.bulkUpsert(rows);
+  await repo.bulkUpsert(rows, results.shipmentCsvByOrder);
   await refreshProcessedOrdersPanel();
 
   const orderNumbers = [];
@@ -1452,17 +1424,12 @@ async function generateOrderDetails(data, labelarr, labelSet = null, printedAtMa
   
   for (let row of data) {
     const cOrder = document.importNode(tOrder.content, true);
-    let orderNumber = '';
-    // --- setOrderInfo inline 化 ---
-    for (let c of Object.keys(row).filter(key => key != CONSTANTS.CSV.PRODUCT_COLUMN)) {
-      const divc = cOrder.querySelector('.' + c);
-      if (!divc) continue;
-      if (c === CONSTANTS.CSV.ORDER_NUMBER_COLUMN) {
-        orderNumber = getOrderNumberFromCSVRow(row);
-        divc.textContent = orderNumber; // 生の番号のみ（装飾はCSS）
-      } else if (row[c]) {
-        divc.textContent = row[c];
-      }
+    const orderNumber = getOrderNumberFromCSVRow(row);
+    cOrder.querySelector('.注文番号').textContent = orderNumber;
+    const addressLabel = window.BoothCSVOrders.anonymousAddressLabel(row);
+    for (const field of cOrder.querySelectorAll('[data-order-field]')) {
+      const value = row[field.dataset.orderField];
+      field.textContent = value || (field.hasAttribute('data-address') ? addressLabel : '');
     }
     // section にアンカーID付与
     if (orderNumber) {
@@ -3326,7 +3293,8 @@ document.getElementById("file").addEventListener("change", async function() {
       
       // CSVファイルが選択されたら自動的に処理を実行
       console.log('CSVファイルが選択されました。自動処理を開始します:', fileName);
-      await autoProcessCSV();
+      try { await autoProcessCSV(); }
+      catch (error) { alert(error.message || 'CSVの読み込みに失敗しました'); }
   } else {
       updateSelectedSourceInfo('未選択', false);
       updateProcessedOrdersVisibility();
@@ -3426,7 +3394,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const previewBackButton = document.getElementById('previewBackButton');
 
   function openBoothOrdersPage() {
-    window.open('https://manage.booth.pm/orders?state=paid', '_blank', 'noopener');
+    window.open('https://manage.booth.pm/bulk_shipment_dispatches/csv', '_blank', 'noopener');
   }
 
   function openCsvFilePicker() {

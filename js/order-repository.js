@@ -18,6 +18,7 @@
         if(rec && rec.orderNumber){
           const key = OrderRepository.normalize(rec.orderNumber);
           rec.orderNumber = key;
+          if (!Object.hasOwn(rec, 'shippedComment')) rec.shippedComment = null;
           this.cache.set(key, rec);
         }
       }
@@ -25,7 +26,7 @@
     }
     getAll(){ return Array.from(this.cache.values()); }
     get(orderNumber){ return this.cache.get(OrderRepository.normalize(orderNumber)) || null; }
-    async bulkUpsert(csvRows){
+    async bulkUpsert(csvRows, shipmentCsvByOrder = new Map()){
       let changed = 0;
       for(const row of csvRows){
         // 現行実装では OrderNumberManager 廃止済みのため CSV ヘッダー名から取得
@@ -49,22 +50,22 @@
         if(!key) continue;
         const existing = this.cache.get(key);
         if(!existing){
-          const rec = { orderNumber: key, row, createdAt: new Date().toISOString(), printedAt: null, shippedAt: null };
+          const rec = { orderNumber: key, row, createdAt: new Date().toISOString(), printedAt: null, shippedAt: null, shippedComment: null };
+          if (shipmentCsvByOrder.has(key)) rec.shipmentCsv = shipmentCsvByOrder.get(key);
           await this.db.saveOrder(rec);
           this.cache.set(key, rec);
           changed++;
         } else {
-          // 既存の row が変わった場合のみ更新（軽量）
-          if(existing.row !== row){
-            existing.row = row;
-            await this.db.saveOrder(existing);
-          }
+          // 列の欠落では過去の値を消さない。明示された空文字は更新する。
+          existing.row = { ...existing.row, ...row };
+          if (shipmentCsvByOrder.has(key)) existing.shipmentCsv = shipmentCsvByOrder.get(key);
+          await this.db.saveOrder(existing);
         }
       }
       if (DEBUG_MODE) {
         debugLog('[repo] bulkUpsert summary', { inputRows: csvRows.length, newRecords: changed, totalCache: this.cache.size });
       }
-      if(changed>0) this.emit();
+      if(csvRows.length>0) this.emit();
       return changed;
     }
   // --- QR データ統合 (メソッド名をより明確化) ---
@@ -78,7 +79,7 @@
       let rec = this.cache.get(key);
       if(!rec){
         // 存在しない注文に直接QRを設定するケースは通常無いが、必要なら作成
-        rec = { orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null };
+        rec = { orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null, shippedComment:null };
         this.cache.set(key, rec);
       }
       if(!qrData){
@@ -110,7 +111,7 @@
     async setOrderImage(orderNumber, image){
       const key=OrderRepository.normalize(orderNumber);
       let rec=this.cache.get(key);
-      if(!rec){ rec={ orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null }; this.cache.set(key, rec); }
+      if(!rec){ rec={ orderNumber:key, row:null, createdAt:new Date().toISOString(), printedAt:null, shippedAt:null, shippedComment:null }; this.cache.set(key, rec); }
       if(!image){ delete rec.image; }
       else {
         const { data, mimeType } = image; // data: ArrayBuffer, mimeType:string
@@ -123,9 +124,11 @@
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
       rec.printedAt = printedAt; await this.db.saveOrder(rec); this.emit(); return true;
     }
-    async markShipped(orderNumber, shippedAt = new Date().toISOString()){
+    async markShipped(orderNumber, shippedAt = new Date().toISOString(), shippedComment){
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
-      rec.shippedAt = shippedAt; await this.db.saveOrder(rec); this.emit(); return true;
+      rec.shippedAt = shippedAt;
+      if (typeof shippedComment === 'string') rec.shippedComment = shippedComment;
+      await this.db.saveOrder(rec); this.emit(); return true;
     }
     async clearPrinted(orderNumber){
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
@@ -133,7 +136,7 @@
     }
     async clearShipped(orderNumber){
       const key = OrderRepository.normalize(orderNumber); const rec = this.cache.get(key); if(!rec) return false;
-      rec.shippedAt = null; await this.db.saveOrder(rec); this.emit(); return true;
+      rec.shippedAt = null; rec.shippedComment = null; await this.db.saveOrder(rec); this.emit(); return true;
     }
     async deleteMany(orderNumbers){
       if(!Array.isArray(orderNumbers) || orderNumbers.length===0) return 0;

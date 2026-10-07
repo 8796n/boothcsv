@@ -1,7 +1,7 @@
 'use strict';
 
 const APP_URL = chrome.runtime.getURL('boothcsv.html');
-const CSV_URL = 'https://manage.booth.pm/orders/csv?state=paid';
+const CSV_URL = 'https://manage.booth.pm/bulk_shipment_dispatches/csv';
 const ORDER_URL_PREFIX = 'https://manage.booth.pm/orders/';
 
 async function openOrFocusAppTab() {
@@ -34,13 +34,13 @@ async function fetchBoothCsv() {
   if (!response.ok) {
     throw new Error(`CSV取得に失敗しました: HTTP ${response.status}`);
   }
-  if (!csvText.includes('注文番号')) {
+  if (!csvText.includes('フォーマット番号')) {
     throw new Error('CSV内容を確認できませんでした。BOOTHにログイン済みか確認してください。');
   }
 
   return {
     csvText,
-    fileName: `booth-orders-${new Date().toISOString().slice(0, 10)}.csv`
+    fileName: `bulk-shipment-dispatches-${new Date().toISOString().slice(0, 10)}.csv`
   };
 }
 
@@ -293,6 +293,7 @@ async function notifyOrderShipment(orderNumber, messageTemplate) {
         return {
           ...latestStatus,
           submitted: true,
+          shippedComment: submitResponse.shippedComment,
           diagnosticsSummary: [submitResponse.diagnosticsSummary, latestStatus.diagnosticsSummary].filter(Boolean).join(' | ')
         };
       }
