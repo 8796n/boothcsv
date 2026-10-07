@@ -189,6 +189,7 @@
         <li><a href="#画像機能について">画像機能について</a></li>
         <li><a href="#カスタムラベル機能について">カスタムラベル機能について</a></li>
   <li><a href="#CSV処理結果について">CSV処理結果について</a></li>
+        <li><a href="#CSVでまとめて発送通知">CSVでまとめて発送通知</a></li>
   <li><a href="#バックアップとリストア">バックアップとリストア</a></li>
         <li><a href="#デバッグ機能">デバッグ機能</a></li>
         <li><a href="#サンプルで試す">サンプルで試す</a></li>
@@ -203,11 +204,13 @@
     <h3>なにができるの？</h3>
     <p>出荷準備のときにあると便利な帳票と「あんしんBOOTHパック」で出荷のときに便利なQRコードをラベルシールに印刷できます。<br>
     あと、注文明細に画像を追加して印刷することもできるようになりました。全注文共通の画像と注文ごとの個別画像が設定でき、表示のON/OFF切り替えも可能です。<br>
-    さらに、カスタムラベル機能により任意の文字列を複数面印刷することも可能です。</p>
+    さらに、カスタムラベル機能により任意の文字列を複数面印刷することも可能です。<br>
+    発送後は、選択した注文だけをまとめた発送通知用CSVを作成し、BOOTHで発送完了を通知できます。</p>
 
     <div class="feature-box">
       <h4>📝 最新の改善点</h4>
       <ul>
+        <li><strong>CSVでまとめて発送通知</strong>: 選択した注文の行だけを抽出し、保存済みコメントを反映したCSVを作成できます。BOOTHで通知完了を確認した後、対象注文だけに発送日時を記録します</li>
         <li><strong>リアルタイム処理</strong>: CSVファイルを選択すると自動的に処理が実行されるようになりました</li>
         <li><strong>ワークフロー最適化</strong>: CSVダウンロード → ファイル選択 → 印刷の流れが分かりやすいレイアウトに変更</li>
         <li><strong>直感的な操作</strong>: 手動実行ボタンを廃止し、シンプルで分かりやすいUIに改善</li>
@@ -215,7 +218,7 @@
         <li><strong>選択注文の再プレビュー改善</strong>: 注文一覧から複数選択して印刷プレビューできるようになり、設定変更時も選択中の注文プレビューを再生成しやすくしました</li>
         <li><strong>印刷と編集の安定化</strong>: 印刷完了後のスキップ面数がCSV再読み込み後も正しく反映されるよう修正し、カスタムラベルの右クリックメニュー位置ずれも改善しました</li>
         <li><strong>サイドバー導入</strong>: 設定（ラベル印刷・画像・カスタムラベル・保存データ操作）をサイドバーに統合。左上のハンバーガーで開閉、ピン留めで固定表示（初期は固定）</li>
-        <li><strong>ヘルプの一元化</strong>: 使い方ガイドはヘッダー右側のボタンからいつでも開けます</li>
+        <li><strong>ヘルプの一元化</strong>: 使い方ガイドは設定サイドバー右上のボタンからいつでも開けます</li>
         <li><strong>バックアップ/リストア</strong>: 保存データ（フォント/設定/注文/カスタムラベル/画像）をJSONで一括バックアップ/リストア可能に</li>
         <li><strong>カスタムラベルの安定化</strong>: カスタムラベルを独立ストア化し、タイムスタンプキーの単調増加で衝突を回避</li>
         <li><strong>QR画像の再読み込み安定化</strong>: ArrayBuffer画像をBlob URLで表示し、再読み込み後の404を解消</li>
@@ -230,14 +233,14 @@
 
     <h2 id="基本的な使い方">基本的な使い方</h2>
     
-    <img src="docs/images/main-interface.png" alt="BOOTH CSV ツールのメイン画面">
+    <img src="docs/images/main-interface.jpg" alt="BOOTH CSV ツールのメイン画面">
     
     <div class="step-list">
       <ol>
   <li><a href="https://github.com/8796n/boothcsv/archive/master.zip" target="_blank" rel="noopener">ここ</a>からzipファイルをダウンロードして展開します。</li>
         <li><code>boothcsv.html</code> を Chrome から開きます。</li>
   <li>左上のハンバーガー（≡）で設定サイドバーを開きます（初期は固定表示）。</li>
-  <li>注文明細に画像を印刷したい場合は、サイドバーの「画像とカスタムラベル」内で「注文明細に画像を表示」にチェックを入れます。</li>
+  <li>注文明細に画像を印刷したい場合は、サイドバーの「注文明細用画像」内で「注文明細に画像を表示」にチェックを入れます。</li>
   <li>全ての注文に同じ画像を表示したい場合は、サイドバー内のグローバル画像ドロップゾーンに画像をドラッグ&ドロップするかクリックしてファイル選択します。</li>
   <li>カスタムラベルを印刷したい場合は、サイドバーの「残りラベルに任意文字列を印刷」をオンにして、印刷したい文字列と面数を設定します。複数のカスタムラベルを設定したい場合は「ラベル追加」ボタンで項目を追加できます。</li>
         <li><strong>📥 CSVをダウンロード</strong>ボタンを押してBOOTHの注文一覧ページにアクセスし、宛名印刷用CSVをダウンロードします。</li>
@@ -310,7 +313,7 @@
     </div>
 
     <h2 id="ラベルシール印刷">ラベルシールも印刷したい</h2>
-    <img src="docs/images/csv-labels.png" alt="ラベルシール印刷画面" class="image-block">
+    <img src="docs/images/csv-labels.jpg" alt="ラベルシール印刷画面" class="image-block">
   <p>これね、ヤマトの営業所持ち込みであんしんBOOTHパック使うときにはすげえ便利なんですよ。<a href="https://booth.pixiv.help/hc/ja/articles/360013148033" target="_blank" rel="noopener">PUDOステーション</a>に放り込むときにもめっちゃ便利です。慣れると1出荷30秒ぐらいでできます。</p>
 
   <p>補足: ラベルに表示される各注文番号は BOOTH の注文詳細ページ（例: <code>https://manage.booth.pm/orders/&lt;注文番号&gt;</code>）へのリンクになっています。リンク先であんしんBOOTHパック用の QR コードを生成・コピーできるため、該当注文のラベルから直接 QR 発行フローへ移動できます。</p>
@@ -321,7 +324,7 @@
   <li>サイドバーの「ラベルシールも印刷する」にチェックを入れます。</li>
   <li>途中まで使ったラベルシールを再使用する場合にはサイドバー内の「スキップ面数」を入力します。あまり再使用しすぎるとプリンターの中で剥がれたりするかもしれないのでほどほどに。</li>
         <li><strong>📥 CSVをダウンロード</strong>ボタンでBOOTHにアクセスしてCSVをダウンロードし、<strong>📁 CSVファイルを選択</strong>ボタンでファイルを選択すると、ラベル用紙の枚数も自動的に表示されます。</li>
-  <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank" rel="noopener">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「Paste QR image here!」を右クリックして貼り付けを選ぶとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
+  <li>BOOTHの注文詳細で<a href="https://booth.pm/anshin_booth_pack_guides/usage" target="_blank" rel="noopener">あんしんBOOTHパックのQRコードを作成</a>して、表示されたQRコードの画像を右クリックでコピーしてから該当の注文番号のラベルの「QR画像をここにドロップ or ペースト（Ctrl+V）」に貼り付けるとQRコードが表示されて自動的に匿名配送の受付番号とパスワードが表示されます。自動です。オートマチック！！</li>
         <li>なお間違えて貼り付けたときはQRコードをクリックすると再度貼り付けできるようになります。</li>
         <li>印刷したラベルシールを出荷する箱に貼り付けておけば出荷時にネコピットを箱に貼ったQRコードにかざす→その箱に貼る送り状が印刷されるという流れになるので送り間違いは発生しません。万が一QRコードの読み込みが上手く行かなかった場合でもラベルシールに印刷されている受付番号とパスワードを入力すれば送り状が出力できるので安心です。</li>
       </ol>
@@ -329,13 +332,13 @@
 
   <h2 id="画像機能について">画像機能について</h2>
 
-    <img src="docs/images/image-function.png" alt="画像機能の概要" class="image-block">
+    <img src="docs/images/image-function.jpg" alt="画像機能の概要" class="image-block">
 
-  <p>注文明細に画像を追加できる機能があります（サイドバーの「画像とカスタムラベル」で有効化）。</p>
+  <p>注文明細に画像を追加できる機能があります（サイドバーの「注文明細用画像」で有効化）。</p>
 
     <h3>画像のアップロード状態</h3>
     
-    <img src="docs/images/image-dropzone.png" alt="画像アップロード後の状態" class="image-block">
+    <img src="docs/images/image-dropzone.jpg" alt="画像アップロード後の状態" class="image-block">
 
     <h3>基本的な使い方</h3>
     <div class="step-list">
@@ -372,13 +375,13 @@
 
     <h2 id="カスタムラベル機能について">カスタムラベル機能について</h2>
     
-    <img src="docs/images/custom-labels.png" alt="カスタムラベル機能" class="image-block">
+    <img src="docs/images/custom-labels.jpg" alt="カスタムラベル機能" class="image-block">
     
     <p>余った44面シールに商品名や管理用文字列を印刷できる機能です。商品管理や在庫整理の際に便利です。</p>
 
     <h3>カスタムラベルのシート表示</h3>
     
-    <img src="docs/images/custom-labels-sheet.png" alt="カスタムラベルシート表示" class="image-block">
+    <img src="docs/images/custom-labels-sheet.jpg" alt="カスタムラベルシート表示" class="image-block">
 
   <h3>設定方法</h3>
 
@@ -392,7 +395,7 @@
 
     <h3>文字列の編集方法</h3>
     
-    <img src="docs/images/custom-labels.png" alt="文字列編集とカスタムフォント設定" class="image-block">
+    <img src="docs/images/custom-labels.jpg" alt="文字列編集とカスタムフォント設定" class="image-block">
     
     <ul>
       <li>テキストエリア内で普通に文字を入力</li>
@@ -417,7 +420,7 @@
     
     <p>カスタムラベルでは独自のフォントファイルをアップロードして使用できます。</p>
 
-    <img src="docs/images/custom-fonts.png" alt="カスタムフォント設定" class="image-block">
+    <img src="docs/images/custom-fonts.jpg" alt="カスタムフォント設定" class="image-block">
     
     <h4>フォントファイルのアップロード</h4>
     <ul>
@@ -438,7 +441,7 @@
     <h4>フォント管理</h4>
     <ul>
       <li>アップロード済みフォント一覧でフォントの確認・削除が可能</li>
-      <li>「全てのカスタムフォントをクリア」ボタンで一括削除</li>
+      <li>カスタムフォント設定の「全削除」ボタンで一括削除</li>
       <li>フォントデータはブラウザのIndexedDBに安全に保存されます</li>
     </ul>
     
@@ -459,7 +462,7 @@
 
     <h3>処理済み注文一覧</h3>
     
-    <img src="docs/images/processed-orders-list.png" alt="処理済み注文一覧">
+    <img src="docs/images/processed-orders-list.jpg" alt="処理済み注文一覧">
     
     <p>CSVを読み込んで保存済み注文ができると、初期ガイドの下に処理済み注文一覧が表示されます。</p>
 
@@ -473,22 +476,37 @@
       </ul>
     </div>
 
-    <h3>CSVでまとめて発送通知</h3>
-    <ol>
-      <li>設定の「発送通知コメント」に定型文を保存します。</li>
-      <li>処理済み注文一覧で発送した注文にチェックを入れ、「選択した注文を発送通知」を押します。</li>
-      <li>「📥 CSVをダウンロード」でBOOTHの未発送注文CSVを取得し、「📁 CSVファイルを選択」で読み込みます。選択した注文に一致する行だけを残し、保存済みコメントを反映します。</li>
-      <li>対象件数を確認し、「編集済みCSVをダウンロードしてBOOTHを開く」を押します。CSVにない注文は出力されません。</li>
-      <li>BOOTHの画面に編集済みCSVをアップロードし、対象注文を確認して発送完了を通知します。</li>
-      <li>BOOTHで通知完了を確認したら、このアプリに戻り「BOOTHで通知完了を確認したので発送日時を記録」を押します。</li>
-    </ol>
-    <p>CSVの作成だけでは発送済みになりません。発送日時は最後のボタンを押した時刻として、CSVに含まれた注文だけに記録されます。ヘッダーしかないCSVや一致する注文がないCSVはダウンロードできません。</p>
-
     <h3>注文明細印刷プレビュー</h3>
     
-    <img src="docs/images/csv-orders.png" alt="注文明細印刷プレビュー" class="image-block">
+    <img src="docs/images/csv-orders.jpg" alt="注文明細印刷プレビュー" class="image-block">
     
     <p>各注文の詳細情報が印刷に適したフォーマットで表示されます。画像機能を有効にしている場合は、設定した画像も表示されます。</p>
+
+    <h2 id="CSVでまとめて発送通知">CSVでまとめて発送通知</h2>
+    <p>発送した注文を選び、BOOTHの一括発送通知用CSVから対象行を抽出して、保存済みの発送通知コメントを反映できます。ファイルを取得・選択する操作は、宛名印刷用CSVを読み込むときと同じです。</p>
+
+    <img src="docs/images/shipment-csv.jpg" alt="選択した注文の発送通知用CSVを作成する画面" class="image-block">
+
+    <div class="step-list">
+      <ol>
+        <li>設定サイドバーの「発送通知コメント」に定型文を入力し、「保存」を押します。保存したコメントが対象行の「発送通知コメント」列に入ります。</li>
+        <li>処理済み注文一覧で発送した注文にチェックを入れ、「選択した注文を発送通知」を押します。</li>
+        <li>開いた画面の「📥 CSVをダウンロード」を押して、BOOTHの未発送注文CSVを取得します。発送通知画面を開くだけではダウンロードされません。</li>
+        <li>同じ画面の「📁 CSVファイルを選択」で取得したCSVを読み込みます。<strong>発送通知用の「未発送注文のCSV」を選んでください。通常の宛名印刷用CSVとは別のファイルです。</strong></li>
+        <li>通知対象件数と「CSVにない注文（出力対象外）」を確認し、「編集済みCSVをダウンロードしてBOOTHを開く」を押します。</li>
+        <li>開いた<a href="https://manage.booth.pm/bulk_shipment_dispatches/current" target="_blank" rel="noopener">BOOTHの一括発送通知画面</a>に<strong>編集済みCSV</strong>をアップロードし、対象注文を確認して発送完了を通知します。</li>
+        <li>BOOTHで通知完了を確認したらこのアプリに戻り、「BOOTHで通知完了を確認したので発送日時を記録」を押します。</li>
+      </ol>
+    </div>
+    <p>CSVを作成・ダウンロードしただけでは、BOOTHへの発送通知も、このアプリへの発送日時の記録も行われません。最後のボタンで記録する日時は、<strong>そのボタンを押した時刻</strong>です。CSVに含まれない注文には発送日時を記録しません。</p>
+
+    <h3>CSVを読み込めない・対象注文がないとき</h3>
+    <ul>
+      <li>違う種類のCSVを選ぶと、ファイル選択ボタンの下に赤いエラーが表示されます。発送通知用CSVを選び直してください。</li>
+      <li>ヘッダーだけのCSVや選択した注文に一致する行がないCSVでは、編集済みCSVをダウンロードできません。BOOTHの最新のCSVと選択した注文を確認してください。</li>
+      <li>選択した注文の一部がCSVにない場合は、その注文番号を表示して出力対象から外します。一致する注文だけで続行できます。</li>
+    </ul>
+    <img src="docs/images/shipment-csv-error.jpg" alt="違うCSVを選んだときのエラー表示" class="image-block">
 
     <h2 id="デバッグ機能">デバッグ機能</h2>
     
@@ -558,7 +576,7 @@
       <li>同じブラウザ/PC間での利用を推奨します（別環境でも動作はしますが、フォント適用などに環境差が出る可能性があります）</li>
       <li>バックアップデータが不正な場合はエラーになります（破損や改変に注意）</li>
       <li>別PCへ引き継ぐ場合は、バックアップJSONをエクスポートして移行先でリストアしてください</li>
-      <li>現在は IndexedDB を使ったローカル保存で、chrome.storage.sync のようなアカウント同期機能は実装していません</li>
+      <li>データはブラウザ内に保存されます。別のブラウザやPCへの自動同期には対応していません</li>
     </ul>
   </div>
 </body>
