@@ -193,6 +193,35 @@
     </section>
   </template>
 </main> <!-- main-content 終了 -->
+<dialog id="shipmentCsvDialog" class="shipment-csv-dialog no_print" aria-labelledby="shipmentCsvTitle">
+  <h2 id="shipmentCsvTitle">選択した注文をCSVで発送通知</h2>
+  <p id="shipmentCsvSelection"></p>
+  <details>
+    <summary>保存済みの発送通知コメント</summary>
+    <pre id="shipmentCsvComment"></pre>
+  </details>
+  <ol>
+    <li>
+      <a id="shipmentCsvSource" class="btn-base btn-header btn-download" href="https://manage.booth.pm/bulk_shipment_dispatches/csv" target="_blank" rel="noopener">📥 CSVをダウンロード</a>
+    </li>
+    <li>
+      <button id="shipmentCsvSelectFile" type="button" class="btn-base btn-header btn-primary" aria-describedby="shipmentCsvFileError">📁 CSVファイルを選択</button>
+      <input id="shipmentCsvFile" type="file" accept=".csv,text/csv" class="hidden" aria-label="発送通知用CSVファイル選択" aria-describedby="shipmentCsvFileError">
+      <p id="shipmentCsvFileName">未選択</p>
+      <p id="shipmentCsvFileError" role="alert"></p>
+      <p>チェックした注文だけを残し、保存済みの発送通知コメントを反映します。</p>
+    </li>
+    <li>
+      <button id="shipmentCsvDownload" type="button" class="btn-base btn-primary btn-medium" disabled>編集済みCSVをダウンロードしてBOOTHを開く</button>
+      <p>開いた画面で編集済みCSVをアップロードし、対象注文を確認して発送完了を通知してください。</p>
+      <a href="https://manage.booth.pm/bulk_shipment_dispatches/current" target="_blank" rel="noopener">BOOTHのアップロード画面を開く</a>
+    </li>
+  </ol>
+  <p id="shipmentCsvStatus" role="status" aria-live="polite"></p>
+  <p>CSVを作成しただけでは発送済みになりません。BOOTHで通知完了を確認した後、下のボタンでこのアプリにも発送日時を記録できます。</p>
+  <button id="shipmentCsvRecord" type="button" class="btn-base btn-success btn-medium" disabled>BOOTHで通知完了を確認したので発送日時を記録</button>
+  <form method="dialog"><button class="btn-base btn-small">閉じる</button></form>
+</dialog>
 <!-- サイドバー/オーバーレイ（初期導入。徐々に設定UIを移設予定） -->
 <div id="sidebarOverlay" class="sidebar-overlay no_print" hidden></div>
 <aside id="appSidebar" class="sidebar no_print" aria-hidden="true" tabindex="-1">
@@ -279,8 +308,8 @@
         <button type="button" id="copyShippingMessageTemplate" class="btn-base btn-info btn-small">コピー</button>
       </div>
       <p class="sidebar-note" data-app-mode="extension">拡張機能の発送通知では、この定型文を BOOTH の発送通知コメントへ自動入力します。必要ならコピーもできます。</p>
-      <p class="sidebar-note" data-app-mode="web">保存すると次回以降も同じ定型文が表示されます。必要に応じて BOOTH へコピーして使えます。</p>
-      <p class="sidebar-note" data-app-mode="file">保存すると次回以降も同じ定型文が表示されます。必要に応じて BOOTH へコピーして使えます。</p>
+      <p class="sidebar-note" data-app-mode="web">保存した定型文は「選択した注文を発送通知」で作成するCSVの発送通知コメントに反映されます。</p>
+      <p class="sidebar-note" data-app-mode="file">保存した定型文は「選択した注文を発送通知」で作成するCSVの発送通知コメントに反映されます。</p>
     </section>
     <section class="sidebar-section">
       <h3 class="sidebar-title">注文明細用画像</h3>
@@ -537,6 +566,7 @@
 </div>
 <script src="./js/jsQR.js"></script>
 <script src="./js/papaparse.min.js"></script>
+<script src="./js/bulk-shipment-csv.js"></script>
 <script src="./js/storage.js"></script>
 <!-- OrderRepository (orders 単一ソース化 Stage B) -->
 <script src="./js/order-repository.js"></script>

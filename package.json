@@ -2,6 +2,6 @@
   "name": "boothcsv",
   "private": true,
   "scripts": {
-    "test": "node --test .\\tests\\automated\\label-sheet-layout.test.js .\\tests\\automated\\label-rich-text.test.js"
+    "test": "node --test .\\tests\\automated\\label-sheet-layout.test.js .\\tests\\automated\\label-rich-text.test.js .\\tests\\automated\\booth-extension-content.test.js .\\tests\\automated\\bulk-shipment-csv.test.js"
   }
 }

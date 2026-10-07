@@ -53,9 +53,8 @@
 
   function getOrderDetailText() {
     const mount = getOrderDetailMount();
-    const mountText = normalizeInlineText(mount ? (mount.innerText || mount.textContent || '') : '');
-    if (mountText) return mountText;
-    return normalizeInlineText(getOrderPageText());
+    // 描画前に本文全体へフォールバックすると、お知らせの「発送完了」を拾ってしまう。
+    return normalizeInlineText(mount ? (mount.innerText || mount.textContent || '') : '');
   }
 
   function getShippingStateSignals() {
@@ -202,12 +201,7 @@
   }
 
   function hasOrderDetailContent() {
-    const mount = getOrderDetailMount();
-    if (!mount) return false;
-    if (mount.childElementCount > 0) return true;
-
-    const mountText = normalizeInlineText(mount.innerText || mount.textContent || '');
-    return /注文番号|発送完了|発送済み|発送日時|商品追跡用\s*伝票番号|発送コード/.test(mountText);
+    return /注文番号|発送完了|発送済み|発送日時|商品追跡用\s*伝票番号|発送コード/.test(getOrderDetailText());
   }
 
   async function waitForOrderDetailContent(timeoutMs) {
@@ -215,17 +209,12 @@
     while (Date.now() < deadline) {
       if (hasOrderDetailContent()) return true;
 
-      const pageText = getOrderPageText();
-      if (/注文番号|発送完了|発送済み|発送日時|商品追跡用\s*伝票番号|発送コード/.test(pageText)) {
-        return true;
-      }
-
       await new Promise(function(resolve) {
         setTimeout(resolve, 250);
       });
     }
 
-    return hasOrderDetailContent();
+    throw new Error('注文詳細の読み込みがタイムアウトしました。BOOTHの注文詳細ページを確認して再試行してください');
   }
 
   function normalizeInlineText(value) {

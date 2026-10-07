@@ -5,6 +5,30 @@
   --content-panel-gutter: 32px;
 }
 
+.shipment-csv-dialog {
+  box-sizing: border-box;
+  margin: auto;
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  border: 0;
+  border-radius: 12px;
+  padding: 24px;
+  color: #333;
+  line-height: 1.6;
+}
+.shipment-csv-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.shipment-csv-dialog h2 { margin-top: 0; font-size: 20px; }
+.shipment-csv-dialog p { margin: 8px 0; }
+.shipment-csv-dialog ol { padding-left: 24px; }
+.shipment-csv-dialog li { margin-bottom: 16px; }
+.shipment-csv-dialog .btn-header { box-sizing: border-box; }
+.shipment-csv-dialog pre, #shipmentCsvStatus, #shipmentCsvFileName { white-space: pre-wrap; overflow-wrap: anywhere; }
+.shipment-csv-dialog form { margin-top: 16px; text-align: right; }
+#shipmentCsvStatus { color: #15556a; font-weight: 600; }
+#shipmentCsvFileError { padding: 10px 12px; border-left: 4px solid #b42318; border-radius: 4px; background: #fff1f0; color: #b42318; font-weight: 600; overflow-wrap: anywhere; }
+#shipmentCsvFileError:empty { display: none; }
+
 .qrlabel .ordernum a {
   color: #0366d6;
   text-decoration: underline;
