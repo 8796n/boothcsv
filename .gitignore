@@ -53,3 +53,4 @@ manifest.json
 docs/chrome-extension-dev-notes.md
 scripts/docs-capture/capture-all.py
 scripts/docs-capture/capture-all.ps1
+.claude/
